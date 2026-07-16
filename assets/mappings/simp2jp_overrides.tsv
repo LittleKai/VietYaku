@@ -1,0 +1,43 @@
+# simp2jp_overrides.tsv — soạn tay, resolve case 1→nhiều theo ngữ cảnh tiếng Nhật.
+# Format: simp<TAB>jp. Dòng # là comment. Override THẮNG simp2jp.tsv.
+# Các case cố tình KHÔNG resolve (để runtime báo ambiguous): 复(復/複/覆),
+# 舍(舎/捨), 获(獲/穫), 泛(氾/汎), 夹, 摆, 链, 钻, 钥 và các chữ hiếm.
+个	個
+冲	衝
+别	別
+勋	勲
+历	歴
+发	発
+叹	嘆
+哗	嘩
+啮	噛
+团	団
+宁	寧
+尝	嘗
+并	並
+录	録
+恶	悪
+术	術
+枪	槍
+毁	毀
+汇	彙
+溪	渓
+炼	錬
+熏	薫
+签	籤
+纤	繊
+脏	臓
+艳	艶
+苏	蘇
+荡	蕩
+荫	蔭
+药	薬
+赞	賛
+迹	跡
+鉴	鑑
+针	針
+钟	鐘
+镰	鎌
+闲	閑
+须	須
+饥	飢
