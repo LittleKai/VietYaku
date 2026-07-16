@@ -1,7 +1,7 @@
 # Project Summary — VietYaku
 
-**Last Updated:** 2026-07-15
-**Session:** #1 — Initial build (7 phases) + documentation setup
+**Last Updated:** 2026-07-16
+**Session:** #2 — Tích hợp tính năng QuickTranslator: layout tabs + đa nghĩa + Hán Việt toàn văn + thuật toán dịch + chuột phải edit
 
 ---
 
@@ -33,11 +33,11 @@ VietYaku/
 │   ├── core/                       # cjk.dart, app_paths.dart, fnv_hash.dart, tts_service.dart
 │   ├── features/
 │   │   ├── dictionary/             # domain (dict_type, phrase_dictionary) · data (dict_parser, binary_cache, dictionary_loader, dictionary_repository, user_dict_service) · application (dictionaries_provider)
-│   │   ├── translation/            # domain (translation_engine, token, reading_extractor) · application (translation_controller, lookup_controller, saved_words_provider, recent_files_provider) · presentation (translate_screen, source_pane, result_pane, lacviet_panel)
+│   │   ├── translation/            # domain (translation_engine, token, reading_extractor) · application (translation_controller, lookup_controller, saved_words_provider, recent_files_provider) · presentation (translate_screen, source_pane, result_pane, han_viet_pane, token_text_view, lacviet_panel)
 │   │   ├── repair/                 # domain (jp_repair_pipeline, simp2jp_table, repair_report) · application (repair_controller) · presentation (repair_screen, repair_preview)
 │   │   └── settings/               # settings_provider, settings_screen
 │   └── shared/widgets/             # tts_button, entry_edit_dialog
-└── test/                           # 71 tests (10 file; integration dữ liệu thật tự skip nếu thiếu path)
+└── test/                           # 83 tests (10 file; integration dữ liệu thật tự skip nếu thiếu path)
 ```
 
 ### Critical Files
@@ -61,9 +61,15 @@ Feature-first: mỗi feature chia `domain/` (thuần Dart, không Flutter) · `d
 - Riverpod manual: `NotifierProvider` (settings, translation, lookup, repair, recent files), `AsyncNotifierProvider` (dictionaries, saved words), `FutureProvider` (appPaths, ttsService, simp2jpTable).
 - `sharedPreferencesProvider` override trong `main()` sau `SharedPreferences.getInstance()`.
 - Engine: `HashMap<String,String>` + `maxLenByFirstUnit: Map<int,int>` per dict (key = UTF-16 code unit đầu). Tie-break UserDict > Names > VietPhrase. Fallback chữ Hán đơn → ChinesePhienAmWords; kana/lạ → passthrough.
+- Engine options (constructor, chữ ký `translate()` không đổi): `TranslationAlgorithm` — `leftToRight` (mặc định) / `longestPhrase` (cụm dài toàn văn đặt trước, khe trống dịch trái→phải chặn biên) / `longestPhrase4` (chỉ cụm ≥4 code unit vào vòng global); `prioritizeNames` — tiered: dict đứng trước có match (bất kỳ độ dài) thắng dict sau (UserDict ngắn vẫn thắng cụm dài — cố ý). Settings áp dụng ở lần Dịch kế tiếp.
+- Token giữ `rawValue` (value dict nguyên bản); `meaning`/`display`/`displayAll` là getter — đổi tab một nghĩa/đa nghĩa chỉ đổi render, không re-translate.
+- `dictionariesProvider` chỉ watch `settingsProvider.select((s) => s.dictPaths)` — đổi thuật toán không reload dict.
 
 ### Data Flow
-settings (paths) → dictionaries_provider → DictionaryRepository.loadAll (6 file song song, mỗi file 1 `Isolate.run`: cache `.vydc` hợp lệ → decode, không thì parse text + ghi cache) → LoadedDictionaries.engine → translation_controller.translate → tokens → ResultPane RichText (TapGestureRecognizer per token) → lookup_controller → LacVietPanel.
+settings (paths) → dictionaries_provider → DictionaryRepository.loadAll (6 file song song, mỗi file 1 `Isolate.run`: cache `.vydc` hợp lệ → decode, không thì parse text + ghi cache) → LoadedDictionaries.engineWith(algorithm, prioritizeNames) → translation_controller.translate → tokens + hanVietTokens (cùng lượt, `hanVietEngine` = dicts rỗng + fallback ChinesePhienAm) → TokenTextView RichText (click trái → lookup_controller → LacVietPanel; chuột phải → showMenu → showEntryEditDialog).
+
+### Layout màn hình Dịch (kiểu QuickTranslator, tham khảo .claude/image.png)
+Trái (flex 2): tabs [Nguồn | Hán Việt] qua TabBar + IndexedStack (giữ state SourcePane) trên, LacVietPanel ("Nghĩa") dưới. Phải (flex 3): ResultPane với tabs [VietPhrase một nghĩa | VietPhrase (đa nghĩa)] — 1 TokenTextView duy nhất, đổi tab chỉ đổi `textOf` (display/displayAll).
 
 ### Repair Flow
 RepairScreen → pick file → preview per-line (Isolate.run, 50 dòng đổi đầu tiên) → Run (`Isolate.spawn` + progress SendPort, kết quả qua `Isolate.exit`) → RepairReport → export `*_JP.txt` (UTF-8 BOM CRLF cạnh gốc + copy appdata + xóa .vydc cũ) → reload providers.
@@ -86,8 +92,12 @@ RepairScreen → pick file → preview per-line (Isolate.run, 50 dòng đổi đ
 | Recent files | ✅ Done | recent_files_provider, source_pane | Tối đa 10 |
 | Lưu từ + export vocabflip | ✅ Done | saved_words_provider, lacviet_panel | JSON deck v1.0, đã test khớp validateImportData |
 | Settings + copy kết quả + release build | ✅ Done | settings_screen, result_pane | exe standalone verified |
+| Layout tabs kiểu QT + VietPhrase đa nghĩa | ✅ Done | translate_screen, result_pane, token_text_view | Đổi tab không re-translate |
+| Tab Hán Việt toàn văn | ✅ Done | han_viet_pane, translation_controller | Tính cùng lượt dịch |
+| Thuật toán dịch (Trái→phải / Cụm dài / Cụm dài ≥4) + Ưu tiên Name | ✅ Done | translation_engine, settings_provider, settings_screen | Áp dụng lần Dịch kế |
+| Chuột phải token → sửa UserDict / thêm Names | ✅ Done | token_text_view, entry_edit_dialog | Verify tay (không có widget test secondary-tap) |
 
-**Verify end-to-end:** `dart run tool/export_jp.dart` → VietPhrase_JP.txt (187.419 entries) + LacViet_JP.txt (103.632) cạnh file gốc; hết key `覚 悟`/`军`, value nguyên vẹn từng byte; dịch Nhật match dài, dịch Trung có fallback phiên âm. `flutter test` 71 pass + `flutter analyze` sạch.
+**Verify end-to-end:** `dart run tool/export_jp.dart` → VietPhrase_JP.txt (187.419 entries) + LacViet_JP.txt (103.632) cạnh file gốc; hết key `覚 悟`/`军`, value nguyên vẹn từng byte; dịch Nhật match dài, dịch Trung có fallback phiên âm. `flutter test` 83 pass + `flutter analyze` sạch.
 
 ---
 
@@ -98,11 +108,14 @@ RepairScreen → pick file → preview per-line (Isolate.run, 50 dòng đổi đ
 
 ### 🟡 Medium Priority
 - [ ] Clipboard watcher chỉ verify tay — cân nhắc test với TestDefaultBinaryMessenger nếu sửa vùng này.
+- [ ] Chuột phải token (menu edit) chưa có widget test (hit-test TextSpan với kSecondaryButton phức tạp) — verify tay.
 
 ### 🟢 Low Priority / Nice to Have (Backlog v2 — KHÔNG làm v1)
 - [ ] Furigana per-token cho kanji ngoài từ điển (cần MeCab, không có port Dart thuần).
 - [ ] AiTranslationEngine (chữ ký `translate()` đã chừa sẵn).
 - [ ] Fuzzy match / gợi ý sửa key còn sót.
+- [ ] Luật Nhân (LuatNhan.txt — pattern `把{0}挡住=ngăn cản {0}`, 211 rule trong QuickTranslator_Jap) + 4 tùy chọn sử dụng — user đã chốt để đợt sau.
+- [ ] Batch dịch cả thư mục + xuất file (QuickConverter) — chưa có nhu cầu, đã loại khỏi scope đợt này.
 
 ### Giới hạn đã biết (by design)
 - Quy tắc vàng: ký tự đã hợp lệ JP không convert → không sửa được `后→後`, `干→幹` theo ngữ cảnh; ghi vào RepairReport.ambiguous.
@@ -140,7 +153,7 @@ RepairScreen → pick file → preview per-line (Isolate.run, 50 dòng đổi đ
 
 ### Testing checklist:
 - [ ] `flutter analyze` sạch
-- [ ] `flutter test` pass (71 tests; integration tự skip nếu thiếu dữ liệu thật)
+- [ ] `flutter test` pass (83 tests; integration tự skip nếu thiếu dữ liệu thật)
 - [ ] Nếu đụng repair/parser: `dart run tool/export_jp.dart` verify OK
 
 ### Don't forget to:
@@ -160,7 +173,7 @@ flutter analyze                    # lint — phải sạch
 flutter build windows --release    # exe tại build\windows\x64\runner\Release\
 
 # Test
-flutter test                       # toàn bộ 71 tests
+flutter test                       # toàn bộ 83 tests
 
 # Tools (dev)
 dart run tool/build_simp2jp.dart   # sinh lại assets mapping (cần mạng)

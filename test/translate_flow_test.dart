@@ -8,6 +8,7 @@ import 'package:vietyaku/core/app_paths.dart';
 import 'package:vietyaku/features/dictionary/application/dictionaries_provider.dart';
 import 'package:vietyaku/features/settings/settings_provider.dart';
 import 'package:vietyaku/features/translation/application/lookup_controller.dart';
+import 'package:vietyaku/features/translation/application/translation_controller.dart';
 import 'package:vietyaku/features/translation/presentation/translate_screen.dart';
 
 const sourceDir = r'C:\Users\XEON\My Drive\JP CN Tool\QuickTranslator_Jap';
@@ -69,5 +70,22 @@ void main() {
     container.read(lookupControllerProvider.notifier).lookup('覇権を');
     await tester.pump();
     expect(container.read(lookupControllerProvider)!.matchedKey, '覇権');
+
+    // Tab Hán Việt (cột trái): phiên âm toàn văn phải có token.
+    await tester.tap(find.text('Hán Việt'));
+    await tester.pump();
+    final state = container.read(translationControllerProvider);
+    expect(state.hanVietTokens, isNotEmpty,
+        reason: 'hanVietTokens phải được tính cùng lượt dịch');
+
+    // Tab đa nghĩa (cột phải): đổi tab không dịch lại, token giữ nguyên.
+    final tokensBefore = state.tokens;
+    await tester.tap(find.text('VietPhrase (đa nghĩa)'));
+    await tester.pump();
+    expect(
+        identical(
+            container.read(translationControllerProvider).tokens, tokensBefore),
+        isTrue,
+        reason: 'đổi tab hiển thị không được re-translate');
   }, skip: !available); // cần dữ liệu QuickTranslator_Jap thật
 }

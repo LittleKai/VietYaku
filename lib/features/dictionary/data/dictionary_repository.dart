@@ -30,10 +30,23 @@ class LoadedDictionaries {
   });
 
   /// Engine với thứ tự ưu tiên UserDict > Names > VietPhrase.
-  TranslationEngine get engine => TranslationEngine(
+  TranslationEngine get engine => engineWith();
+
+  /// Engine với tùy chọn thuật toán từ Cài đặt.
+  TranslationEngine engineWith({
+    TranslationAlgorithm algorithm = TranslationAlgorithm.leftToRight,
+    bool prioritizeNames = false,
+  }) =>
+      TranslationEngine(
         dicts: [userDict, names, vietPhrase],
         hanVietFallback: chinesePhienAm,
+        algorithm: algorithm,
+        prioritizeNames: prioritizeNames,
       );
+
+  /// Engine phiên âm Hán Việt toàn văn (tab Hán Việt).
+  TranslationEngine get hanVietEngine =>
+      TranslationEngine(dicts: const [], hanVietFallback: chinesePhienAm);
 }
 
 class DictionaryRepository {

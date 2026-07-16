@@ -9,12 +9,16 @@ class TranslationState {
   final TranslationMode mode;
   final String sourceText;
   final List<Token> tokens;
+
+  /// Phiên âm Hán Việt toàn văn (tab Hán Việt), cùng lượt dịch với [tokens].
+  final List<Token> hanVietTokens;
   final int elapsedMs;
 
   const TranslationState({
     required this.mode,
     this.sourceText = '',
     this.tokens = const [],
+    this.hanVietTokens = const [],
     this.elapsedMs = 0,
   });
 
@@ -24,12 +28,14 @@ class TranslationState {
     TranslationMode? mode,
     String? sourceText,
     List<Token>? tokens,
+    List<Token>? hanVietTokens,
     int? elapsedMs,
   }) =>
       TranslationState(
         mode: mode ?? this.mode,
         sourceText: sourceText ?? this.sourceText,
         tokens: tokens ?? this.tokens,
+        hanVietTokens: hanVietTokens ?? this.hanVietTokens,
         elapsedMs: elapsedMs ?? this.elapsedMs,
       );
 }
@@ -51,18 +57,31 @@ class TranslationController extends Notifier<TranslationState> {
   void translate(String text) {
     final dicts = ref.read(dictionariesProvider).valueOrNull;
     if (dicts == null) return;
+    final settings = ref.read(settingsProvider);
+    final engine = dicts.engineWith(
+      algorithm: settings.translationAlgorithm,
+      prioritizeNames: settings.prioritizeNames,
+    );
     final sw = Stopwatch()..start();
-    final tokens = dicts.engine.translate(text, mode: state.mode);
+    final tokens = engine.translate(text, mode: state.mode);
     sw.stop();
+    final hanVietTokens =
+        dicts.hanVietEngine.translate(text, mode: state.mode);
     state = state.copyWith(
       sourceText: text,
       tokens: tokens,
+      hanVietTokens: hanVietTokens,
       elapsedMs: sw.elapsedMilliseconds,
     );
   }
 
   void clear() {
-    state = state.copyWith(sourceText: '', tokens: const [], elapsedMs: 0);
+    state = state.copyWith(
+      sourceText: '',
+      tokens: const [],
+      hanVietTokens: const [],
+      elapsedMs: 0,
+    );
   }
 }
 

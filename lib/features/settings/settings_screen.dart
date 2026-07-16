@@ -54,6 +54,50 @@ class SettingsScreen extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: 24),
+        Text('Thuật toán dịch', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 4),
+        Text(
+          'Thay đổi áp dụng ở lần bấm Dịch tiếp theo.',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: SegmentedButton<TranslationAlgorithm>(
+            segments: const [
+              ButtonSegment(
+                value: TranslationAlgorithm.leftToRight,
+                label: Text('Trái → phải'),
+                tooltip: 'Quét trái sang phải, mỗi vị trí lấy cụm dài nhất',
+              ),
+              ButtonSegment(
+                value: TranslationAlgorithm.longestPhrase,
+                label: Text('Ưu tiên cụm dài'),
+                tooltip: 'Cụm dài nhất toàn văn bản được dịch trước',
+              ),
+              ButtonSegment(
+                value: TranslationAlgorithm.longestPhrase4,
+                label: Text('Cụm dài ≥ 4'),
+                tooltip: 'Chỉ cụm từ 4 ký tự trở lên được ưu tiên toàn văn',
+              ),
+            ],
+            selected: {settings.translationAlgorithm},
+            onSelectionChanged: (selection) => ref
+                .read(settingsProvider.notifier)
+                .setTranslationAlgorithm(selection.first),
+          ),
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Ưu tiên Name hơn VietPhrase'),
+          subtitle: const Text(
+              'Match Names tại một vị trí thắng cụm VietPhrase dài hơn '
+              '(UserDict vẫn cao nhất).'),
+          value: settings.prioritizeNames,
+          onChanged: (value) =>
+              ref.read(settingsProvider.notifier).setPrioritizeNames(value),
+        ),
+        const SizedBox(height: 24),
         Text('Đường dẫn file từ điển',
             style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 4),

@@ -98,7 +98,7 @@ Specific files user mentioned  → Only if needed for implementation
 **Dev Commands:**
 ```bash
 flutter analyze                    # phải sạch trước khi kết thúc task
-flutter test                       # 71 tests (integration tự skip nếu thiếu dữ liệu thật)
+flutter test                       # 83 tests (integration tự skip nếu thiếu dữ liệu thật)
 flutter run -d windows             # chạy debug
 flutter build windows --release    # build exe độc lập
 dart run tool/build_simp2jp.dart   # sinh lại assets mapping (dev, cần mạng)

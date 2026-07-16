@@ -14,6 +14,13 @@ enum TokenKind {
   unmatched,
 }
 
+/// Nghĩa đầu tiên của value `nghĩa1/nghĩa2/...`.
+String firstMeaning(String value) {
+  final slash = value.indexOf('/');
+  final first = slash < 0 ? value : value.substring(0, slash);
+  return first.trim();
+}
+
 class Token {
   final String source;
 
@@ -22,20 +29,38 @@ class Token {
   final TokenKind kind;
   final DictType? dictType;
 
-  /// Nghĩa hiển thị (nghĩa đầu tiên của value). Null với passthrough/unmatched.
-  final String? meaning;
+  /// Value nguyên bản từ dict (`nghĩa1/nghĩa2/...`).
+  /// Null với passthrough/unmatched.
+  final String? rawValue;
 
   const Token({
     required this.source,
     required this.sourceStart,
     required this.kind,
     this.dictType,
-    this.meaning,
+    this.rawValue,
   });
 
-  /// Văn bản hiển thị ở kết quả dịch.
+  /// Nghĩa đầu tiên của value. Null với passthrough/unmatched.
+  String? get meaning => rawValue == null ? null : firstMeaning(rawValue!);
+
+  /// Văn bản hiển thị ở kết quả dịch (một nghĩa).
   String get display => meaning ?? source;
 
+  /// Hiển thị đa nghĩa kiểu QuickTranslator: >1 nghĩa → `[nghĩa1/nghĩa2]`.
+  String get displayAll {
+    final raw = rawValue;
+    if (raw == null) return source;
+    final parts = raw
+        .split('/')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+    if (parts.isEmpty) return source;
+    if (parts.length == 1) return parts.first;
+    return '[${parts.join('/')}]';
+  }
+
   @override
-  String toString() => 'Token($kind, "$source" → "${meaning ?? source}")';
+  String toString() => 'Token($kind, "$source" → "$display")';
 }

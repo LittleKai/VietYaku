@@ -20,16 +20,29 @@ class AppSettings {
   /// Đường dẫn 5 file dict nguồn.
   final Map<DictType, String> dictPaths;
   final TranslationMode defaultMode;
+  final TranslationAlgorithm translationAlgorithm;
 
-  const AppSettings({required this.dictPaths, required this.defaultMode});
+  /// Names thắng cụm VietPhrase dài hơn tại cùng vị trí (UserDict vẫn cao nhất).
+  final bool prioritizeNames;
+
+  const AppSettings({
+    required this.dictPaths,
+    required this.defaultMode,
+    this.translationAlgorithm = TranslationAlgorithm.leftToRight,
+    this.prioritizeNames = false,
+  });
 
   AppSettings copyWith({
     Map<DictType, String>? dictPaths,
     TranslationMode? defaultMode,
+    TranslationAlgorithm? translationAlgorithm,
+    bool? prioritizeNames,
   }) =>
       AppSettings(
         dictPaths: dictPaths ?? this.dictPaths,
         defaultMode: defaultMode ?? this.defaultMode,
+        translationAlgorithm: translationAlgorithm ?? this.translationAlgorithm,
+        prioritizeNames: prioritizeNames ?? this.prioritizeNames,
       );
 
   static AppSettings defaults() => AppSettings(
@@ -48,6 +61,8 @@ final sharedPreferencesProvider =
 class SettingsNotifier extends Notifier<AppSettings> {
   static String _pathKey(DictType type) => 'dictPath.${type.name}';
   static const _modeKey = 'defaultMode';
+  static const _algorithmKey = 'translationAlgorithm';
+  static const _prioritizeNamesKey = 'prioritizeNames';
 
   @override
   AppSettings build() {
@@ -61,6 +76,10 @@ class SettingsNotifier extends Notifier<AppSettings> {
       defaultMode: prefs.getString(_modeKey) == TranslationMode.chinese.name
           ? TranslationMode.chinese
           : TranslationMode.japanese,
+      translationAlgorithm: TranslationAlgorithm.values
+              .asNameMap()[prefs.getString(_algorithmKey)] ??
+          TranslationAlgorithm.leftToRight,
+      prioritizeNames: prefs.getBool(_prioritizeNamesKey) ?? false,
     );
   }
 
@@ -74,6 +93,18 @@ class SettingsNotifier extends Notifier<AppSettings> {
     final prefs = ref.read(sharedPreferencesProvider);
     await prefs.setString(_modeKey, mode.name);
     state = state.copyWith(defaultMode: mode);
+  }
+
+  Future<void> setTranslationAlgorithm(TranslationAlgorithm algorithm) async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    await prefs.setString(_algorithmKey, algorithm.name);
+    state = state.copyWith(translationAlgorithm: algorithm);
+  }
+
+  Future<void> setPrioritizeNames(bool value) async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    await prefs.setBool(_prioritizeNamesKey, value);
+    state = state.copyWith(prioritizeNames: value);
   }
 }
 

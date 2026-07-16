@@ -11,10 +11,10 @@ class DictionariesNotifier extends AsyncNotifier<LoadedDictionaries> {
   @override
   Future<LoadedDictionaries> build() async {
     final paths = await ref.watch(appPathsProvider.future);
-    final settings = ref.watch(settingsProvider);
+    // Chỉ phụ thuộc dictPaths — đổi thuật toán/tùy chọn khác không reload dict.
+    final dictPaths = ref.watch(settingsProvider.select((s) => s.dictPaths));
     final sw = Stopwatch()..start();
-    final loaded =
-        await DictionaryRepository(paths).loadAll(settings.dictPaths);
+    final loaded = await DictionaryRepository(paths).loadAll(dictPaths);
     debugPrint('Dictionaries loaded in ${sw.elapsedMilliseconds}ms: '
         '${loaded.stats.entries.map((e) => '${e.key.name} '
             '${e.value.fromCache ? "cache" : "parse"} '
