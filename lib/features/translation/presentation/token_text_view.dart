@@ -1,16 +1,17 @@
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/widgets/entry_edit_dialog.dart';
 import '../../dictionary/domain/dict_type.dart';
-import '../application/lookup_controller.dart';
+import '../../settings/settings_provider.dart';
+import '../application/token_selection.dart';
 import '../domain/token.dart';
 
-/// Danh sách token dạng RichText: mỗi đoạn (ngăn bởi newline) là 1 RichText,
-/// token click trái → tra LacViet, chuột phải → menu sửa từ điển.
+/// Danh sách token dạng SelectableText: nháy chuột vào chữ (kiểu caret trong
+/// edittext) → chọn cụm tại vị trí đó, tô nổi đỏ đồng bộ mọi pane + tra Nghĩa.
+/// Chuột phải → toolbar có "Sửa nghĩa"/"Thêm vào Names".
 /// [textOf] quyết định văn bản hiển thị (display / displayAll).
-class TokenTextView extends ConsumerStatefulWidget {
+class TokenTextView extends ConsumerWidget {
   const TokenTextView({super.key, required this.tokens, required this.textOf});
 
   final List<Token> tokens;
@@ -19,11 +20,25 @@ class TokenTextView extends ConsumerStatefulWidget {
   /// Ghép text thuần từ [tokens] theo cùng quy tắc render (dùng cho nút copy).
   static String plainText(List<Token> tokens, String Function(Token) textOf) {
     return paragraphs(tokens)
-        .map((p) => p
-            .map((t) =>
-                t.kind == TokenKind.passthrough ? textOf(t) : '${textOf(t)} ')
-            .join()
-            .trimRight())
+        .map((p) {
+          final sb = StringBuffer();
+          for (var i = 0; i < p.length; i++) {
+            final t = p[i];
+            var text = textOf(t);
+            if (_shouldCapitalize(p, i, textOf)) {
+              text = _capitalize(text);
+            }
+            sb.write(text);
+            if (t.kind != TokenKind.passthrough) {
+              final next = (i + 1 < p.length) ? p[i + 1] : null;
+              final nextText = next != null ? textOf(next) : '';
+              if (!_isPunctuation(nextText)) {
+                sb.write(' ');
+              }
+            }
+          }
+          return sb.toString().trimRight();
+        })
         .join('\n');
   }
 
@@ -52,27 +67,14 @@ class TokenTextView extends ConsumerStatefulWidget {
     return paragraphs;
   }
 
-  @override
-  ConsumerState<TokenTextView> createState() => _TokenTextViewState();
-}
-
-class _TokenTextViewState extends ConsumerState<TokenTextView> {
-  final List<TapGestureRecognizer> _recognizers = [];
-
-  @override
-  void dispose() {
-    _disposeRecognizers();
-    super.dispose();
-  }
-
-  void _disposeRecognizers() {
-    for (final r in _recognizers) {
-      r.dispose();
+  TextStyle _styleFor(
+      Token token, ColorScheme scheme, TokenSelection? selection) {
+    if (selection != null &&
+        token.kind != TokenKind.passthrough &&
+        token.sourceStart < selection.end &&
+        selection.start < token.sourceStart + token.source.length) {
+      return const TextStyle(color: Colors.red, fontWeight: FontWeight.bold);
     }
-    _recognizers.clear();
-  }
-
-  TextStyle _styleFor(Token token, ColorScheme scheme) {
     switch (token.kind) {
       case TokenKind.matched:
         switch (token.dictType) {
@@ -94,75 +96,134 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
     }
   }
 
-  Future<void> _showTokenMenu(Offset globalPosition, Token token) async {
-    final overlay =
-        Overlay.of(context).context.findRenderObject()! as RenderBox;
-    final toNames = await showMenu<bool>(
-      context: context,
-      position: RelativeRect.fromRect(
-          globalPosition & Size.zero, Offset.zero & overlay.size),
-      items: [
-        PopupMenuItem(
-          value: false,
-          child: Text('Sửa nghĩa "${token.source}" (UserDict)'),
+  Widget _contextMenu(BuildContext context, WidgetRef ref,
+      EditableTextState editableTextState) {
+    final selection = ref.read(tokenSelectionProvider);
+    final items = [...editableTextState.contextMenuButtonItems];
+    if (selection != null) {
+      items.insertAll(0, [
+        ContextMenuButtonItem(
+          label: 'Sửa nghĩa "${selection.word}" (UserDict)',
+          onPressed: () {
+            editableTextState.hideToolbar();
+            showEntryEditDialog(context, ref,
+                word: selection.word, toNames: false);
+          },
         ),
-        PopupMenuItem(
-          value: true,
-          child: Text('Thêm "${token.source}" vào Names'),
+        ContextMenuButtonItem(
+          label: 'Thêm "${selection.word}" vào Names',
+          onPressed: () {
+            editableTextState.hideToolbar();
+            showEntryEditDialog(context, ref,
+                word: selection.word, toNames: true);
+          },
         ),
-      ],
+      ]);
+    }
+    return AdaptiveTextSelectionToolbar.buttonItems(
+      anchors: editableTextState.contextMenuAnchors,
+      buttonItems: items,
     );
-    if (toNames == null || !mounted) return;
-    await showEntryEditDialog(context, ref,
-        word: token.source, toNames: toNames);
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
-    _disposeRecognizers();
-
-    final paragraphs = TokenTextView.paragraphs(widget.tokens);
+    final selection = ref.watch(tokenSelectionProvider);
+    final paneStyle =
+        ref.watch(settingsProvider.select((s) => s.paneTextStyle()));
+    final paras = paragraphs(tokens);
 
     return ListView.builder(
       padding: const EdgeInsets.all(12),
-      itemCount: paragraphs.length,
+      itemCount: paras.length,
       itemBuilder: (context, index) {
-        final paragraph = paragraphs[index];
+        final paragraph = paras[index];
         final spans = <InlineSpan>[];
-        for (final token in paragraph) {
-          final tappable = token.kind == TokenKind.matched ||
-              token.kind == TokenKind.hanViet ||
-              token.kind == TokenKind.unmatched;
-          TapGestureRecognizer? recognizer;
-          if (tappable) {
-            recognizer = TapGestureRecognizer()
-              ..onTap = () {
-                ref
-                    .read(lookupControllerProvider.notifier)
-                    .lookup(token.source);
-              }
-              ..onSecondaryTapDown =
-                  (details) => _showTokenMenu(details.globalPosition, token);
-            _recognizers.add(recognizer);
+        // Range hiển thị (offset trong text của đoạn) → token, để map caret.
+        final ranges = <(int, int, Token)>[];
+        var offset = 0;
+        for (var i = 0; i < paragraph.length; i++) {
+          final token = paragraph[i];
+          var text = textOf(token);
+          if (_shouldCapitalize(paragraph, i, textOf)) {
+            text = _capitalize(text);
           }
           spans.add(TextSpan(
-            text: widget.textOf(token),
-            style: _styleFor(token, scheme),
-            recognizer: recognizer,
-          ));
-          if (tappable) spans.add(const TextSpan(text: ' '));
+              text: text, style: _styleFor(token, scheme, selection)));
+          if (token.kind != TokenKind.passthrough) {
+            ranges.add((offset, offset + text.length, token));
+          }
+          offset += text.length;
+          if (token.kind != TokenKind.passthrough) {
+            final next = (i + 1 < paragraph.length) ? paragraph[i + 1] : null;
+            final nextText = next != null ? textOf(next) : '';
+            if (!_isPunctuation(nextText)) {
+              spans.add(const TextSpan(text: ' '));
+              offset += 1;
+            }
+          }
         }
         return Padding(
           padding: const EdgeInsets.only(bottom: 10),
-          child: RichText(
-            text: TextSpan(
-              style: const TextStyle(fontSize: 15, height: 1.5),
+          child: SelectableText.rich(
+            TextSpan(
+              style: paneStyle,
               children: spans,
             ),
+            onSelectionChanged: (textSelection, cause) {
+              if (!textSelection.isValid || !textSelection.isCollapsed) {
+                return;
+              }
+              final caret = textSelection.baseOffset;
+              for (final (start, end, token) in ranges) {
+                if (caret >= start && caret < end) {
+                  ref
+                      .read(tokenSelectionProvider.notifier)
+                      .selectToken(token);
+                  return;
+                }
+              }
+            },
+            contextMenuBuilder: (context, editableTextState) =>
+                _contextMenu(context, ref, editableTextState),
           ),
         );
       },
     );
+  }
+
+  static bool _isPunctuation(String text) {
+    if (text.isEmpty) return false;
+    final char = text.trim();
+    if (char.isEmpty) return false;
+    final first = char[0];
+    return const {',', '.', '!', '?', ':', ';', ')', '}', ']'}.contains(first);
+  }
+
+  static bool _shouldCapitalize(List<Token> paragraph, int index, String Function(Token) textOf) {
+    if (index == 0) return true;
+    for (var j = index - 1; j >= 0; j--) {
+      final prevText = textOf(paragraph[j]).trim();
+      if (prevText.isEmpty) continue;
+      final lastChar = prevText[prevText.length - 1];
+      if (const {'.', '!', '?'}.contains(lastChar)) {
+        return true;
+      }
+      break;
+    }
+    return false;
+  }
+
+  static String _capitalize(String text) {
+    if (text.isEmpty) return text;
+    for (var i = 0; i < text.length; i++) {
+      final char = text[i];
+      if (RegExp(r'[a-zA-Zà-ỹÀ-Ỹ]').hasMatch(char)) {
+        return text.substring(0, i) + char.toUpperCase() + text.substring(i + 1);
+      }
+      if (RegExp(r'[0-9]').hasMatch(char)) break;
+    }
+    return text;
   }
 }

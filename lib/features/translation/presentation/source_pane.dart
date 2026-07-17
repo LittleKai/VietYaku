@@ -1,20 +1,95 @@
 import 'dart:async';
-import 'dart:io';
 
-import 'package:desktop_drop/desktop_drop.dart';
-import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path/path.dart' as p;
 
 import '../../../core/cjk.dart';
 import '../../../shared/widgets/entry_edit_dialog.dart';
 import '../../../shared/widgets/tts_button.dart';
 import '../../dictionary/application/dictionaries_provider.dart';
-import '../application/recent_files_provider.dart';
+import '../../settings/settings_provider.dart';
+import '../application/token_selection.dart';
 import '../application/translation_controller.dart';
-import '../domain/translation_engine.dart';
+
+import '../domain/token.dart';
+
+/// TextEditingController tô nổi đỏ cụm đang chọn + tô đậm tất cả các từ có trong từ điển.
+class _HighlightTextEditingController extends TextEditingController {
+  TextRange? _highlight;
+  List<Token> _tokens = const [];
+
+  void setHighlight(TextRange? range) {
+    if (range == _highlight) return;
+    _highlight = range;
+    notifyListeners();
+  }
+
+  void setTokens(List<Token> tokens) {
+    _tokens = tokens;
+    notifyListeners();
+  }
+
+  @override
+  TextSpan buildTextSpan({
+    required BuildContext context,
+    TextStyle? style,
+    required bool withComposing,
+  }) {
+    if (text.isEmpty) {
+      return super.buildTextSpan(
+          context: context, style: style, withComposing: withComposing);
+    }
+
+    final h = _highlight;
+    final hasHighlight = h != null &&
+        !withComposing &&
+        h.start >= 0 &&
+        h.end <= text.length &&
+        h.start < h.end;
+
+    // Nếu không có tokens và không có highlight, dùng mặc định
+    if (_tokens.isEmpty && !hasHighlight) {
+      return super.buildTextSpan(
+          context: context, style: style, withComposing: withComposing);
+    }
+
+    final spans = <TextSpan>[];
+    int totalTokenLen = _tokens.fold(0, (sum, t) => sum + t.source.length);
+
+    if (_tokens.isNotEmpty && totalTokenLen == text.length) {
+      for (final token in _tokens) {
+        final tStart = token.sourceStart;
+        final tEnd = tStart + token.source.length;
+
+        bool isHighlighted = hasHighlight && (tStart >= h.start && tEnd <= h.end);
+
+        TextStyle tokenStyle = style ?? const TextStyle();
+        if (isHighlighted) {
+          tokenStyle = tokenStyle.copyWith(
+              color: Colors.red, fontWeight: FontWeight.bold);
+        } else if (token.kind == TokenKind.matched) {
+          tokenStyle = tokenStyle.copyWith(fontWeight: FontWeight.bold);
+        }
+
+        spans.add(TextSpan(text: token.source, style: tokenStyle));
+      }
+    } else {
+      // Fallback khi gõ dở hoặc lệch tokens
+      if (hasHighlight) {
+        final highlightStyle = (style ?? const TextStyle())
+            .copyWith(color: Colors.red, fontWeight: FontWeight.bold);
+        if (h.start > 0) spans.add(TextSpan(text: text.substring(0, h.start), style: style));
+        spans.add(TextSpan(text: text.substring(h.start, h.end), style: highlightStyle));
+        if (h.end < text.length) spans.add(TextSpan(text: text.substring(h.end), style: style));
+      } else {
+        spans.add(TextSpan(text: text, style: style));
+      }
+    }
+
+    return TextSpan(style: style, children: spans);
+  }
+}
 
 class SourcePane extends ConsumerStatefulWidget {
   const SourcePane({super.key});
@@ -24,8 +99,8 @@ class SourcePane extends ConsumerStatefulWidget {
 }
 
 class _SourcePaneState extends ConsumerState<SourcePane> {
-  final _controller = TextEditingController();
-  bool _dragging = false;
+  final _controller = _HighlightTextEditingController();
+  int _lastCaret = -1;
 
   // Clipboard watcher (Phase 5b): poll 1s, text CJK mới → tự dán + dịch.
   bool _watchingClipboard = false;
@@ -33,10 +108,31 @@ class _SourcePaneState extends ConsumerState<SourcePane> {
   String? _lastClipboard;
 
   @override
+  void initState() {
+    super.initState();
+    _controller.addListener(_onCaretMaybeChanged);
+  }
+
+  @override
   void dispose() {
     _clipboardTimer?.cancel();
     _controller.dispose();
     super.dispose();
+  }
+
+  /// Nháy chuột trong văn bản đã dịch → chọn cụm chứa caret (kiểu QT).
+  void _onCaretMaybeChanged() {
+    final selection = _controller.selection;
+    if (!selection.isValid || !selection.isCollapsed) return;
+    if (_controller.text !=
+        ref.read(translationControllerProvider).sourceText) {
+      return; // text đang gõ dở, chưa dịch — không tra
+    }
+    if (selection.baseOffset == _lastCaret) return;
+    _lastCaret = selection.baseOffset;
+    ref
+        .read(tokenSelectionProvider.notifier)
+        .selectAtSourceOffset(selection.baseOffset);
   }
 
   Future<void> _toggleClipboardWatch() async {
@@ -70,29 +166,6 @@ class _SourcePaneState extends ConsumerState<SourcePane> {
     return false;
   }
 
-  Future<void> _openFile() async {
-    const typeGroup = XTypeGroup(label: 'Text', extensions: ['txt']);
-    final file = await openFile(acceptedTypeGroups: [typeGroup]);
-    if (file == null) return;
-    await _loadFile(file.path);
-  }
-
-  Future<void> _loadFile(String path) async {
-    try {
-      var text = await File(path).readAsString();
-      if (text.isNotEmpty && text.codeUnitAt(0) == 0xFEFF) {
-        text = text.substring(1);
-      }
-      _controller.text = text;
-      await ref.read(recentFilesProvider.notifier).add(path);
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Không đọc được file: $e')),
-      );
-    }
-  }
-
   void _translate() {
     ref
         .read(translationControllerProvider.notifier)
@@ -105,10 +178,11 @@ class _SourcePaneState extends ConsumerState<SourcePane> {
       maxLines: null,
       expands: true,
       textAlignVertical: TextAlignVertical.top,
+      style: ref.watch(settingsProvider.select((s) => s.paneTextStyle())),
       decoration: const InputDecoration(
         border: InputBorder.none,
         contentPadding: EdgeInsets.all(12),
-        hintText: 'Dán văn bản Nhật/Trung hoặc kéo-thả file .txt…',
+        hintText: 'Dán văn bản Nhật/Trung vào đây…',
       ),
       contextMenuBuilder: (context, editableTextState) {
         final value = editableTextState.textEditingValue;
@@ -140,68 +214,65 @@ class _SourcePaneState extends ConsumerState<SourcePane> {
     final mode =
         ref.watch(translationControllerProvider.select((s) => s.mode));
     final dictsLoading = ref.watch(dictionariesProvider).isLoading;
-    final recentFiles = ref.watch(recentFilesProvider);
+
+    // Tô nổi cụm đang chọn (đồng bộ với các pane khác).
+    ref.listen(tokenSelectionProvider, (previous, next) {
+      _controller.setHighlight(next == null
+          ? null
+          : TextRange(start: next.start, end: next.end));
+    });
+
+    // Đồng bộ text khi dịch được kích hoạt từ ngoài (Dán & Dịch trên menu bar).
+    ref.listen(translationControllerProvider.select((s) => s.sourceText),
+        (previous, next) {
+      if (_controller.text != next && next.isNotEmpty) {
+        _controller.text = next;
+      }
+    });
+
+    // Lắng nghe danh sách tokens khi dịch xong để tô đậm các từ có trong từ điển
+    ref.listen(translationControllerProvider.select((s) => s.tokens), (previous, next) {
+      _controller.setTokens(next);
+    });
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.all(8),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
           child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
+            spacing: 6,
+            runSpacing: 6,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              SegmentedButton<TranslationMode>(
-                segments: const [
-                  ButtonSegment(
-                      value: TranslationMode.japanese, label: Text('Nhật')),
-                  ButtonSegment(
-                      value: TranslationMode.chinese, label: Text('Trung')),
-                ],
-                selected: {mode},
-                onSelectionChanged: (selection) => ref
-                    .read(translationControllerProvider.notifier)
-                    .setMode(selection.first),
-              ),
-              IconButton(
-                icon: const Icon(Icons.folder_open),
-                tooltip: 'Mở file .txt',
-                onPressed: _openFile,
-              ),
-              PopupMenuButton<String>(
-                icon: const Icon(Icons.history),
-                tooltip: 'File gần đây',
-                enabled: recentFiles.isNotEmpty,
-                onSelected: _loadFile,
-                itemBuilder: (context) => [
-                  for (final path in recentFiles)
-                    PopupMenuItem(
-                      value: path,
-                      child: Text(p.basename(path),
-                          overflow: TextOverflow.ellipsis),
-                    ),
-                ],
-              ),
+              // Theo dõi clipboard
               IconButton(
                 icon: Icon(_watchingClipboard
-                    ? Icons.content_paste
-                    : Icons.content_paste_off),
+                    ? Icons.visibility
+                    : Icons.visibility_off_outlined),
                 isSelected: _watchingClipboard,
                 tooltip: _watchingClipboard
                     ? 'Đang theo dõi clipboard (bấm để tắt)'
-                    : 'Theo dõi clipboard: copy text CJK → tự dán + dịch',
+                    : 'Theo dõi clipboard: tự dịch khi copy text CJK',
                 onPressed: _toggleClipboardWatch,
+                visualDensity: VisualDensity.compact,
               ),
+              // Đọc TTS
               TtsButton(
                 textProvider: () => _controller.text,
                 mode: mode,
                 tooltip: 'Đọc cả đoạn',
               ),
+              const SizedBox(width: 4),
+              // Nút Dịch chính
               FilledButton.icon(
-                icon: const Icon(Icons.translate),
-                label: const Text('Dịch'),
+                icon: const Icon(Icons.translate, size: 16),
+                label: const Text('Dịch', style: TextStyle(fontSize: 13)),
                 onPressed: dictsLoading ? null : _translate,
+                style: FilledButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
               ),
             ],
           ),
@@ -209,27 +280,14 @@ class _SourcePaneState extends ConsumerState<SourcePane> {
         Expanded(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-            child: DropTarget(
-              onDragEntered: (_) => setState(() => _dragging = true),
-              onDragExited: (_) => setState(() => _dragging = false),
-              onDragDone: (detail) async {
-                setState(() => _dragging = false);
-                if (detail.files.isNotEmpty) {
-                  await _loadFile(detail.files.first.path);
-                }
-              },
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    color: _dragging
-                        ? Theme.of(context).colorScheme.primary
-                        : Theme.of(context).colorScheme.outlineVariant,
-                    width: _dragging ? 2 : 1,
-                  ),
-                  borderRadius: BorderRadius.circular(8),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.outlineVariant,
                 ),
-                child: _buildEditor(context),
+                borderRadius: BorderRadius.circular(8),
               ),
+              child: _buildEditor(context),
             ),
           ),
         ),

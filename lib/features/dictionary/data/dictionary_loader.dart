@@ -68,8 +68,10 @@ LoadResult loadDictionarySync({
   // Cache miss: parse text nguồn rồi ghi cache mới.
   // BOM strip xử lý trong parseEntries (ký tự U+FEFF đầu chuỗi).
   final bytes = readSrcBytes();
-  final entries =
-      parseEntries(const Utf8Codec(allowMalformed: true).decode(bytes));
+  final content = const Utf8Codec(allowMalformed: true).decode(bytes);
+  final entries = type == DictType.cedict
+      ? parseCedictEntries(content)
+      : parseEntries(content);
   try {
     cacheFile.parent.createSync(recursive: true);
     cacheFile.writeAsBytesSync(BinaryCache.encode(

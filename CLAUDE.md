@@ -1,6 +1,6 @@
 # Instructions for Claude Code — VietYaku
 
-Flutter Windows desktop app: dịch Nhật/Trung → Việt kiểu VietPhrase (greedy longest-match) + công cụ sửa từ điển tiếng Nhật bị hỏng của QuickTranslator_Jap. Offline thuần, không AI ở v1.
+Flutter Windows desktop app: dịch Nhật/Trung → Việt kiểu VietPhrase (greedy longest-match) + công cụ sửa từ điển tiếng Nhật bị hỏng của QuickTranslator_Jap. Dịch chính offline; tính năng online tùy chọn: tra nghĩa Mazii/Google Dịch trong ô Nghĩa, tab Google Translate (gtx + fallback crawl `/m`). Không AI.
 
 ---
 
@@ -26,7 +26,8 @@ Specific files user mentioned  → Only if needed for implementation
 
 ### 3. Context cần biết:
 - Flutter 3.44.2 tại `D:\3.Flutter\flutter\bin\flutter.bat` (có trong PATH).
-- Dữ liệu nguồn (KHÔNG ghi đè): `C:\Users\XEON\My Drive\JP CN Tool\QuickTranslator_Jap\` — VietPhrase.txt, LacViet.txt, Names.txt, ChinesePhienAmWords.txt, Pronouns.txt (UTF-8 BOM, format `key=nghĩa1/nghĩa2`).
+- Từ điển app dùng: bundle trong dự án `data/jp/` và `data/cn/` (commit git, mỗi ngôn ngữ một bộ; UTF-8 BOM, format `key=nghĩa1/nghĩa2`).
+- Nguồn gốc (KHÔNG ghi đè): `C:\Users\XEON\My Drive\JP CN Tool\QuickTranslator_Jap\` và `D:\Software\QuickTranslator\` (bộ Quick Translator Chinese/for Japanese).
 
 ---
 
@@ -40,6 +41,8 @@ Specific files user mentioned  → Only if needed for implementation
 - Ưu tiên dict cùng độ dài match: UserDict > Names > VietPhrase.
 - Repair: VALUE KHÔNG ĐỔI 1 BYTE, chỉ sửa key; xuất `*_JP.txt` UTF-8 BOM CRLF cạnh file gốc + copy vào appdata. KHÔNG ghi đè file gốc.
 - Xóa space trong key: khi CẢ HAI ký tự liền kề đều KHÔNG phải ASCII alphanumeric `[A-Za-z0-9]` (không phải quy tắc "hai phía là CJK").
+- Bộ dict theo ngôn ngữ: mode Nhật → `data/jp`, mode Trung → `data/cn`; đổi mode reload qua `currentModeProvider` (KHÔNG watch translationController từ dictionariesProvider — vòng phụ thuộc). Override `*_JP.txt` appdata chỉ áp dụng mode Nhật.
+- Online: không key/API trả phí — Mazii (Nhật), Google gtx + fallback crawl `translate.google.com/m`. Hanzii v2 mã hóa response → không dùng.
 
 ## Giới hạn đã biết
 
@@ -98,7 +101,7 @@ Specific files user mentioned  → Only if needed for implementation
 **Dev Commands:**
 ```bash
 flutter analyze                    # phải sạch trước khi kết thúc task
-flutter test                       # 83 tests (integration tự skip nếu thiếu dữ liệu thật)
+flutter test                       # 85 tests (integration tự skip nếu thiếu dữ liệu thật)
 flutter run -d windows             # chạy debug
 flutter build windows --release    # build exe độc lập
 dart run tool/build_simp2jp.dart   # sinh lại assets mapping (dev, cần mạng)

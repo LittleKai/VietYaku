@@ -15,6 +15,12 @@ class LoadedDictionaries {
   final PhraseDictionary lacViet;
   final PhraseDictionary chinesePhienAm;
   final PhraseDictionary pronouns;
+  final PhraseDictionary babylon;
+  final PhraseDictionary thieuChuu;
+  final PhraseDictionary cedict;
+  final PhraseDictionary chinesePhienAmEnglish;
+  final PhraseDictionary jaVi;
+  final PhraseDictionary zhVi;
 
   /// fromCache + thời gian load từng dict (log/hiển thị).
   final Map<DictType, ({bool fromCache, int elapsedMs})> stats;
@@ -26,6 +32,12 @@ class LoadedDictionaries {
     required this.lacViet,
     required this.chinesePhienAm,
     required this.pronouns,
+    required this.babylon,
+    required this.thieuChuu,
+    required this.cedict,
+    required this.chinesePhienAmEnglish,
+    required this.jaVi,
+    required this.zhVi,
     required this.stats,
   });
 
@@ -55,7 +67,10 @@ class DictionaryRepository {
   DictionaryRepository(this.paths);
 
   /// File đã sửa trong appdata (`<tên>_JP.txt`) được ưu tiên hơn file nguồn.
-  String resolveSourcePath(DictType type, String configuredPath) {
+  /// Chỉ áp dụng cho mode Nhật — bộ CN dùng thẳng file cấu hình.
+  String resolveSourcePath(DictType type, String configuredPath,
+      {required TranslationMode mode}) {
+    if (mode != TranslationMode.japanese) return configuredPath;
     final base = p.basenameWithoutExtension(configuredPath);
     final repaired = p.join(paths.dictionariesDir.path, '${base}_JP.txt');
     if (File(repaired).existsSync()) return repaired;
@@ -67,7 +82,8 @@ class DictionaryRepository {
   String get userNamesPath =>
       p.join(paths.dictionariesDir.path, 'UserNames.txt');
 
-  Future<LoadedDictionaries> loadAll(Map<DictType, String> dictPaths) async {
+  Future<LoadedDictionaries> loadAll(Map<DictType, String> dictPaths,
+      {required TranslationMode mode}) async {
     Future<LoadResult> loadPath(DictType type, String source) =>
         loadDictionary(
           sourcePath: source,
@@ -78,7 +94,7 @@ class DictionaryRepository {
     Future<LoadResult> load(DictType type) {
       final source = type == DictType.userDict
           ? userDictPath
-          : resolveSourcePath(type, dictPaths[type]!);
+          : resolveSourcePath(type, dictPaths[type]!, mode: mode);
       return loadPath(type, source);
     }
 
@@ -89,12 +105,18 @@ class DictionaryRepository {
       load(DictType.lacViet),
       load(DictType.chinesePhienAm),
       load(DictType.pronouns),
+      load(DictType.babylon),
+      load(DictType.thieuChuu),
+      load(DictType.cedict),
+      load(DictType.chinesePhienAmEnglish),
+      load(DictType.jaVi),
+      load(DictType.zhVi),
       loadPath(DictType.names, userNamesPath), // overlay "Thêm vào Names"
     ]);
 
     // UserNames overlay đè lên Names gốc (không đụng file gốc).
     var names = results[1].dictionary;
-    final userNames = results[6].dictionary;
+    final userNames = results[12].dictionary;
     if (!userNames.isEmpty) {
       names = PhraseDictionary(
           DictType.names, {...names.entries, ...userNames.entries});
@@ -107,8 +129,14 @@ class DictionaryRepository {
       lacViet: results[3].dictionary,
       chinesePhienAm: results[4].dictionary,
       pronouns: results[5].dictionary,
+      babylon: results[6].dictionary,
+      thieuChuu: results[7].dictionary,
+      cedict: results[8].dictionary,
+      chinesePhienAmEnglish: results[9].dictionary,
+      jaVi: results[10].dictionary,
+      zhVi: results[11].dictionary,
       stats: {
-        for (final r in results.take(6))
+        for (final r in results.take(12))
           r.dictionary.type: (fromCache: r.fromCache, elapsedMs: r.elapsedMs),
       },
     );

@@ -3,6 +3,28 @@ import 'package:vietyaku/features/dictionary/data/dict_parser.dart';
 import 'package:vietyaku/features/dictionary/domain/dict_type.dart';
 
 void main() {
+  group('parseCedictEntries', () {
+    test('parse dòng CC-CEDICT: key trad + simp, value [pinyin] defs', () {
+      final entries = parseCedictEntries(
+          '# comment\n看來 看来 [kan4 lai5] /apparently/it seems that/\n');
+      expect(entries['看來'], '[kan4 lai5] apparently; it seems that');
+      expect(entries['看来'], '[kan4 lai5] apparently; it seems that');
+    });
+
+    test('trad == simp chỉ tạo 1 key; dòng hỏng bị bỏ qua', () {
+      final entries = parseCedictEntries(
+          '一 一 [yi1] /one/single/\ndòng rác không đúng dạng\n');
+      expect(entries, hasLength(1));
+      expect(entries['一'], '[yi1] one; single');
+    });
+
+    test('key trùng giữ entry đầu', () {
+      final entries = parseCedictEntries(
+          '看 看 [kan4] /to see/\n看 看 [kan1] /to look after/\n');
+      expect(entries['看'], '[kan4] to see');
+    });
+  });
+
   group('parseEntries', () {
     test('strips UTF-8 BOM before first key', () {
       final entries = parseEntries('﻿覚悟=giác ngộ\n');

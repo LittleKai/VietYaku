@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../dictionary/application/dictionaries_provider.dart';
 import '../dictionary/data/dictionary_repository.dart';
 import '../dictionary/domain/dict_type.dart';
+import '../translation/application/translation_controller.dart';
 import '../translation/domain/translation_engine.dart';
 import 'settings_provider.dart';
 
@@ -14,16 +15,25 @@ const _dictLabels = <DictType, String>{
   DictType.names: 'Names.txt',
   DictType.chinesePhienAm: 'ChinesePhienAmWords.txt',
   DictType.pronouns: 'Pronouns.txt',
+  DictType.babylon: 'Babylon.txt',
+  DictType.thieuChuu: 'ThieuChuu.txt',
+  DictType.cedict: 'cedict_ts.u8',
+  DictType.chinesePhienAmEnglish: 'ChinesePhienAmEnglishWords.txt',
+  DictType.jaVi: 'JaViDict.txt',
+  DictType.zhVi: 'ZhViDict.txt',
 };
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
-  Future<void> _pickPath(WidgetRef ref, DictType type) async {
+  Future<void> _pickPath(
+      WidgetRef ref, TranslationMode mode, DictType type) async {
     const typeGroup = XTypeGroup(label: 'Text', extensions: ['txt']);
     final file = await openFile(acceptedTypeGroups: [typeGroup]);
     if (file != null) {
-      await ref.read(settingsProvider.notifier).setDictPath(type, file.path);
+      await ref
+          .read(settingsProvider.notifier)
+          .setDictPath(mode, type, file.path);
     }
   }
 
@@ -31,6 +41,7 @@ class SettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(settingsProvider);
     final dicts = ref.watch(dictionariesProvider).valueOrNull;
+    final currentMode = ref.watch(currentModeProvider);
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -102,34 +113,48 @@ class SettingsScreen extends ConsumerWidget {
             style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 4),
         Text(
-          'File đã sửa (*_JP.txt trong dữ liệu app) tự động được ưu tiên '
-          'hơn file gốc.',
+          'Mỗi ngôn ngữ một bộ riêng (data/jp, data/cn trong dự án). '
+          'Với tiếng Nhật, file đã sửa (*_JP.txt trong dữ liệu app) tự động '
+          'được ưu tiên hơn file gốc. Số entries chỉ hiện cho bộ đang nạp.',
           style: Theme.of(context).textTheme.bodySmall,
         ),
         const SizedBox(height: 8),
-        for (final entry in _dictLabels.entries)
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: Row(
-              children: [
-                Text(entry.value),
-                if (dicts != null) ...[
-                  const SizedBox(width: 8),
-                  Text(
-                    '(${_entryCount(dicts, entry.key)} entries)',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
-              ],
-            ),
-            subtitle: Text(settings.dictPaths[entry.key] ?? '',
-                overflow: TextOverflow.ellipsis),
-            trailing: IconButton(
-              icon: const Icon(Icons.folder_open),
-              tooltip: 'Chọn file khác',
-              onPressed: () => _pickPath(ref, entry.key),
-            ),
+        for (final mode in TranslationMode.values) ...[
+          const SizedBox(height: 8),
+          Text(
+            mode == TranslationMode.japanese
+                ? 'Bộ tiếng Nhật'
+                : 'Bộ tiếng Trung',
+            style: Theme.of(context).textTheme.titleSmall,
           ),
+          for (final entry in _dictLabels.entries)
+            if (entry.key !=
+                (mode == TranslationMode.japanese
+                    ? DictType.zhVi
+                    : DictType.jaVi))
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Row(
+                  children: [
+                    Text(entry.value),
+                    if (dicts != null && mode == currentMode) ...[
+                      const SizedBox(width: 8),
+                      Text(
+                        '(${_entryCount(dicts, entry.key)} entries)',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ],
+                ),
+                subtitle: Text(settings.dictPaths[mode]![entry.key] ?? '',
+                    overflow: TextOverflow.ellipsis),
+                trailing: IconButton(
+                  icon: const Icon(Icons.folder_open),
+                  tooltip: 'Chọn file khác',
+                  onPressed: () => _pickPath(ref, mode, entry.key),
+                ),
+              ),
+        ],
         const SizedBox(height: 16),
         Align(
           alignment: Alignment.centerLeft,
@@ -158,6 +183,18 @@ class SettingsScreen extends ConsumerWidget {
         return dicts.pronouns.length;
       case DictType.userDict:
         return dicts.userDict.length;
+      case DictType.babylon:
+        return dicts.babylon.length;
+      case DictType.thieuChuu:
+        return dicts.thieuChuu.length;
+      case DictType.cedict:
+        return dicts.cedict.length;
+      case DictType.chinesePhienAmEnglish:
+        return dicts.chinesePhienAmEnglish.length;
+      case DictType.jaVi:
+        return dicts.jaVi.length;
+      case DictType.zhVi:
+        return dicts.zhVi.length;
     }
   }
 }

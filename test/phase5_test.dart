@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -61,56 +60,4 @@ void main() {
     expect(tokens.single.dictType, DictType.userDict);
   });
 
-  group('export vocabflip', () {
-    test('JSON đạt validateImportData của vocabflip', () {
-      // Tái tạo logic validateImportData trong ImportExportService của
-      // vocabflip (khảo sát Phase 0) để khóa schema.
-      bool validateImportData(Map<String, dynamic> json) {
-        if (!json.containsKey('version')) return false;
-        if (!json.containsKey('decks')) return false;
-        final decks = json['decks'];
-        if (decks is! List || decks.isEmpty) return false;
-        final firstDeck = decks.first;
-        if (firstDeck is! Map) return false;
-        if (!firstDeck.containsKey('name')) return false;
-        if (!firstDeck.containsKey('source_language')) return false;
-        return true;
-      }
-
-      final deckJson = {
-        'version': '1.0',
-        'exported_at': DateTime.now().toIso8601String(),
-        'decks': [
-          {
-            'name': 'VietYaku — Từ đã lưu',
-            'description': 'Xuất từ VietYaku',
-            'source_language': 'ja',
-            'target_language': 'vi',
-            'cards': [
-              {
-                'front': '覚悟',
-                'front_phonetic': 'kakugo',
-                'back': 'giác ngộ; quyết tâm',
-                'notes': null,
-                'tags': <String>[],
-              },
-            ],
-          },
-        ],
-      };
-      expect(validateImportData(deckJson), isTrue);
-
-      // Card fields khớp Flashcard.fromJson: front (bắt buộc), back (bắt
-      // buộc), front_phonetic nullable.
-      final card = (deckJson['decks'] as List).first['cards'][0]
-          as Map<String, dynamic>;
-      expect(card['front'], isA<String>());
-      expect(card['back'], isA<String>());
-
-      // Round-trip qua jsonEncode/Decode không lỗi.
-      final decoded =
-          jsonDecode(jsonEncode(deckJson)) as Map<String, dynamic>;
-      expect(validateImportData(decoded), isTrue);
-    });
-  });
 }

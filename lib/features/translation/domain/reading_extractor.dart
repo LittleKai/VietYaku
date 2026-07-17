@@ -6,7 +6,7 @@
 /// Miss → null (không đoán).
 library;
 
-enum ReadingKind { romaji, pinyin }
+enum ReadingKind { romaji, pinyin, kana }
 
 final _parenAtStart = RegExp(r'^\s*\(([^)]+)\)');
 final _bracketAfterPlus = RegExp(r'✚\s*\[([^\]]+)\]');
@@ -39,3 +39,19 @@ final _asciiRomaji = RegExp(r"^[A-Za-z][A-Za-z' \-]*$");
 /// thật khi hiển thị.
 String unescapeLacViet(String value) =>
     value.replaceAll(r'\n', '\n').replaceAll(r'\t', '\t');
+
+final _curlyBrace = RegExp(r'\{([^}]+)\}');
+// U+3040–U+30FF: hiragana + katakana (gồm cả ー U+30FC, ・ U+30FB).
+final _kanaOnly = RegExp(r'^[぀-ヿ\s]+$');
+
+/// Trích phát âm kana từ value JaVi (StarDict): `{...}` đầu tiên toàn kana
+/// (các `{english}` phía sau bị bỏ qua). Miss → null.
+({String text, ReadingKind kind})? extractKanaReading(String value) {
+  for (final m in _curlyBrace.allMatches(value)) {
+    final text = m.group(1)!.trim();
+    if (_kanaOnly.hasMatch(text)) {
+      return (text: text, kind: ReadingKind.kana);
+    }
+  }
+  return null;
+}

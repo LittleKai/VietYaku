@@ -1,74 +1,18 @@
-import 'dart:io';
-
-import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/widgets/entry_edit_dialog.dart';
 import '../../../shared/widgets/tts_button.dart';
+import '../../settings/settings_provider.dart';
 import '../application/lookup_controller.dart';
-import '../application/saved_words_provider.dart';
 import '../application/translation_controller.dart';
-import '../domain/translation_engine.dart';
 
-/// Panel tra LacViet: ô tra nhanh + header (từ + reading + 🔊) + nội dung.
-class LacVietPanel extends ConsumerStatefulWidget {
+/// Panel "Nghĩa": header (từ + reading + 🔊 + ✏️) + nội dung tra từ điển.
+class LacVietPanel extends ConsumerWidget {
   const LacVietPanel({super.key});
 
   @override
-  ConsumerState<LacVietPanel> createState() => _LacVietPanelState();
-}
-
-class _LacVietPanelState extends ConsumerState<LacVietPanel> {
-  final _searchController = TextEditingController();
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _saveWord(
-      BuildContext context, WidgetRef ref, LookupResult result) async {
-    final meaning = (result.body ?? '').split('\n').first.trim();
-    await ref.read(savedWordsProvider.notifier).add(SavedWord(
-          word: result.matchedKey ?? result.word,
-          reading: result.reading,
-          meaning: meaning.isEmpty ? (result.hanViet ?? '') : meaning,
-          savedAt: DateTime.now(),
-        ));
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text('Đã lưu "${result.matchedKey ?? result.word}"'),
-      duration: const Duration(seconds: 1),
-    ));
-  }
-
-  Future<void> _exportVocabflip(
-      BuildContext context, WidgetRef ref, TranslationMode mode) async {
-    final words = ref.read(savedWordsProvider).valueOrNull ?? [];
-    if (words.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Chưa có từ nào được lưu')));
-      return;
-    }
-    final location = await getSaveLocation(
-      suggestedName: 'vietyaku_deck.json',
-      acceptedTypeGroups: const [
-        XTypeGroup(label: 'JSON', extensions: ['json'])
-      ],
-    );
-    if (location == null) return;
-    final json = ref.read(savedWordsProvider.notifier).exportVocabflipJson(
-        sourceLanguage: mode == TranslationMode.japanese ? 'ja' : 'zh');
-    await File(location.path).writeAsString(json);
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Đã xuất ${words.length} từ → ${location.path}')));
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final result = ref.watch(lookupControllerProvider);
     final mode =
         ref.watch(translationControllerProvider.select((s) => s.mode));
@@ -77,29 +21,10 @@ class _LacVietPanelState extends ConsumerState<LacVietPanel> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: const EdgeInsets.all(8),
-          child: TextField(
-            controller: _searchController,
-            decoration: const InputDecoration(
-              isDense: true,
-              prefixIcon: Icon(Icons.search),
-              hintText: 'Tra từ nhanh…',
-              border: OutlineInputBorder(),
-            ),
-            onSubmitted: (word) {
-              if (word.trim().isNotEmpty) {
-                ref
-                    .read(lookupControllerProvider.notifier)
-                    .lookup(word.trim());
-              }
-            },
-          ),
-        ),
         if (result == null)
           const Expanded(
             child: Center(
-              child: Text('Click token ở kết quả dịch\nhoặc tra từ nhanh',
+              child: Text('Nháy chuột vào chữ trong ô Nguồn\nhoặc kết quả dịch',
                   textAlign: TextAlign.center),
             ),
           )
@@ -129,6 +54,7 @@ class _LacVietPanelState extends ConsumerState<LacVietPanel> {
                     ],
                   ),
                 ),
+                const _OnlineLookupButton(),
                 TtsButton(
                   textProvider: () => result.matchedKey ?? result.word,
                   mode: mode,
@@ -140,16 +66,6 @@ class _LacVietPanelState extends ConsumerState<LacVietPanel> {
                   onPressed: () => showEntryEditDialog(context, ref,
                       word: result.word, toNames: false),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.bookmark_add),
-                  tooltip: 'Lưu từ (từ + reading + nghĩa)',
-                  onPressed: () => _saveWord(context, ref, result),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.file_download),
-                  tooltip: 'Xuất từ đã lưu ra file JSON vocabflip',
-                  onPressed: () => _exportVocabflip(context, ref, mode),
-                ),
               ],
             ),
           ),
@@ -158,13 +74,62 @@ class _LacVietPanelState extends ConsumerState<LacVietPanel> {
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
               child: SelectableText(
-                result.body ?? 'Không có trong LacViet.',
-                style: const TextStyle(fontSize: 14, height: 1.5),
+                result.sections.isEmpty
+                    ? 'Không tìm thấy trong từ điển.'
+                    : result.sections
+                        .map((s) => s.displayText)
+                        .join('\n-----------------\n'),
+                style: ref.watch(
+                    settingsProvider.select((s) => s.paneTextStyle())),
               ),
             ),
           ),
         ],
       ],
+    );
+  }
+}
+
+/// Nút tra thêm nghĩa online (Nhật: Mazii, Trung: Google Dịch).
+class _OnlineLookupButton extends ConsumerStatefulWidget {
+  const _OnlineLookupButton();
+
+  @override
+  ConsumerState<_OnlineLookupButton> createState() =>
+      _OnlineLookupButtonState();
+}
+
+class _OnlineLookupButtonState extends ConsumerState<_OnlineLookupButton> {
+  bool _loading = false;
+
+  Future<void> _fetch() async {
+    setState(() => _loading = true);
+    final ok = await ref
+        .read(lookupControllerProvider.notifier)
+        .fetchOnlineMeaning();
+    if (!mounted) return;
+    setState(() => _loading = false);
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Không lấy được nghĩa online (mạng hoặc không có).')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Padding(
+        padding: EdgeInsets.all(12),
+        child: SizedBox(
+            width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+      );
+    }
+    return IconButton(
+      icon: const Icon(Icons.travel_explore),
+      tooltip: 'Tra thêm nghĩa online (Nhật: Mazii, Trung: Google Dịch)',
+      onPressed: _fetch,
     );
   }
 }

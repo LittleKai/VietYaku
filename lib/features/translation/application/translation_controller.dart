@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../dictionary/application/dictionaries_provider.dart';
@@ -40,15 +41,32 @@ class TranslationState {
       );
 }
 
+/// Mode đang dịch — provider riêng để dictionariesProvider watch được
+/// mà không tạo vòng phụ thuộc với TranslationController.
+class CurrentModeNotifier extends Notifier<TranslationMode> {
+  @override
+  TranslationMode build() => ref.read(settingsProvider).defaultMode;
+
+  void set(TranslationMode mode) => state = mode;
+}
+
+final currentModeProvider =
+    NotifierProvider<CurrentModeNotifier, TranslationMode>(
+        CurrentModeNotifier.new);
+
 class TranslationController extends Notifier<TranslationState> {
   @override
   TranslationState build() {
     return TranslationState(mode: ref.read(settingsProvider).defaultMode);
   }
 
-  void setMode(TranslationMode mode) {
+  Future<void> setMode(TranslationMode mode) async {
+    if (state.mode == mode) return;
+    ref.read(currentModeProvider.notifier).set(mode);
     state = state.copyWith(mode: mode);
     if (state.sourceText.isNotEmpty && state.hasResult) {
+      // Bộ dict theo mode nạp lại xong mới dịch lại bằng dict mới.
+      await ref.read(dictionariesProvider.future);
       translate(state.sourceText);
     }
   }
@@ -73,6 +91,14 @@ class TranslationController extends Notifier<TranslationState> {
       hanVietTokens: hanVietTokens,
       elapsedMs: sw.elapsedMilliseconds,
     );
+  }
+
+  /// Dán clipboard vào nguồn rồi dịch (nút menu bar; SourcePane đồng bộ
+  /// text qua listen sourceText).
+  Future<void> pasteAndTranslate() async {
+    final text = (await Clipboard.getData(Clipboard.kTextPlain))?.text;
+    if (text == null || text.isEmpty) return;
+    translate(text);
   }
 
   void clear() {
