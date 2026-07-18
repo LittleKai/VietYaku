@@ -35,10 +35,12 @@ class MaziiApi {
       final results = data['data'];
       if (results is! List || results.isEmpty) return null;
       // Ưu tiên kết quả trùng đúng từ, không thì lấy kết quả đầu.
-      final item = results.firstWhere(
-        (r) => r is Map && r['word'] == word,
-        orElse: () => results.first,
-      ) as Map;
+      final item =
+          results.firstWhere(
+                (r) => r is Map && r['word'] == word,
+                orElse: () => results.first,
+              )
+              as Map;
       return _format(item);
     } catch (_) {
       return null;
@@ -64,7 +66,9 @@ class MaziiApi {
         final kind = m['kind'];
         final mean = m['mean'];
         if (mean is! String || mean.isEmpty) continue;
-        lines.add(kind is String && kind.isNotEmpty ? '- ($kind) $mean' : '- $mean');
+        lines.add(
+          kind is String && kind.isNotEmpty ? '- ($kind) $mean' : '- $mean',
+        );
         final examples = m['examples'];
         if (examples is List && examples.isNotEmpty) {
           final ex = examples.first;
@@ -72,9 +76,11 @@ class MaziiApi {
             final content = ex['content'];
             final exMean = ex['mean'];
             if (content is String && content.isNotEmpty) {
-              lines.add(exMean is String && exMean.isNotEmpty
-                  ? '  vd: $content → $exMean'
-                  : '  vd: $content');
+              lines.add(
+                exMean is String && exMean.isNotEmpty
+                    ? '  vd: $content → $exMean'
+                    : '  vd: $content',
+              );
             }
           }
         }

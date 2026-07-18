@@ -31,14 +31,13 @@ class TranslationState {
     List<Token>? tokens,
     List<Token>? hanVietTokens,
     int? elapsedMs,
-  }) =>
-      TranslationState(
-        mode: mode ?? this.mode,
-        sourceText: sourceText ?? this.sourceText,
-        tokens: tokens ?? this.tokens,
-        hanVietTokens: hanVietTokens ?? this.hanVietTokens,
-        elapsedMs: elapsedMs ?? this.elapsedMs,
-      );
+  }) => TranslationState(
+    mode: mode ?? this.mode,
+    sourceText: sourceText ?? this.sourceText,
+    tokens: tokens ?? this.tokens,
+    hanVietTokens: hanVietTokens ?? this.hanVietTokens,
+    elapsedMs: elapsedMs ?? this.elapsedMs,
+  );
 }
 
 /// Mode đang dịch — provider riêng để dictionariesProvider watch được
@@ -52,7 +51,8 @@ class CurrentModeNotifier extends Notifier<TranslationMode> {
 
 final currentModeProvider =
     NotifierProvider<CurrentModeNotifier, TranslationMode>(
-        CurrentModeNotifier.new);
+      CurrentModeNotifier.new,
+    );
 
 class TranslationController extends Notifier<TranslationState> {
   @override
@@ -83,8 +83,7 @@ class TranslationController extends Notifier<TranslationState> {
     final sw = Stopwatch()..start();
     final tokens = engine.translate(text, mode: state.mode);
     sw.stop();
-    final hanVietTokens =
-        dicts.hanVietEngine.translate(text, mode: state.mode);
+    final hanVietTokens = dicts.hanVietEngine.translate(text, mode: state.mode);
     state = state.copyWith(
       sourceText: text,
       tokens: tokens,
@@ -113,4 +112,5 @@ class TranslationController extends Notifier<TranslationState> {
 
 final translationControllerProvider =
     NotifierProvider<TranslationController, TranslationState>(
-        TranslationController.new);
+      TranslationController.new,
+    );

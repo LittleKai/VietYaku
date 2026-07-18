@@ -6,24 +6,22 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
 import '../../dictionary/application/dictionaries_provider.dart';
+import '../../settings/settings_provider.dart';
 import '../domain/jp_repair_pipeline.dart';
 import '../domain/repair_report.dart';
 import '../domain/simp2jp_table.dart';
 
 final simp2jpTableProvider = FutureProvider<Simp2JpTable>((ref) async {
   final tsv = await rootBundle.loadString('assets/mappings/simp2jp.tsv');
-  final overrides =
-      await rootBundle.loadString('assets/mappings/simp2jp_overrides.tsv');
+  final overrides = await rootBundle.loadString(
+    'assets/mappings/simp2jp_overrides.tsv',
+  );
   return Simp2JpTable.parse(tsv, overridesTsv: overrides);
 });
 
 class RepairState {
   final String? filePath;
   final String? fileContent;
-  final RepairPolicy policy;
-
-  /// Các cặp (dòng gốc, dòng sau repair) khác nhau — tối đa 50 để preview.
-  final List<(String, String)> preview;
   final bool running;
   final double progress;
   final RepairReport? report;
@@ -36,8 +34,6 @@ class RepairState {
   const RepairState({
     this.filePath,
     this.fileContent,
-    this.policy = RepairPolicy.addVariant,
-    this.preview = const [],
     this.running = false,
     this.progress = 0,
     this.report,
@@ -49,8 +45,6 @@ class RepairState {
   RepairState copyWith({
     String? filePath,
     String? fileContent,
-    RepairPolicy? policy,
-    List<(String, String)>? preview,
     bool? running,
     double? progress,
     RepairReport? report,
@@ -58,85 +52,48 @@ class RepairState {
     String? exportedPath,
     String? error,
     bool clearResults = false,
-  }) =>
-      RepairState(
-        filePath: filePath ?? this.filePath,
-        fileContent: fileContent ?? this.fileContent,
-        policy: policy ?? this.policy,
-        preview: preview ?? this.preview,
-        running: running ?? this.running,
-        progress: progress ?? this.progress,
-        report: clearResults ? null : report ?? this.report,
-        repairedContent:
-            clearResults ? null : repairedContent ?? this.repairedContent,
-        exportedPath: clearResults ? null : exportedPath ?? this.exportedPath,
-        error: clearResults ? null : error ?? this.error,
-      );
+  }) => RepairState(
+    filePath: filePath ?? this.filePath,
+    fileContent: fileContent ?? this.fileContent,
+    running: running ?? this.running,
+    progress: progress ?? this.progress,
+    report: clearResults ? null : report ?? this.report,
+    repairedContent: clearResults
+        ? null
+        : repairedContent ?? this.repairedContent,
+    exportedPath: clearResults ? null : exportedPath ?? this.exportedPath,
+    error: clearResults ? null : error ?? this.error,
+  );
 }
 
 class RepairController extends Notifier<RepairState> {
   @override
   RepairState build() => const RepairState();
 
+  /// Nạp một file dict cố định (từ data/<mode>) để repair. Không còn preview.
   Future<void> pickFile(String path) async {
     try {
       final content = await File(path).readAsString();
-      state = RepairState(filePath: path, fileContent: content,
-          policy: state.policy);
-      await _rebuildPreview();
+      state = RepairState(filePath: path, fileContent: content);
     } catch (e) {
       state = state.copyWith(error: 'Không đọc được file: $e');
     }
-  }
-
-  Future<void> setPolicy(RepairPolicy policy) async {
-    state = state.copyWith(policy: policy, clearResults: true);
-    await _rebuildPreview();
-  }
-
-  Future<void> _rebuildPreview() async {
-    final content = state.fileContent;
-    if (content == null) return;
-    final table = await ref.read(simp2jpTableProvider.future);
-    final policy = state.policy;
-    final preview = await Isolate.run(() {
-      // Repair từng dòng riêng lẻ → cặp (gốc, sau repair) cho 50 dòng
-      // thay đổi đầu tiên. Variant chèn thêm hiển thị nối bằng ` ⧸ `.
-      final diffs = <(String, String)>[];
-      for (final line in _entryLines(content)) {
-        if (diffs.length >= 50) break;
-        if (line.indexOf('=') <= 0) continue;
-        final repaired = repairFile(line, table, policy)
-            .content
-            .trimRight()
-            .replaceAll('\r\n', ' ⧸ ');
-        if (repaired != line) diffs.add((line, repaired));
-      }
-      return diffs;
-    });
-    state = state.copyWith(preview: preview);
-  }
-
-  static List<String> _entryLines(String content) {
-    var text = content;
-    if (text.isNotEmpty && text.codeUnitAt(0) == 0xFEFF) {
-      text = text.substring(1);
-    }
-    return text
-        .split('\n')
-        .map((l) => l.endsWith('\r') ? l.substring(0, l.length - 1) : l)
-        .toList();
   }
 
   Future<void> run() async {
     final content = state.fileContent;
     if (content == null || state.running) return;
     final table = await ref.read(simp2jpTableProvider.future);
+    final policy = ref.read(settingsProvider).repairPolicy;
     state = state.copyWith(running: true, progress: 0, clearResults: true);
 
     try {
-      final result = await _repairInIsolate(content, table, state.policy,
-          (progress) => state = state.copyWith(progress: progress));
+      final result = await _repairInIsolate(
+        content,
+        table,
+        policy,
+        (progress) => state = state.copyWith(progress: progress),
+      );
       state = state.copyWith(
         running: false,
         progress: 1,
@@ -155,8 +112,12 @@ class RepairController extends Notifier<RepairState> {
     void Function(double) onProgress,
   ) async {
     final receivePort = ReceivePort();
-    await Isolate.spawn(_repairEntry,
-        (receivePort.sendPort, content, table, policy));
+    await Isolate.spawn(_repairEntry, (
+      receivePort.sendPort,
+      content,
+      table,
+      policy,
+    ));
     final result = await receivePort.firstWhere((message) {
       if (message is double) {
         onProgress(message);
@@ -170,12 +131,17 @@ class RepairController extends Notifier<RepairState> {
   }
 
   static void _repairEntry(
-      (SendPort, String, Simp2JpTable, RepairPolicy) args) {
+    (SendPort, String, Simp2JpTable, RepairPolicy) args,
+  ) {
     final (port, content, table, policy) = args;
     try {
-      final result = repairFile(content, table, policy,
-          onProgress: (processed, total) =>
-              port.send(total == 0 ? 1.0 : processed / total));
+      final result = repairFile(
+        content,
+        table,
+        policy,
+        onProgress: (processed, total) =>
+            port.send(total == 0 ? 1.0 : processed / total),
+      );
       Isolate.exit(port, result);
     } catch (e) {
       Isolate.exit(port, 'Repair thất bại: $e');
@@ -195,8 +161,7 @@ class RepairController extends Notifier<RepairState> {
       await File(exportPath).writeAsString('$bom$content');
 
       final paths = await ref.read(appPathsProvider.future);
-      final appdataPath =
-          p.join(paths.dictionariesDir.path, '${base}_JP.txt');
+      final appdataPath = p.join(paths.dictionariesDir.path, '${base}_JP.txt');
       await File(appdataPath).writeAsString('$bom$content');
 
       final cacheFile = File(paths.cacheFileFor(appdataPath));

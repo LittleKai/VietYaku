@@ -1,67 +1,55 @@
-import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../dictionary/application/dictionaries_provider.dart';
-import '../dictionary/data/dictionary_repository.dart';
-import '../dictionary/domain/dict_type.dart';
-import '../translation/application/translation_controller.dart';
+import '../dictionary_sync/application/dictionary_sync_controller.dart';
+import '../repair/domain/jp_repair_pipeline.dart';
 import '../translation/domain/translation_engine.dart';
 import 'settings_provider.dart';
-
-const _dictLabels = <DictType, String>{
-  DictType.vietPhrase: 'VietPhrase.txt',
-  DictType.lacViet: 'LacViet.txt',
-  DictType.names: 'Names.txt',
-  DictType.chinesePhienAm: 'ChinesePhienAmWords.txt',
-  DictType.pronouns: 'Pronouns.txt',
-  DictType.babylon: 'Babylon.txt',
-  DictType.thieuChuu: 'ThieuChuu.txt',
-  DictType.cedict: 'cedict_ts.u8',
-  DictType.chinesePhienAmEnglish: 'ChinesePhienAmEnglishWords.txt',
-  DictType.jaVi: 'JaViDict.txt',
-  DictType.zhVi: 'ZhViDict.txt',
-};
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
-  Future<void> _pickPath(
-      WidgetRef ref, TranslationMode mode, DictType type) async {
-    const typeGroup = XTypeGroup(label: 'Text', extensions: ['txt']);
-    final file = await openFile(acceptedTypeGroups: [typeGroup]);
-    if (file != null) {
-      await ref
-          .read(settingsProvider.notifier)
-          .setDictPath(mode, type, file.path);
-    }
-  }
+  static const _fontFamilies = <String>[
+    '',
+    'Segoe UI',
+    'Yu Gothic UI',
+    'Meiryo',
+    'MS Gothic',
+    'Microsoft YaHei',
+    'SimSun',
+    'Times New Roman',
+  ];
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(settingsProvider);
-    final dicts = ref.watch(dictionariesProvider).valueOrNull;
-    final currentMode = ref.watch(currentModeProvider);
+    final notifier = ref.read(settingsProvider.notifier);
 
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        Text('Chế độ dịch mặc định',
-            style: Theme.of(context).textTheme.titleMedium),
+        Text(
+          'Chế độ dịch mặc định',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
         const SizedBox(height: 8),
         Align(
           alignment: Alignment.centerLeft,
           child: SegmentedButton<TranslationMode>(
             segments: const [
               ButtonSegment(
-                  value: TranslationMode.japanese, label: Text('Nhật')),
+                value: TranslationMode.japanese,
+                label: Text('Nhật'),
+              ),
               ButtonSegment(
-                  value: TranslationMode.chinese, label: Text('Trung')),
+                value: TranslationMode.chinese,
+                label: Text('Trung'),
+              ),
             ],
             selected: {settings.defaultMode},
-            onSelectionChanged: (selection) => ref
-                .read(settingsProvider.notifier)
-                .setDefaultMode(selection.first),
+            onSelectionChanged: (selection) =>
+                notifier.setDefaultMode(selection.first),
           ),
         ),
         const SizedBox(height: 24),
@@ -93,108 +81,298 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ],
             selected: {settings.translationAlgorithm},
-            onSelectionChanged: (selection) => ref
-                .read(settingsProvider.notifier)
-                .setTranslationAlgorithm(selection.first),
+            onSelectionChanged: (selection) =>
+                notifier.setTranslationAlgorithm(selection.first),
           ),
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text('Ưu tiên Name hơn VietPhrase'),
           subtitle: const Text(
-              'Match Names tại một vị trí thắng cụm VietPhrase dài hơn '
-              '(UserDict vẫn cao nhất).'),
+            'Match Names tại một vị trí thắng cụm VietPhrase dài hơn '
+            '(UserDict vẫn cao nhất).',
+          ),
           value: settings.prioritizeNames,
-          onChanged: (value) =>
-              ref.read(settingsProvider.notifier).setPrioritizeNames(value),
+          onChanged: (value) => notifier.setPrioritizeNames(value),
         ),
         const SizedBox(height: 24),
-        Text('Đường dẫn file từ điển',
-            style: Theme.of(context).textTheme.titleMedium),
+        Text(
+          'Cỡ chữ & font các ô',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        const SizedBox(height: 8),
+        for (final id in PaneId.values)
+          _PaneFontRow(
+            id: id,
+            font: settings.paneFontFor(id),
+            fontFamilies: _fontFamilies,
+            onSizeChanged: (value) => notifier.setPaneFont(id, size: value),
+            onFamilyChanged: (value) => notifier.setPaneFont(id, family: value),
+          ),
+        const SizedBox(height: 24),
+        Text(
+          'Sửa từ điển — Key thuần Hán',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
         const SizedBox(height: 4),
         Text(
-          'Mỗi ngôn ngữ một bộ riêng (data/jp, data/cn trong dự án). '
-          'Với tiếng Nhật, file đã sửa (*_JP.txt trong dữ liệu app) tự động '
-          'được ưu tiên hơn file gốc. Số entries chỉ hiện cho bộ đang nạp.',
+          'Chính sách áp dụng khi bấm Run trong tab Sửa từ điển.',
           style: Theme.of(context).textTheme.bodySmall,
         ),
         const SizedBox(height: 8),
-        for (final mode in TranslationMode.values) ...[
-          const SizedBox(height: 8),
-          Text(
-            mode == TranslationMode.japanese
-                ? 'Bộ tiếng Nhật'
-                : 'Bộ tiếng Trung',
-            style: Theme.of(context).textTheme.titleSmall,
-          ),
-          for (final entry in _dictLabels.entries)
-            if (entry.key !=
-                (mode == TranslationMode.japanese
-                    ? DictType.zhVi
-                    : DictType.jaVi))
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Row(
-                  children: [
-                    Text(entry.value),
-                    if (dicts != null && mode == currentMode) ...[
-                      const SizedBox(width: 8),
-                      Text(
-                        '(${_entryCount(dicts, entry.key)} entries)',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                  ],
-                ),
-                subtitle: Text(settings.dictPaths[mode]![entry.key] ?? '',
-                    overflow: TextOverflow.ellipsis),
-                trailing: IconButton(
-                  icon: const Icon(Icons.folder_open),
-                  tooltip: 'Chọn file khác',
-                  onPressed: () => _pickPath(ref, mode, entry.key),
-                ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: SegmentedButton<RepairPolicy>(
+            segments: const [
+              ButtonSegment(
+                value: RepairPolicy.addVariant,
+                label: Text('Giữ gốc + thêm bản JP'),
               ),
-        ],
-        const SizedBox(height: 16),
+              ButtonSegment(
+                value: RepairPolicy.convert,
+                label: Text('Convert hết'),
+              ),
+              ButtonSegment(
+                value: RepairPolicy.keepOnly,
+                label: Text('Không convert'),
+              ),
+            ],
+            selected: {settings.repairPolicy},
+            onSelectionChanged: (selection) =>
+                notifier.setRepairPolicy(selection.first),
+          ),
+        ),
+        const SizedBox(height: 24),
+        const _DictionarySyncSettings(),
+        const SizedBox(height: 24),
+        Text('Từ điển', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 4),
+        Text(
+          'Mỗi ngôn ngữ một bộ riêng (data/jp, data/cn trong dự án). Với tiếng '
+          'Nhật, file đã sửa (*_JP.txt trong dữ liệu app) tự động được ưu tiên '
+          'hơn file gốc.',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const SizedBox(height: 8),
         Align(
           alignment: Alignment.centerLeft,
           child: FilledButton.tonalIcon(
             icon: const Icon(Icons.refresh),
             label: const Text('Nạp lại từ điển'),
-            onPressed: () =>
-                ref.read(dictionariesProvider.notifier).reload(),
+            onPressed: () => ref.read(dictionariesProvider.notifier).reload(),
           ),
         ),
       ],
     );
   }
+}
 
-  static int _entryCount(LoadedDictionaries dicts, DictType type) {
-    switch (type) {
-      case DictType.vietPhrase:
-        return dicts.vietPhrase.length;
-      case DictType.lacViet:
-        return dicts.lacViet.length;
-      case DictType.names:
-        return dicts.names.length;
-      case DictType.chinesePhienAm:
-        return dicts.chinesePhienAm.length;
-      case DictType.pronouns:
-        return dicts.pronouns.length;
-      case DictType.userDict:
-        return dicts.userDict.length;
-      case DictType.babylon:
-        return dicts.babylon.length;
-      case DictType.thieuChuu:
-        return dicts.thieuChuu.length;
-      case DictType.cedict:
-        return dicts.cedict.length;
-      case DictType.chinesePhienAmEnglish:
-        return dicts.chinesePhienAmEnglish.length;
-      case DictType.jaVi:
-        return dicts.jaVi.length;
-      case DictType.zhVi:
-        return dicts.zhVi.length;
+class _PaneFontRow extends StatelessWidget {
+  const _PaneFontRow({
+    required this.id,
+    required this.font,
+    required this.fontFamilies,
+    required this.onSizeChanged,
+    required this.onFamilyChanged,
+  });
+
+  final PaneId id;
+  final PaneFont font;
+  final List<String> fontFamilies;
+  final ValueChanged<double> onSizeChanged;
+  final ValueChanged<String> onFamilyChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          SizedBox(width: 90, child: Text(paneLabels[id]!)),
+          Expanded(
+            child: Slider(
+              value: font.size,
+              min: 10,
+              max: 28,
+              divisions: 18,
+              label: '${font.size.round()}',
+              onChanged: onSizeChanged,
+            ),
+          ),
+          SizedBox(width: 34, child: Text('${font.size.round()}')),
+          const SizedBox(width: 8),
+          DropdownMenu<String>(
+            key: ValueKey('${id.name}:${font.family}'),
+            width: 220,
+            initialSelection: fontFamilies.contains(font.family)
+                ? font.family
+                : '',
+            label: const Text('Font'),
+            onSelected: (value) => onFamilyChanged(value ?? ''),
+            dropdownMenuEntries: [
+              for (final family in fontFamilies)
+                DropdownMenuEntry<String>(
+                  value: family,
+                  label: family.isEmpty ? 'Mặc định hệ thống' : family,
+                  style: MenuItemButton.styleFrom(
+                    textStyle: TextStyle(
+                      fontFamily: family.isEmpty ? null : family,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DictionarySyncSettings extends ConsumerStatefulWidget {
+  const _DictionarySyncSettings();
+
+  @override
+  ConsumerState<_DictionarySyncSettings> createState() =>
+      _DictionarySyncSettingsState();
+}
+
+class _DictionarySyncSettingsState
+    extends ConsumerState<_DictionarySyncSettings> {
+  late final TextEditingController _serverController;
+  final _usernameController = TextEditingController();
+  final _passwordController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _serverController = TextEditingController(
+      text: ref.read(settingsProvider).syncServerUrl,
+    );
+  }
+
+  @override
+  void dispose() {
+    _serverController.dispose();
+    _usernameController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _login() async {
+    final url = _serverController.text.trim();
+    final username = _usernameController.text.trim();
+    final password = _passwordController.text;
+    final uri = Uri.tryParse(url);
+    if (uri == null || !uri.hasScheme || uri.host.isEmpty) {
+      _showMessage('Địa chỉ server không hợp lệ.');
+      return;
     }
+    if (username.isEmpty || password.isEmpty) {
+      _showMessage('Hãy nhập tài khoản và mật khẩu.');
+      return;
+    }
+
+    await ref.read(settingsProvider.notifier).setSyncServerUrl(url);
+    try {
+      await ref
+          .read(dictionarySyncProvider.notifier)
+          .login(serverUrl: url, username: username, password: password);
+      _passwordController.clear();
+      _showMessage('Đã đăng nhập quản trị.');
+    } catch (_) {
+      if (!mounted) return;
+      _showMessage(
+        ref.read(dictionarySyncProvider).message ?? 'Không thể đăng nhập.',
+      );
+    }
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sync = ref.watch(dictionarySyncProvider);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Từ điển chung', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 8),
+        SizedBox(
+          width: 420,
+          child: TextField(
+            controller: _serverController,
+            enabled: !sync.isAdmin && !sync.isLoggingIn,
+            decoration: const InputDecoration(
+              labelText: 'Địa chỉ LittleKai server',
+              prefixIcon: Icon(Icons.dns_outlined),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        if (sync.session case final session?)
+          Row(
+            children: [
+              const Icon(Icons.verified_user_outlined, size: 20),
+              const SizedBox(width: 8),
+              Text(session.username),
+              const SizedBox(width: 12),
+              TextButton.icon(
+                icon: const Icon(Icons.logout, size: 18),
+                label: const Text('Đăng xuất'),
+                onPressed: () =>
+                    ref.read(dictionarySyncProvider.notifier).logout(),
+              ),
+            ],
+          )
+        else ...[
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              SizedBox(
+                width: 200,
+                child: TextField(
+                  controller: _usernameController,
+                  enabled: !sync.isLoggingIn,
+                  decoration: const InputDecoration(
+                    labelText: 'Tài khoản admin',
+                    prefixIcon: Icon(Icons.person_outline),
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: 200,
+                child: TextField(
+                  controller: _passwordController,
+                  enabled: !sync.isLoggingIn,
+                  obscureText: true,
+                  onSubmitted: (_) => _login(),
+                  decoration: const InputDecoration(
+                    labelText: 'Mật khẩu',
+                    prefixIcon: Icon(Icons.lock_outline),
+                  ),
+                ),
+              ),
+              FilledButton.icon(
+                icon: sync.isLoggingIn
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.login, size: 18),
+                label: const Text('Đăng nhập'),
+                onPressed: sync.isLoggingIn ? null : _login,
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
   }
 }

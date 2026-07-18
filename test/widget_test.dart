@@ -9,10 +9,12 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
 
-    await tester.pumpWidget(ProviderScope(
-      overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
-      child: const VietYakuApp(),
-    ));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+        child: const VietYakuApp(),
+      ),
+    );
     await tester.pump();
 
     expect(find.text('Dịch'), findsWidgets);

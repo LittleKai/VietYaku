@@ -10,7 +10,8 @@ class RepairPreview extends StatelessWidget {
   Widget build(BuildContext context) {
     if (pairs.isEmpty) {
       return const Center(
-          child: Text('Không có dòng nào thay đổi với policy hiện tại'));
+        child: Text('Không có dòng nào thay đổi với policy hiện tại'),
+      );
     }
     final theme = Theme.of(context);
     return ListView.separated(
@@ -23,18 +24,24 @@ class RepairPreview extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(before,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      color: theme.colorScheme.error,
-                      decoration: TextDecoration.lineThrough,
-                      decorationColor:
-                          theme.colorScheme.error.withValues(alpha: 0.5))),
-              Text(after,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: theme.colorScheme.primary)),
+              Text(
+                before,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: theme.colorScheme.error,
+                  decoration: TextDecoration.lineThrough,
+                  decorationColor: theme.colorScheme.error.withValues(
+                    alpha: 0.5,
+                  ),
+                ),
+              ),
+              Text(
+                after,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: theme.colorScheme.primary),
+              ),
             ],
           ),
         );

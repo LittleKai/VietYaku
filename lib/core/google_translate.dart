@@ -11,7 +11,7 @@ class GoogleTranslateClient {
   final http.Client _client;
 
   GoogleTranslateClient({http.Client? client})
-      : _client = client ?? http.Client();
+    : _client = client ?? http.Client();
 
   static const _userAgent =
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
@@ -20,7 +20,8 @@ class GoogleTranslateClient {
   /// Trả null khi cả hai đường đều thất bại.
   Future<String?> translate(String text, {required String sourceLang}) async {
     if (text.trim().isEmpty) return null;
-    return await _viaGtx(text, sourceLang) ?? await _viaMobileWeb(text, sourceLang);
+    return await _viaGtx(text, sourceLang) ??
+        await _viaMobileWeb(text, sourceLang);
   }
 
   Future<String?> _viaGtx(String text, String sourceLang) async {
@@ -32,7 +33,8 @@ class GoogleTranslateClient {
         'dt': 't',
         'q': text,
       });
-      final res = await _client.get(uri, headers: {'User-Agent': _userAgent})
+      final res = await _client
+          .get(uri, headers: {'User-Agent': _userAgent})
           .timeout(const Duration(seconds: 15));
       if (res.statusCode != 200) return null;
       final data = jsonDecode(utf8.decode(res.bodyBytes));
@@ -58,12 +60,14 @@ class GoogleTranslateClient {
         'tl': 'vi',
         'q': text,
       });
-      final res = await _client.get(uri, headers: {'User-Agent': _userAgent})
+      final res = await _client
+          .get(uri, headers: {'User-Agent': _userAgent})
           .timeout(const Duration(seconds: 20));
       if (res.statusCode != 200) return null;
       final html = utf8.decode(res.bodyBytes);
-      final m = RegExp(r'class="result-container">([\s\S]*?)</div>')
-          .firstMatch(html);
+      final m = RegExp(
+        r'class="result-container">([\s\S]*?)</div>',
+      ).firstMatch(html);
       if (m == null) return null;
       final out = _unescapeHtml(m.group(1)!).trim();
       return out.isEmpty ? null : out;

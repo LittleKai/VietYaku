@@ -10,12 +10,11 @@ PhraseDictionary dict(DictType type, Map<String, String> entries) =>
 void main() {
   group('TranslationEngine', () {
     test('greedy longest-match wins over shorter entries', () {
-      final engine = TranslationEngine(dicts: [
-        dict(DictType.vietPhrase, {
-          '覚': 'giác',
-          '覚悟': 'giác ngộ/quyết tâm',
-        }),
-      ]);
+      final engine = TranslationEngine(
+        dicts: [
+          dict(DictType.vietPhrase, {'覚': 'giác', '覚悟': 'giác ngộ/quyết tâm'}),
+        ],
+      );
       final tokens = engine.translate('覚悟');
       expect(tokens, hasLength(1));
       expect(tokens.first.source, '覚悟');
@@ -24,20 +23,24 @@ void main() {
     });
 
     test('same length: Names beats VietPhrase (dict order priority)', () {
-      final engine = TranslationEngine(dicts: [
-        dict(DictType.names, {'田中': 'Tanaka'}),
-        dict(DictType.vietPhrase, {'田中': 'điền trung'}),
-      ]);
+      final engine = TranslationEngine(
+        dicts: [
+          dict(DictType.names, {'田中': 'Tanaka'}),
+          dict(DictType.vietPhrase, {'田中': 'điền trung'}),
+        ],
+      );
       final tokens = engine.translate('田中');
       expect(tokens.single.meaning, 'Tanaka');
       expect(tokens.single.dictType, DictType.names);
     });
 
     test('longer VietPhrase match beats shorter Names match', () {
-      final engine = TranslationEngine(dicts: [
-        dict(DictType.names, {'田中': 'Tanaka'}),
-        dict(DictType.vietPhrase, {'田中さん': 'anh Tanaka'}),
-      ]);
+      final engine = TranslationEngine(
+        dicts: [
+          dict(DictType.names, {'田中': 'Tanaka'}),
+          dict(DictType.vietPhrase, {'田中さん': 'anh Tanaka'}),
+        ],
+      );
       final tokens = engine.translate('田中さん');
       expect(tokens.single.meaning, 'anh Tanaka');
     });
@@ -68,9 +71,11 @@ void main() {
     });
 
     test('non-CJK runs are grouped into one passthrough token', () {
-      final engine = TranslationEngine(dicts: [
-        dict(DictType.vietPhrase, {'覚悟': 'giác ngộ'}),
-      ]);
+      final engine = TranslationEngine(
+        dicts: [
+          dict(DictType.vietPhrase, {'覚悟': 'giác ngộ'}),
+        ],
+      );
       final tokens = engine.translate('ABC 123, 覚悟!');
       expect(tokens, hasLength(3));
       expect(tokens[0].kind, TokenKind.passthrough);
@@ -80,25 +85,31 @@ void main() {
     });
 
     test('meaning is first sense trimmed, = in value preserved', () {
-      final engine = TranslationEngine(dicts: [
-        dict(DictType.vietPhrase, {'数式': ' a=b+c / nghĩa hai'.trim()}),
-      ]);
+      final engine = TranslationEngine(
+        dicts: [
+          dict(DictType.vietPhrase, {'数式': ' a=b+c / nghĩa hai'.trim()}),
+        ],
+      );
       final tokens = engine.translate('数式');
       expect(tokens.single.meaning, 'a=b+c');
     });
 
     test('sourceStart is UTF-16 offset', () {
-      final engine = TranslationEngine(dicts: [
-        dict(DictType.vietPhrase, {'覚悟': 'giác ngộ'}),
-      ]);
+      final engine = TranslationEngine(
+        dicts: [
+          dict(DictType.vietPhrase, {'覚悟': 'giác ngộ'}),
+        ],
+      );
       final tokens = engine.translate('AB覚悟');
       expect(tokens[1].sourceStart, 2);
     });
 
     test('surrogate pair (non-CJK ext plane) advances by rune', () {
-      final engine = TranslationEngine(dicts: [
-        dict(DictType.vietPhrase, {'覚悟': 'giác ngộ'}),
-      ]);
+      final engine = TranslationEngine(
+        dicts: [
+          dict(DictType.vietPhrase, {'覚悟': 'giác ngộ'}),
+        ],
+      );
       // 𝄞 U+1D11E là surrogate pair ngoài CJK → passthrough nguyên rune.
       final tokens = engine.translate('𝄞覚悟');
       expect(tokens.first.source, '𝄞');
@@ -118,9 +129,11 @@ void main() {
 
   group('Token rawValue / displayAll', () {
     test('đa nghĩa → rawValue giữ nguyên, displayAll có ngoặc', () {
-      final engine = TranslationEngine(dicts: [
-        dict(DictType.vietPhrase, {'覚悟': 'giác ngộ/quyết tâm'}),
-      ]);
+      final engine = TranslationEngine(
+        dicts: [
+          dict(DictType.vietPhrase, {'覚悟': 'giác ngộ/quyết tâm'}),
+        ],
+      );
       final token = engine.translate('覚悟').single;
       expect(token.rawValue, 'giác ngộ/quyết tâm');
       expect(token.meaning, 'giác ngộ');
@@ -128,17 +141,21 @@ void main() {
     });
 
     test('một nghĩa → displayAll không ngoặc', () {
-      final engine = TranslationEngine(dicts: [
-        dict(DictType.vietPhrase, {'人々': ' mọi người '}),
-      ]);
+      final engine = TranslationEngine(
+        dicts: [
+          dict(DictType.vietPhrase, {'人々': ' mọi người '}),
+        ],
+      );
       final token = engine.translate('人々').single;
       expect(token.displayAll, 'mọi người');
     });
 
     test('passthrough/unmatched → displayAll = source', () {
-      final engine = TranslationEngine(dicts: [
-        dict(DictType.vietPhrase, {'覚悟': 'giác ngộ'}),
-      ]);
+      final engine = TranslationEngine(
+        dicts: [
+          dict(DictType.vietPhrase, {'覚悟': 'giác ngộ'}),
+        ],
+      );
       final tokens = engine.translate('ABの');
       expect(tokens[0].displayAll, 'AB');
       expect(tokens[1].displayAll, 'の');
@@ -153,8 +170,7 @@ void main() {
     final fallback = dict(DictType.chinesePhienAm, {'一': 'nhất', '五': 'ngũ'});
 
     test('leftToRight: cụm trái ăn trước dù chặn cụm dài hơn', () {
-      final engine =
-          TranslationEngine(dicts: dicts, hanVietFallback: fallback);
+      final engine = TranslationEngine(dicts: dicts, hanVietFallback: fallback);
       final tokens = engine.translate('一二三四五');
       expect(tokens.first.source, '一二');
       expect(tokens.first.meaning, 'a');
@@ -212,10 +228,12 @@ void main() {
 
   group('prioritizeNames', () {
     test('off (mặc định): cụm VietPhrase dài hơn thắng Names', () {
-      final engine = TranslationEngine(dicts: [
-        dict(DictType.names, {'田中': 'Tanaka'}),
-        dict(DictType.vietPhrase, {'田中さん': 'anh Tanaka'}),
-      ]);
+      final engine = TranslationEngine(
+        dicts: [
+          dict(DictType.names, {'田中': 'Tanaka'}),
+          dict(DictType.vietPhrase, {'田中さん': 'anh Tanaka'}),
+        ],
+      );
       expect(engine.translate('田中さん').single.meaning, 'anh Tanaka');
     });
 
@@ -250,8 +268,10 @@ void main() {
     test('per chữ Hán, kana unmatched, Latin passthrough', () {
       final engine = TranslationEngine(
         dicts: const [],
-        hanVietFallback:
-            dict(DictType.chinesePhienAm, {'覚': 'giác', '悟': 'ngộ'}),
+        hanVietFallback: dict(DictType.chinesePhienAm, {
+          '覚': 'giác',
+          '悟': 'ngộ',
+        }),
       );
       final tokens = engine.translate('覚悟のA');
       expect(tokens, hasLength(4));

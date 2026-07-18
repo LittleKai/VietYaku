@@ -40,10 +40,8 @@ class RepairedFile {
       }
       final hasPrev = buffer.isNotEmpty;
       final hasNext = runEnd < n;
-      final prevAlnum =
-          hasPrev && isAsciiAlphanumeric(key.codeUnitAt(i - 1));
-      final nextAlnum =
-          hasNext && isAsciiAlphanumeric(key.codeUnitAt(runEnd));
+      final prevAlnum = hasPrev && isAsciiAlphanumeric(key.codeUnitAt(i - 1));
+      final nextAlnum = hasNext && isAsciiAlphanumeric(key.codeUnitAt(runEnd));
       final keep = hasPrev && hasNext && (prevAlnum || nextAlnum);
       if (keep) {
         buffer.write(key.substring(i, runEnd));
@@ -68,7 +66,10 @@ bool containsKana(String key) {
 
 /// (B) Convert per-char theo bảng; ambiguous giữ nguyên + ghi vào [report].
 (String, int) convertKeyChars(
-    String key, Simp2JpTable table, RepairReport report) {
+  String key,
+  Simp2JpTable table,
+  RepairReport report,
+) {
   final buffer = StringBuffer();
   var converted = 0;
   var i = 0;
@@ -82,7 +83,9 @@ bool containsKana(String key) {
     } else {
       if (table.isAmbiguous(char)) {
         report.ambiguous.putIfAbsent(
-            char, () => '${table.ambiguous[char]!.join("|")} (vd: $key)');
+          char,
+          () => '${table.ambiguous[char]!.join("|")} (vd: $key)',
+        );
       }
       buffer.write(char);
     }
@@ -163,13 +166,11 @@ RepairedFile repairFile(
           convertKeyChars(spaceFixed, table, report); // chỉ để ghi ambiguous
           emit(spaceFixed, value, isVariant: false);
         case RepairPolicy.convert:
-          final (converted, count) =
-              convertKeyChars(spaceFixed, table, report);
+          final (converted, count) = convertKeyChars(spaceFixed, table, report);
           report.charsConverted += count;
           emit(converted, value, isVariant: false);
         case RepairPolicy.addVariant:
-          final (converted, count) =
-              convertKeyChars(spaceFixed, table, report);
+          final (converted, count) = convertKeyChars(spaceFixed, table, report);
           emit(spaceFixed, value, isVariant: false);
           if (converted != spaceFixed) {
             report.charsConverted += count;

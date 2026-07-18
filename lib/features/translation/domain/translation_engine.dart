@@ -43,8 +43,10 @@ class TranslationEngine {
     this.prioritizeNames = false,
   });
 
-  List<Token> translate(String text,
-      {TranslationMode mode = TranslationMode.japanese}) {
+  List<Token> translate(
+    String text, {
+    TranslationMode mode = TranslationMode.japanese,
+  }) {
     switch (algorithm) {
       case TranslationAlgorithm.leftToRight:
         return _translateLeftToRight(text);
@@ -92,8 +94,9 @@ class TranslationEngine {
   /// Chữ Hán đơn → phiên âm Hán Việt; kana/khác → giữ nguyên.
   Token _fallbackToken(String text, int i, int runeLen, int cp) {
     final single = text.substring(i, i + runeLen);
-    final fallbackValue =
-        isHanCodePoint(cp) ? hanVietFallback?.entries[single] : null;
+    final fallbackValue = isHanCodePoint(cp)
+        ? hanVietFallback?.entries[single]
+        : null;
     if (fallbackValue != null) {
       return Token(
         source: single,
@@ -114,11 +117,13 @@ class TranslationEngine {
 
     void flushPassthrough(int end) {
       if (passStart >= 0) {
-        tokens.add(Token(
-          source: text.substring(passStart, end),
-          sourceStart: passStart,
-          kind: TokenKind.passthrough,
-        ));
+        tokens.add(
+          Token(
+            source: text.substring(passStart, end),
+            sourceStart: passStart,
+            kind: TokenKind.passthrough,
+          ),
+        );
         passStart = -1;
       }
     }
@@ -136,13 +141,15 @@ class TranslationEngine {
 
       final match = _longestMatchAt(text, i, n);
       if (match != null) {
-        tokens.add(Token(
-          source: text.substring(i, i + match.len),
-          sourceStart: i,
-          kind: TokenKind.matched,
-          dictType: match.dictType,
-          rawValue: match.value,
-        ));
+        tokens.add(
+          Token(
+            source: text.substring(i, i + match.len),
+            sourceStart: i,
+            kind: TokenKind.matched,
+            dictType: match.dictType,
+            rawValue: match.value,
+          ),
+        );
         i += match.len;
         continue;
       }
@@ -176,9 +183,11 @@ class TranslationEngine {
     }
 
     // Pass 2: đặt cụm dài trước, không chồng lấn; cùng độ dài → trái thắng.
-    candidates.sort((a, b) => a.match.len != b.match.len
-        ? b.match.len - a.match.len
-        : a.start - b.start);
+    candidates.sort(
+      (a, b) => a.match.len != b.match.len
+          ? b.match.len - a.match.len
+          : a.start - b.start,
+    );
     final occupied = List<bool>.filled(n, false);
     final placed = <int, _Match>{};
     for (final c in candidates) {
@@ -201,11 +210,13 @@ class TranslationEngine {
 
     void flushPassthrough(int end) {
       if (passStart >= 0) {
-        tokens.add(Token(
-          source: text.substring(passStart, end),
-          sourceStart: passStart,
-          kind: TokenKind.passthrough,
-        ));
+        tokens.add(
+          Token(
+            source: text.substring(passStart, end),
+            sourceStart: passStart,
+            kind: TokenKind.passthrough,
+          ),
+        );
         passStart = -1;
       }
     }
@@ -216,13 +227,15 @@ class TranslationEngine {
       final placedMatch = placed[i];
       if (placedMatch != null) {
         flushPassthrough(i);
-        tokens.add(Token(
-          source: text.substring(i, i + placedMatch.len),
-          sourceStart: i,
-          kind: TokenKind.matched,
-          dictType: placedMatch.dictType,
-          rawValue: placedMatch.value,
-        ));
+        tokens.add(
+          Token(
+            source: text.substring(i, i + placedMatch.len),
+            sourceStart: i,
+            kind: TokenKind.matched,
+            dictType: placedMatch.dictType,
+            rawValue: placedMatch.value,
+          ),
+        );
         i += placedMatch.len;
         continue;
       }
@@ -242,13 +255,15 @@ class TranslationEngine {
       }
       final match = boundary > i ? _longestMatchAt(text, i, boundary) : null;
       if (match != null) {
-        tokens.add(Token(
-          source: text.substring(i, i + match.len),
-          sourceStart: i,
-          kind: TokenKind.matched,
-          dictType: match.dictType,
-          rawValue: match.value,
-        ));
+        tokens.add(
+          Token(
+            source: text.substring(i, i + match.len),
+            sourceStart: i,
+            kind: TokenKind.matched,
+            dictType: match.dictType,
+            rawValue: match.value,
+          ),
+        );
         i += match.len;
         continue;
       }

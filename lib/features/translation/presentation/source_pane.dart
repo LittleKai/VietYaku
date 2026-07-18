@@ -1,18 +1,16 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/cjk.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/entry_edit_dialog.dart';
-import '../../../shared/widgets/tts_button.dart';
-import '../../dictionary/application/dictionaries_provider.dart';
 import '../../settings/settings_provider.dart';
 import '../application/token_selection.dart';
 import '../application/translation_controller.dart';
 
 import '../domain/token.dart';
+
+/// Nội dung ô Nguồn đang gõ (nút Dịch trên menu bar đọc giá trị này).
+final sourceDraftProvider = StateProvider<String>((ref) => '');
 
 /// TextEditingController tô nổi đỏ cụm đang chọn + tô đậm tất cả các từ có trong từ điển.
 class _HighlightTextEditingController extends TextEditingController {
@@ -38,22 +36,29 @@ class _HighlightTextEditingController extends TextEditingController {
   }) {
     if (text.isEmpty) {
       return super.buildTextSpan(
-          context: context, style: style, withComposing: withComposing);
+        context: context,
+        style: style,
+        withComposing: withComposing,
+      );
     }
 
-    final h = _highlight;
-    final hasHighlight = h != null &&
-        !withComposing &&
-        h.start >= 0 &&
-        h.end <= text.length &&
-        h.start < h.end;
+    // Clamp range chọn về [0, text.length]: vẫn tô đỏ khi tokens/selection lệch
+    // nhẹ (vd offset chọn hơi vượt biên) thay vì mất hẳn màu.
+    final raw = _highlight;
+    final hs = raw == null ? 0 : raw.start.clamp(0, text.length);
+    final he = raw == null ? 0 : raw.end.clamp(0, text.length);
+    final hasHighlight = raw != null && !withComposing && hs < he;
 
     // Nếu không có tokens và không có highlight, dùng mặc định
     if (_tokens.isEmpty && !hasHighlight) {
       return super.buildTextSpan(
-          context: context, style: style, withComposing: withComposing);
+        context: context,
+        style: style,
+        withComposing: withComposing,
+      );
     }
 
+    final hl = AppSemanticColors.of(context).highlight;
     final spans = <TextSpan>[];
     int totalTokenLen = _tokens.fold(0, (sum, t) => sum + t.source.length);
 
@@ -62,12 +67,14 @@ class _HighlightTextEditingController extends TextEditingController {
         final tStart = token.sourceStart;
         final tEnd = tStart + token.source.length;
 
-        bool isHighlighted = hasHighlight && (tStart >= h.start && tEnd <= h.end);
+        bool isHighlighted = hasHighlight && tStart < he && hs < tEnd;
 
         TextStyle tokenStyle = style ?? const TextStyle();
         if (isHighlighted) {
           tokenStyle = tokenStyle.copyWith(
-              color: Colors.red, fontWeight: FontWeight.bold);
+            color: hl,
+            fontWeight: FontWeight.bold,
+          );
         } else if (token.kind == TokenKind.matched) {
           tokenStyle = tokenStyle.copyWith(fontWeight: FontWeight.bold);
         }
@@ -77,11 +84,19 @@ class _HighlightTextEditingController extends TextEditingController {
     } else {
       // Fallback khi gõ dở hoặc lệch tokens
       if (hasHighlight) {
-        final highlightStyle = (style ?? const TextStyle())
-            .copyWith(color: Colors.red, fontWeight: FontWeight.bold);
-        if (h.start > 0) spans.add(TextSpan(text: text.substring(0, h.start), style: style));
-        spans.add(TextSpan(text: text.substring(h.start, h.end), style: highlightStyle));
-        if (h.end < text.length) spans.add(TextSpan(text: text.substring(h.end), style: style));
+        final highlightStyle = (style ?? const TextStyle()).copyWith(
+          color: hl,
+          fontWeight: FontWeight.bold,
+        );
+        if (hs > 0) {
+          spans.add(TextSpan(text: text.substring(0, hs), style: style));
+        }
+        spans.add(
+          TextSpan(text: text.substring(hs, he), style: highlightStyle),
+        );
+        if (he < text.length) {
+          spans.add(TextSpan(text: text.substring(he), style: style));
+        }
       } else {
         spans.add(TextSpan(text: text, style: style));
       }
@@ -102,11 +117,6 @@ class _SourcePaneState extends ConsumerState<SourcePane> {
   final _controller = _HighlightTextEditingController();
   int _lastCaret = -1;
 
-  // Clipboard watcher (Phase 5b): poll 1s, text CJK mới → tự dán + dịch.
-  bool _watchingClipboard = false;
-  Timer? _clipboardTimer;
-  String? _lastClipboard;
-
   @override
   void initState() {
     super.initState();
@@ -115,7 +125,6 @@ class _SourcePaneState extends ConsumerState<SourcePane> {
 
   @override
   void dispose() {
-    _clipboardTimer?.cancel();
     _controller.dispose();
     super.dispose();
   }
@@ -135,50 +144,17 @@ class _SourcePaneState extends ConsumerState<SourcePane> {
         .selectAtSourceOffset(selection.baseOffset);
   }
 
-  Future<void> _toggleClipboardWatch() async {
-    if (_watchingClipboard) {
-      _clipboardTimer?.cancel();
-      _clipboardTimer = null;
-      setState(() => _watchingClipboard = false);
-      return;
-    }
-    // Mồi giá trị hiện tại để chỉ phản ứng với text MỚI.
-    _lastClipboard =
-        (await Clipboard.getData(Clipboard.kTextPlain))?.text;
-    _clipboardTimer =
-        Timer.periodic(const Duration(seconds: 1), (_) => _pollClipboard());
-    setState(() => _watchingClipboard = true);
-  }
-
-  Future<void> _pollClipboard() async {
-    final text = (await Clipboard.getData(Clipboard.kTextPlain))?.text;
-    if (text == null || text == _lastClipboard) return;
-    _lastClipboard = text;
-    if (!_containsCjk(text) || !mounted) return;
-    _controller.text = text;
-    _translate();
-  }
-
-  static bool _containsCjk(String text) {
-    for (var i = 0; i < text.length; i++) {
-      if (isCjkCodePoint(codePointAt(text, i))) return true;
-    }
-    return false;
-  }
-
-  void _translate() {
-    ref
-        .read(translationControllerProvider.notifier)
-        .translate(_controller.text);
-  }
-
   Widget _buildEditor(BuildContext context) {
     return TextField(
       controller: _controller,
       maxLines: null,
       expands: true,
       textAlignVertical: TextAlignVertical.top,
-      style: ref.watch(settingsProvider.select((s) => s.paneTextStyle())),
+      style: ref.watch(
+        settingsProvider.select((s) => s.paneTextStyleFor(PaneId.source)),
+      ),
+      onChanged: (value) =>
+          ref.read(sourceDraftProvider.notifier).state = value,
       decoration: const InputDecoration(
         border: InputBorder.none,
         contentPadding: EdgeInsets.all(12),
@@ -195,8 +171,12 @@ class _SourcePaneState extends ConsumerState<SourcePane> {
               label: 'Thêm vào Names',
               onPressed: () {
                 editableTextState.hideToolbar();
-                showEntryEditDialog(context, ref,
-                    word: selection, toNames: true);
+                showEntryEditDialog(
+                  context,
+                  ref,
+                  word: selection,
+                  toNames: true,
+                );
               },
             ),
           );
@@ -211,75 +191,38 @@ class _SourcePaneState extends ConsumerState<SourcePane> {
 
   @override
   Widget build(BuildContext context) {
-    final mode =
-        ref.watch(translationControllerProvider.select((s) => s.mode));
-    final dictsLoading = ref.watch(dictionariesProvider).isLoading;
-
     // Tô nổi cụm đang chọn (đồng bộ với các pane khác).
     ref.listen(tokenSelectionProvider, (previous, next) {
-      _controller.setHighlight(next == null
-          ? null
-          : TextRange(start: next.start, end: next.end));
+      _controller.setHighlight(
+        next == null ? null : TextRange(start: next.start, end: next.end),
+      );
     });
 
     // Đồng bộ text khi dịch được kích hoạt từ ngoài (Dán & Dịch trên menu bar).
-    ref.listen(translationControllerProvider.select((s) => s.sourceText),
-        (previous, next) {
+    ref.listen(translationControllerProvider.select((s) => s.sourceText), (
+      previous,
+      next,
+    ) {
       if (_controller.text != next && next.isNotEmpty) {
         _controller.text = next;
+        ref.read(sourceDraftProvider.notifier).state = next;
       }
     });
 
     // Lắng nghe danh sách tokens khi dịch xong để tô đậm các từ có trong từ điển
-    ref.listen(translationControllerProvider.select((s) => s.tokens), (previous, next) {
+    ref.listen(translationControllerProvider.select((s) => s.tokens), (
+      previous,
+      next,
+    ) {
       _controller.setTokens(next);
     });
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          child: Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              // Theo dõi clipboard
-              IconButton(
-                icon: Icon(_watchingClipboard
-                    ? Icons.visibility
-                    : Icons.visibility_off_outlined),
-                isSelected: _watchingClipboard,
-                tooltip: _watchingClipboard
-                    ? 'Đang theo dõi clipboard (bấm để tắt)'
-                    : 'Theo dõi clipboard: tự dịch khi copy text CJK',
-                onPressed: _toggleClipboardWatch,
-                visualDensity: VisualDensity.compact,
-              ),
-              // Đọc TTS
-              TtsButton(
-                textProvider: () => _controller.text,
-                mode: mode,
-                tooltip: 'Đọc cả đoạn',
-              ),
-              const SizedBox(width: 4),
-              // Nút Dịch chính
-              FilledButton.icon(
-                icon: const Icon(Icons.translate, size: 16),
-                label: const Text('Dịch', style: TextStyle(fontSize: 13)),
-                onPressed: dictsLoading ? null : _translate,
-                style: FilledButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                ),
-              ),
-            ],
-          ),
-        ),
         Expanded(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+            padding: const EdgeInsets.all(8),
             child: DecoratedBox(
               decoration: BoxDecoration(
                 border: Border.all(

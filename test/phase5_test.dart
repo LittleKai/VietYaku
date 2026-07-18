@@ -26,8 +26,7 @@ void main() {
       await service.upsertUserDict('骸骨騎士', 'Kỵ sĩ xương');
       final bytes = service.userDictFile.readAsBytesSync();
       expect(bytes.sublist(0, 3), [0xEF, 0xBB, 0xBF], reason: 'UTF-8 BOM');
-      final entries =
-          parseEntries(service.userDictFile.readAsStringSync());
+      final entries = parseEntries(service.userDictFile.readAsStringSync());
       expect(entries['骸骨騎士'], 'Kỵ sĩ xương');
     });
 
@@ -50,14 +49,15 @@ void main() {
   });
 
   test('UserDict ưu tiên cao nhất khi cùng độ dài match', () {
-    final engine = TranslationEngine(dicts: [
-      PhraseDictionary(DictType.userDict, {'覚悟': 'nghĩa user'}),
-      PhraseDictionary(DictType.names, {'覚悟': 'nghĩa names'}),
-      PhraseDictionary(DictType.vietPhrase, {'覚悟': 'nghĩa vp'}),
-    ]);
+    final engine = TranslationEngine(
+      dicts: [
+        PhraseDictionary(DictType.userDict, {'覚悟': 'nghĩa user'}),
+        PhraseDictionary(DictType.names, {'覚悟': 'nghĩa names'}),
+        PhraseDictionary(DictType.vietPhrase, {'覚悟': 'nghĩa vp'}),
+      ],
+    );
     final tokens = engine.translate('覚悟');
     expect(tokens.single.meaning, 'nghĩa user');
     expect(tokens.single.dictType, DictType.userDict);
   });
-
 }

@@ -39,8 +39,15 @@ class _ResultPaneState extends ConsumerState<ResultPane>
     _vietController = TextEditingController();
   }
 
-  TabController _makeController({required int length, required int initialIndex}) {
-    final c = TabController(length: length, vsync: this, initialIndex: initialIndex);
+  TabController _makeController({
+    required int length,
+    required int initialIndex,
+  }) {
+    final c = TabController(
+      length: length,
+      vsync: this,
+      initialIndex: initialIndex,
+    );
     c.addListener(() {
       if (!c.indexIsChanging) setState(() {});
     });
@@ -68,10 +75,11 @@ class _ResultPaneState extends ConsumerState<ResultPane>
       _gtLoading = true;
       _gtText = null;
     });
-    final text = await ref.read(googleTranslateProvider).translate(
+    final text = await ref
+        .read(googleTranslateProvider)
+        .translate(
           state.sourceText,
-          sourceLang:
-              state.mode == TranslationMode.japanese ? 'ja' : 'zh-CN',
+          sourceLang: state.mode == TranslationMode.japanese ? 'ja' : 'zh-CN',
         );
     if (!mounted) return;
     setState(() {
@@ -90,11 +98,15 @@ class _ResultPaneState extends ConsumerState<ResultPane>
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(translationControllerProvider);
-    final String Function(Token) textOf =
-        _multiMeaning ? (t) => t.displayAll : (t) => t.display;
+    final String Function(Token) textOf = _multiMeaning
+        ? (t) => t.displayAll
+        : (t) => t.display;
 
     // Lắng nghe thay đổi của tokens để tự động điền gợi ý bản dịch thô vào ô Việt
-    ref.listen(translationControllerProvider.select((s) => s.tokens), (previous, next) {
+    ref.listen(translationControllerProvider.select((s) => s.tokens), (
+      previous,
+      next,
+    ) {
       if (next.isNotEmpty) {
         final plain = TokenTextView.plainText(next, (t) => t.display);
         _vietController.text = plain;
@@ -104,8 +116,10 @@ class _ResultPaneState extends ConsumerState<ResultPane>
     });
 
     // Đổi đoạn nguồn khi tab Google Dịch đang mở → dịch lại online.
-    ref.listen(translationControllerProvider.select((s) => s.sourceText),
-        (previous, next) {
+    ref.listen(translationControllerProvider.select((s) => s.sourceText), (
+      previous,
+      next,
+    ) {
       if (_gtTabOpen && next.isNotEmpty) _fetchGoogleTranslate();
     });
 
@@ -135,7 +149,8 @@ class _ResultPaneState extends ConsumerState<ResultPane>
           Expanded(child: _buildGoogleTranslateView(context))
         else if (!state.hasResult)
           const Expanded(
-              child: Center(child: Text('Kết quả dịch sẽ hiện ở đây')))
+            child: Center(child: Text('Kết quả dịch sẽ hiện ở đây')),
+          )
         else ...[
           // Phần 1: Vietphrase (chiếm flex 3)
           Expanded(
@@ -156,20 +171,28 @@ class _ResultPaneState extends ConsumerState<ResultPane>
                         icon: const Icon(Icons.copy, size: 18),
                         tooltip: 'Copy VietPhrase',
                         onPressed: () {
-                          final text =
-                              TokenTextView.plainText(state.tokens, textOf);
+                          final text = TokenTextView.plainText(
+                            state.tokens,
+                            textOf,
+                          );
                           Clipboard.setData(ClipboardData(text: text));
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                            content: Text('Đã copy VietPhrase'),
-                            duration: Duration(seconds: 1),
-                          ));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Đã copy VietPhrase'),
+                              duration: Duration(seconds: 1),
+                            ),
+                          );
                         },
                       ),
                     ],
                   ),
                 ),
                 Expanded(
-                  child: TokenTextView(tokens: state.tokens, textOf: textOf),
+                  child: TokenTextView(
+                    tokens: state.tokens,
+                    textOf: textOf,
+                    paneId: PaneId.vietPhrase,
+                  ),
                 ),
               ],
             ),
@@ -185,32 +208,43 @@ class _ResultPaneState extends ConsumerState<ResultPane>
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.edit_note, size: 20, color: Theme.of(context).colorScheme.primary),
+                      Icon(
+                        Icons.edit_note,
+                        size: 20,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
                       const SizedBox(width: 6),
                       Text(
                         'Bản dịch Việt',
                         style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
                       ),
                       const Spacer(),
                       IconButton(
                         icon: const Icon(Icons.copy, size: 18),
                         tooltip: 'Copy bản dịch Việt',
                         onPressed: () {
-                          Clipboard.setData(ClipboardData(text: _vietController.text));
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                            content: Text('Đã copy bản dịch Việt'),
-                            duration: Duration(seconds: 1),
-                          ));
+                          Clipboard.setData(
+                            ClipboardData(text: _vietController.text),
+                          );
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Đã copy bản dịch Việt'),
+                              duration: Duration(seconds: 1),
+                            ),
+                          );
                         },
                       ),
                       IconButton(
                         icon: const Icon(Icons.restart_alt, size: 18),
                         tooltip: 'Đặt lại theo VietPhrase',
                         onPressed: () {
-                          final plain = TokenTextView.plainText(state.tokens, (t) => t.display);
+                          final plain = TokenTextView.plainText(
+                            state.tokens,
+                            (t) => t.display,
+                          );
                           setState(() => _vietController.text = plain);
                         },
                       ),
@@ -224,9 +258,13 @@ class _ResultPaneState extends ConsumerState<ResultPane>
                       expands: true,
                       textAlignVertical: TextAlignVertical.top,
                       style: ref.watch(
-                          settingsProvider.select((s) => s.paneTextStyle())),
+                        settingsProvider.select(
+                          (s) => s.paneTextStyleFor(PaneId.viet),
+                        ),
+                      ),
                       decoration: InputDecoration(
-                        hintText: 'Nhập hoặc chỉnh sửa bản dịch thuần Việt tại đây...',
+                        hintText:
+                            'Nhập hoặc chỉnh sửa bản dịch thuần Việt tại đây...',
                         contentPadding: const EdgeInsets.all(10),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8),
@@ -268,11 +306,12 @@ class _ResultPaneState extends ConsumerState<ResultPane>
                     ? null
                     : () {
                         Clipboard.setData(ClipboardData(text: _gtText!));
-                        ScaffoldMessenger.of(context)
-                            .showSnackBar(const SnackBar(
-                          content: Text('Đã copy bản dịch Google'),
-                          duration: Duration(seconds: 1),
-                        ));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Đã copy bản dịch Google'),
+                            duration: Duration(seconds: 1),
+                          ),
+                        );
                       },
               ),
             ],
@@ -288,7 +327,10 @@ class _ResultPaneState extends ConsumerState<ResultPane>
                         'Không lấy được bản dịch (mạng hoặc Google chặn). '
                             'Bấm Dịch lại để thử.',
                     style: ref.watch(
-                        settingsProvider.select((s) => s.paneTextStyle())),
+                      settingsProvider.select(
+                        (s) => s.paneTextStyleFor(PaneId.viet),
+                      ),
+                    ),
                   ),
                 ),
         ),

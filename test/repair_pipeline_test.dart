@@ -11,8 +11,9 @@ void main() {
   setUpAll(() {
     // Asset thật đã commit (sinh bởi tool/build_simp2jp.dart).
     final tsv = File('assets/mappings/simp2jp.tsv').readAsStringSync();
-    final overrides =
-        File('assets/mappings/simp2jp_overrides.tsv').readAsStringSync();
+    final overrides = File(
+      'assets/mappings/simp2jp_overrides.tsv',
+    ).readAsStringSync();
     table = Simp2JpTable.parse(tsv, overridesTsv: overrides);
   });
 
@@ -69,9 +70,10 @@ void main() {
   });
 
   group('repairFile (test case bắt buộc, nguyên văn dữ liệu thật)', () {
-    RepairedFile run(String content,
-            [RepairPolicy policy = RepairPolicy.addVariant]) =>
-        repairFile(content, table, policy);
+    RepairedFile run(
+      String content, [
+      RepairPolicy policy = RepairPolicy.addVariant,
+    ]) => repairFile(content, table, policy);
 
     test('覚 悟 → 覚悟', () {
       final r = run('覚 悟=(kakugo)giác ngộ\r\n');
@@ -81,8 +83,7 @@ void main() {
 
     test('持 ち 歩 → 持ち歩 · 目 を 夺 → 目を奪', () {
       final r = run('持 ち 歩=mochiaru\r\n目 を 夺=ánh mắt bị hấp dẫn bởi\r\n');
-      expect(r.content,
-          '持ち歩=mochiaru\r\n目を奪=ánh mắt bị hấp dẫn bởi\r\n');
+      expect(r.content, '持ち歩=mochiaru\r\n目を奪=ánh mắt bị hấp dẫn bởi\r\n');
     });
 
     test('ワイトの 率 いるスケルトン 军 団 → ワイトの率いるスケルトン軍団', () {

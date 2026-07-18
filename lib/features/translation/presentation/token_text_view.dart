@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/entry_edit_dialog.dart';
 import '../../dictionary/domain/dict_type.dart';
+import '../../dictionary_sync/application/dictionary_sync_controller.dart';
+import '../../dictionary_sync/domain/shared_dictionary_entry.dart';
 import '../../settings/settings_provider.dart';
 import '../application/token_selection.dart';
 import '../domain/token.dart';
@@ -12,10 +15,16 @@ import '../domain/token.dart';
 /// Chuột phải → toolbar có "Sửa nghĩa"/"Thêm vào Names".
 /// [textOf] quyết định văn bản hiển thị (display / displayAll).
 class TokenTextView extends ConsumerWidget {
-  const TokenTextView({super.key, required this.tokens, required this.textOf});
+  const TokenTextView({
+    super.key,
+    required this.tokens,
+    required this.textOf,
+    required this.paneId,
+  });
 
   final List<Token> tokens;
   final String Function(Token) textOf;
+  final PaneId paneId;
 
   /// Ghép text thuần từ [tokens] theo cùng quy tắc render (dùng cho nút copy).
   static String plainText(List<Token> tokens, String Function(Token) textOf) {
@@ -52,11 +61,13 @@ class TokenTextView extends ConsumerWidget {
           if (i > 0) paragraphs.add([]);
           final text = parts[i].replaceAll('\r', '');
           if (text.isNotEmpty) {
-            paragraphs.last.add(Token(
-              source: text,
-              sourceStart: token.sourceStart,
-              kind: TokenKind.passthrough,
-            ));
+            paragraphs.last.add(
+              Token(
+                source: text,
+                sourceStart: token.sourceStart,
+                kind: TokenKind.passthrough,
+              ),
+            );
           }
         }
       } else {
@@ -68,22 +79,27 @@ class TokenTextView extends ConsumerWidget {
   }
 
   TextStyle _styleFor(
-      Token token, ColorScheme scheme, TokenSelection? selection) {
+    Token token,
+    ColorScheme scheme,
+    AppSemanticColors sem,
+    TokenSelection? selection,
+  ) {
     if (selection != null &&
         token.kind != TokenKind.passthrough &&
         token.sourceStart < selection.end &&
         selection.start < token.sourceStart + token.source.length) {
-      return const TextStyle(color: Colors.red, fontWeight: FontWeight.bold);
+      return TextStyle(color: sem.highlight, fontWeight: FontWeight.bold);
     }
     switch (token.kind) {
       case TokenKind.matched:
         switch (token.dictType) {
           case DictType.userDict:
             return TextStyle(
-                color: scheme.tertiary, fontWeight: FontWeight.w600);
+              color: scheme.tertiary,
+              fontWeight: FontWeight.w600,
+            );
           case DictType.names:
-            return const TextStyle(
-                color: Colors.teal, fontWeight: FontWeight.w600);
+            return TextStyle(color: sem.nameToken, fontWeight: FontWeight.w600);
           default:
             return TextStyle(color: scheme.onSurface);
         }
@@ -96,29 +112,69 @@ class TokenTextView extends ConsumerWidget {
     }
   }
 
-  Widget _contextMenu(BuildContext context, WidgetRef ref,
-      EditableTextState editableTextState) {
+  Widget _contextMenu(
+    BuildContext context,
+    WidgetRef ref,
+    EditableTextState editableTextState,
+  ) {
     final selection = ref.read(tokenSelectionProvider);
     final items = [...editableTextState.contextMenuButtonItems];
     if (selection != null) {
-      items.insertAll(0, [
+      final dictionaryItems = <ContextMenuButtonItem>[
         ContextMenuButtonItem(
           label: 'Sửa nghĩa "${selection.word}" (UserDict)',
           onPressed: () {
             editableTextState.hideToolbar();
-            showEntryEditDialog(context, ref,
-                word: selection.word, toNames: false);
+            showEntryEditDialog(
+              context,
+              ref,
+              word: selection.word,
+              toNames: false,
+            );
           },
         ),
         ContextMenuButtonItem(
           label: 'Thêm "${selection.word}" vào Names',
           onPressed: () {
             editableTextState.hideToolbar();
-            showEntryEditDialog(context, ref,
-                word: selection.word, toNames: true);
+            showEntryEditDialog(
+              context,
+              ref,
+              word: selection.word,
+              toNames: true,
+            );
           },
         ),
-      ]);
+      ];
+      if (ref.read(dictionarySyncProvider).isAdmin) {
+        dictionaryItems.addAll([
+          ContextMenuButtonItem(
+            label: 'Cập nhật "${selection.word}" vào VietPhrase chung',
+            onPressed: () {
+              editableTextState.hideToolbar();
+              showSharedEntryEditDialog(
+                context,
+                ref,
+                word: selection.word,
+                kind: SharedDictionaryKind.vietPhrase,
+              );
+            },
+          ),
+          ContextMenuButtonItem(
+            label: 'Cập nhật "${selection.word}" vào Lạc Việt chung',
+            onPressed: () {
+              editableTextState.hideToolbar();
+              showSharedEntryEditDialog(
+                context,
+                ref,
+                word: selection.word,
+                kind: SharedDictionaryKind.lacViet,
+              );
+            },
+          ),
+        ]);
+      }
+      items.insertAll(0, dictionaryItems);
     }
     return AdaptiveTextSelectionToolbar.buttonItems(
       anchors: editableTextState.contextMenuAnchors,
@@ -129,9 +185,11 @@ class TokenTextView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
+    final sem = AppSemanticColors.of(context);
     final selection = ref.watch(tokenSelectionProvider);
-    final paneStyle =
-        ref.watch(settingsProvider.select((s) => s.paneTextStyle()));
+    final paneStyle = ref.watch(
+      settingsProvider.select((s) => s.paneTextStyleFor(paneId)),
+    );
     final paras = paragraphs(tokens);
 
     return ListView.builder(
@@ -149,8 +207,12 @@ class TokenTextView extends ConsumerWidget {
           if (_shouldCapitalize(paragraph, i, textOf)) {
             text = _capitalize(text);
           }
-          spans.add(TextSpan(
-              text: text, style: _styleFor(token, scheme, selection)));
+          spans.add(
+            TextSpan(
+              text: text,
+              style: _styleFor(token, scheme, sem, selection),
+            ),
+          );
           if (token.kind != TokenKind.passthrough) {
             ranges.add((offset, offset + text.length, token));
           }
@@ -167,10 +229,7 @@ class TokenTextView extends ConsumerWidget {
         return Padding(
           padding: const EdgeInsets.only(bottom: 10),
           child: SelectableText.rich(
-            TextSpan(
-              style: paneStyle,
-              children: spans,
-            ),
+            TextSpan(style: paneStyle, children: spans),
             onSelectionChanged: (textSelection, cause) {
               if (!textSelection.isValid || !textSelection.isCollapsed) {
                 return;
@@ -178,9 +237,7 @@ class TokenTextView extends ConsumerWidget {
               final caret = textSelection.baseOffset;
               for (final (start, end, token) in ranges) {
                 if (caret >= start && caret < end) {
-                  ref
-                      .read(tokenSelectionProvider.notifier)
-                      .selectToken(token);
+                  ref.read(tokenSelectionProvider.notifier).selectToken(token);
                   return;
                 }
               }
@@ -201,13 +258,20 @@ class TokenTextView extends ConsumerWidget {
     return const {',', '.', '!', '?', ':', ';', ')', '}', ']'}.contains(first);
   }
 
-  static bool _shouldCapitalize(List<Token> paragraph, int index, String Function(Token) textOf) {
+  /// Ký tự kết câu (ASCII + toàn-hình CJK) → chữ Việt kế tiếp viết hoa.
+  static const _sentenceEnders = {'.', '!', '?', '…', '。', '．', '！', '？', '⋯'};
+
+  static bool _shouldCapitalize(
+    List<Token> paragraph,
+    int index,
+    String Function(Token) textOf,
+  ) {
     if (index == 0) return true;
     for (var j = index - 1; j >= 0; j--) {
       final prevText = textOf(paragraph[j]).trim();
       if (prevText.isEmpty) continue;
       final lastChar = prevText[prevText.length - 1];
-      if (const {'.', '!', '?'}.contains(lastChar)) {
+      if (_sentenceEnders.contains(lastChar)) {
         return true;
       }
       break;
@@ -220,7 +284,9 @@ class TokenTextView extends ConsumerWidget {
     for (var i = 0; i < text.length; i++) {
       final char = text[i];
       if (RegExp(r'[a-zA-Zà-ỹÀ-Ỹ]').hasMatch(char)) {
-        return text.substring(0, i) + char.toUpperCase() + text.substring(i + 1);
+        return text.substring(0, i) +
+            char.toUpperCase() +
+            text.substring(i + 1);
       }
       if (RegExp(r'[0-9]').hasMatch(char)) break;
     }

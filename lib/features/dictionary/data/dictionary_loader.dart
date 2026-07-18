@@ -14,7 +14,11 @@ class LoadResult {
   final bool fromCache;
   final int elapsedMs;
 
-  const LoadResult(this.dictionary, {required this.fromCache, required this.elapsedMs});
+  const LoadResult(
+    this.dictionary, {
+    required this.fromCache,
+    required this.elapsedMs,
+  });
 }
 
 /// Load một từ điển trong isolate riêng: đọc cache .vydc nếu còn hiệu lực,
@@ -25,11 +29,13 @@ Future<LoadResult> loadDictionary({
   required String cachePath,
   required DictType type,
 }) {
-  return Isolate.run(() => loadDictionarySync(
-        sourcePath: sourcePath,
-        cachePath: cachePath,
-        type: type,
-      ));
+  return Isolate.run(
+    () => loadDictionarySync(
+      sourcePath: sourcePath,
+      cachePath: cachePath,
+      type: type,
+    ),
+  );
 }
 
 /// Bản đồng bộ (chạy được trong isolate lẫn test).
@@ -41,8 +47,11 @@ LoadResult loadDictionarySync({
   final sw = Stopwatch()..start();
   final srcFile = File(sourcePath);
   if (!srcFile.existsSync()) {
-    return LoadResult(PhraseDictionary(type, {}),
-        fromCache: false, elapsedMs: 0);
+    return LoadResult(
+      PhraseDictionary(type, {}),
+      fromCache: false,
+      elapsedMs: 0,
+    );
   }
 
   final stat = srcFile.statSync();
@@ -55,12 +64,19 @@ LoadResult loadDictionarySync({
   final cacheFile = File(cachePath);
   if (cacheFile.existsSync()) {
     final cacheBytes = cacheFile.readAsBytesSync();
-    if (BinaryCache.isValid(cacheBytes,
-        srcSize: srcSize, srcMtimeMs: srcMtimeMs, readSrcBytes: readSrcBytes)) {
+    if (BinaryCache.isValid(
+      cacheBytes,
+      srcSize: srcSize,
+      srcMtimeMs: srcMtimeMs,
+      readSrcBytes: readSrcBytes,
+    )) {
       final entries = BinaryCache.decode(cacheBytes);
       if (entries != null) {
-        return LoadResult(PhraseDictionary(type, entries),
-            fromCache: true, elapsedMs: sw.elapsedMilliseconds);
+        return LoadResult(
+          PhraseDictionary(type, entries),
+          fromCache: true,
+          elapsedMs: sw.elapsedMilliseconds,
+        );
       }
     }
   }
@@ -74,15 +90,20 @@ LoadResult loadDictionarySync({
       : parseEntries(content);
   try {
     cacheFile.parent.createSync(recursive: true);
-    cacheFile.writeAsBytesSync(BinaryCache.encode(
-      entries,
-      srcHash: fnv1a64(bytes),
-      srcSize: srcSize,
-      srcMtimeMs: srcMtimeMs,
-    ));
+    cacheFile.writeAsBytesSync(
+      BinaryCache.encode(
+        entries,
+        srcHash: fnv1a64(bytes),
+        srcSize: srcSize,
+        srcMtimeMs: srcMtimeMs,
+      ),
+    );
   } on FileSystemException {
     // Ghi cache thất bại không chặn việc dùng dict.
   }
-  return LoadResult(PhraseDictionary(type, entries),
-      fromCache: false, elapsedMs: sw.elapsedMilliseconds);
+  return LoadResult(
+    PhraseDictionary(type, entries),
+    fromCache: false,
+    elapsedMs: sw.elapsedMilliseconds,
+  );
 }

@@ -14,11 +14,13 @@ import 'package:vietyaku/features/translation/presentation/translate_screen.dart
 const sourceDir = r'C:\Users\XEON\My Drive\JP CN Tool\QuickTranslator_Jap';
 
 void main() {
-  final available = File('$sourceDir\\VietPhrase.txt').existsSync() &&
+  final available =
+      File('$sourceDir\\VietPhrase.txt').existsSync() &&
       File('$sourceDir\\LacViet.txt').existsSync();
 
-  testWidgets('end-to-end: dịch đoạn Nhật thật, click token ra nghĩa',
-      (tester) async {
+  testWidgets('end-to-end: dịch đoạn Nhật thật, click token ra nghĩa', (
+    tester,
+  ) async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
     final temp = Directory.systemTemp.createTempSync('vy_flow');
@@ -27,23 +29,29 @@ void main() {
     paths.cacheDir.createSync(recursive: true);
     paths.dictionariesDir.createSync(recursive: true);
 
-    await tester.pumpWidget(ProviderScope(
-      overrides: [
-        sharedPreferencesProvider.overrideWithValue(prefs),
-        appPathsProvider.overrideWith((ref) async => paths),
-      ],
-      child: const MaterialApp(home: Scaffold(body: TranslateScreen())),
-    ));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          appPathsProvider.overrideWith((ref) async => paths),
+        ],
+        child: const MaterialApp(home: Scaffold(body: TranslateScreen())),
+      ),
+    );
 
     // Chờ 6 dict load xong trong isolate (cold parse file thật).
     for (var i = 0; i < 120; i++) {
-      await tester.runAsync(() => Future.delayed(
-          const Duration(milliseconds: 250)));
+      await tester.runAsync(
+        () => Future.delayed(const Duration(milliseconds: 250)),
+      );
       await tester.pump();
       if (find.byType(LinearProgressIndicator).evaluate().isEmpty) break;
     }
-    expect(find.byType(LinearProgressIndicator), findsNothing,
-        reason: 'dictionaries phải load xong');
+    expect(
+      find.byType(LinearProgressIndicator),
+      findsNothing,
+      reason: 'dictionaries phải load xong',
+    );
 
     // Dán đoạn Nhật thật rồi bấm Dịch.
     await tester.enterText(find.byType(TextField).first, '覇権を握る覚悟だ');
@@ -56,7 +64,8 @@ void main() {
     // Mô phỏng click token → panel LacViet hiện nghĩa + reading.
     // (`翻译` là entry key lành trong LacViet thật, value có ✚[fānyì].)
     final container = ProviderScope.containerOf(
-        tester.element(find.byType(TranslateScreen)));
+      tester.element(find.byType(TranslateScreen)),
+    );
     container.read(lookupControllerProvider.notifier).lookup('翻译');
     await tester.pump();
 
@@ -75,17 +84,23 @@ void main() {
     await tester.tap(find.text('Hán Việt'));
     await tester.pump();
     final state = container.read(translationControllerProvider);
-    expect(state.hanVietTokens, isNotEmpty,
-        reason: 'hanVietTokens phải được tính cùng lượt dịch');
+    expect(
+      state.hanVietTokens,
+      isNotEmpty,
+      reason: 'hanVietTokens phải được tính cùng lượt dịch',
+    );
 
     // Tab đa nghĩa (cột phải): đổi tab không dịch lại, token giữ nguyên.
     final tokensBefore = state.tokens;
     await tester.tap(find.text('VietPhrase (đa nghĩa)'));
     await tester.pump();
     expect(
-        identical(
-            container.read(translationControllerProvider).tokens, tokensBefore),
-        isTrue,
-        reason: 'đổi tab hiển thị không được re-translate');
+      identical(
+        container.read(translationControllerProvider).tokens,
+        tokensBefore,
+      ),
+      isTrue,
+      reason: 'đổi tab hiển thị không được re-translate',
+    );
   }, skip: !available); // cần dữ liệu QuickTranslator_Jap thật
 }

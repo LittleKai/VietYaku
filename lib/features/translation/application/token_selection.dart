@@ -12,8 +12,11 @@ class TokenSelection {
   final int end;
   final String word;
 
-  const TokenSelection(
-      {required this.start, required this.end, required this.word});
+  const TokenSelection({
+    required this.start,
+    required this.end,
+    required this.word,
+  });
 }
 
 class TokenSelectionNotifier extends Notifier<TokenSelection?> {
@@ -27,8 +30,11 @@ class TokenSelectionNotifier extends Notifier<TokenSelection?> {
   /// Chọn 1 token (từ ô kết quả / Hán Việt).
   void selectToken(Token token) {
     if (token.kind == TokenKind.passthrough) return;
-    _apply(token.sourceStart, token.sourceStart + token.source.length,
-        token.source);
+    _apply(
+      token.sourceStart,
+      token.sourceStart + token.source.length,
+      token.source,
+    );
   }
 
   /// Chọn theo vị trí caret trong văn bản nguồn → cụm chứa vị trí đó.
@@ -36,8 +42,7 @@ class TokenSelectionNotifier extends Notifier<TokenSelection?> {
     final tokens = ref.read(translationControllerProvider).tokens;
     for (final t in tokens) {
       if (t.kind == TokenKind.passthrough) continue;
-      if (offset >= t.sourceStart &&
-          offset < t.sourceStart + t.source.length) {
+      if (offset >= t.sourceStart && offset < t.sourceStart + t.source.length) {
         _apply(t.sourceStart, t.sourceStart + t.source.length, t.source);
         return;
       }
@@ -70,4 +75,5 @@ class TokenSelectionNotifier extends Notifier<TokenSelection?> {
 
 final tokenSelectionProvider =
     NotifierProvider<TokenSelectionNotifier, TokenSelection?>(
-        TokenSelectionNotifier.new);
+      TokenSelectionNotifier.new,
+    );

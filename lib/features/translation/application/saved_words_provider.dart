@@ -20,19 +20,19 @@ class SavedWord {
   });
 
   Map<String, dynamic> toJson() => {
-        'word': word,
-        'reading': reading,
-        'meaning': meaning,
-        'saved_at': savedAt.toIso8601String(),
-      };
+    'word': word,
+    'reading': reading,
+    'meaning': meaning,
+    'saved_at': savedAt.toIso8601String(),
+  };
 
   factory SavedWord.fromJson(Map<String, dynamic> json) => SavedWord(
-        word: json['word'] as String,
-        reading: json['reading'] as String?,
-        meaning: json['meaning'] as String? ?? '',
-        savedAt: DateTime.tryParse(json['saved_at'] as String? ?? '') ??
-            DateTime.now(),
-      );
+    word: json['word'] as String,
+    reading: json['reading'] as String?,
+    meaning: json['meaning'] as String? ?? '',
+    savedAt:
+        DateTime.tryParse(json['saved_at'] as String? ?? '') ?? DateTime.now(),
+  );
 }
 
 /// Danh sách từ đã lưu (appdata/saved_words.json) + export deck vocabflip.
@@ -60,8 +60,10 @@ class SavedWordsNotifier extends AsyncNotifier<List<SavedWord>> {
     current.add(word);
     state = AsyncData(current);
     await _file!.writeAsString(
-        const JsonEncoder.withIndent('  ')
-            .convert(current.map((w) => w.toJson()).toList()));
+      const JsonEncoder.withIndent(
+        '  ',
+      ).convert(current.map((w) => w.toJson()).toList()),
+    );
   }
 
   /// Deck JSON tương thích vocabflip (khảo sát Phase 0):
@@ -96,4 +98,5 @@ class SavedWordsNotifier extends AsyncNotifier<List<SavedWord>> {
 
 final savedWordsProvider =
     AsyncNotifierProvider<SavedWordsNotifier, List<SavedWord>>(
-        SavedWordsNotifier.new);
+      SavedWordsNotifier.new,
+    );

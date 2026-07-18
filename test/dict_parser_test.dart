@@ -6,21 +6,24 @@ void main() {
   group('parseCedictEntries', () {
     test('parse dòng CC-CEDICT: key trad + simp, value [pinyin] defs', () {
       final entries = parseCedictEntries(
-          '# comment\n看來 看来 [kan4 lai5] /apparently/it seems that/\n');
+        '# comment\n看來 看来 [kan4 lai5] /apparently/it seems that/\n',
+      );
       expect(entries['看來'], '[kan4 lai5] apparently; it seems that');
       expect(entries['看来'], '[kan4 lai5] apparently; it seems that');
     });
 
     test('trad == simp chỉ tạo 1 key; dòng hỏng bị bỏ qua', () {
       final entries = parseCedictEntries(
-          '一 一 [yi1] /one/single/\ndòng rác không đúng dạng\n');
+        '一 一 [yi1] /one/single/\ndòng rác không đúng dạng\n',
+      );
       expect(entries, hasLength(1));
       expect(entries['一'], '[yi1] one; single');
     });
 
     test('key trùng giữ entry đầu', () {
       final entries = parseCedictEntries(
-          '看 看 [kan4] /to see/\n看 看 [kan1] /to look after/\n');
+        '看 看 [kan4] /to see/\n看 看 [kan1] /to look after/\n',
+      );
       expect(entries['看'], '[kan4] to see');
     });
   });
@@ -61,8 +64,10 @@ void main() {
 
   group('parseDictionary index', () {
     test('maxLenByFirstUnit tracks longest key per first code unit', () {
-      final dict = parseDictionary('覚=giác\n覚悟=giác ngộ\n持ち歩=mang theo\n',
-          DictType.vietPhrase);
+      final dict = parseDictionary(
+        '覚=giác\n覚悟=giác ngộ\n持ち歩=mang theo\n',
+        DictType.vietPhrase,
+      );
       expect(dict.maxLenFor('覚'.codeUnitAt(0)), 2);
       expect(dict.maxLenFor('持'.codeUnitAt(0)), 3);
       expect(dict.maxLenFor('無'.codeUnitAt(0)), 0);

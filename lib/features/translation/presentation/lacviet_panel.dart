@@ -14,8 +14,7 @@ class LacVietPanel extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final result = ref.watch(lookupControllerProvider);
-    final mode =
-        ref.watch(translationControllerProvider.select((s) => s.mode));
+    final mode = ref.watch(translationControllerProvider.select((s) => s.mode));
     final theme = Theme.of(context);
 
     return Column(
@@ -24,8 +23,10 @@ class LacVietPanel extends ConsumerWidget {
         if (result == null)
           const Expanded(
             child: Center(
-              child: Text('Nháy chuột vào chữ trong ô Nguồn\nhoặc kết quả dịch',
-                  textAlign: TextAlign.center),
+              child: Text(
+                'Nháy chuột vào chữ trong ô Nguồn\nhoặc kết quả dịch',
+                textAlign: TextAlign.center,
+              ),
             ),
           )
         else ...[
@@ -49,7 +50,8 @@ class LacVietPanel extends ConsumerWidget {
                               'Hán Việt: ${result.hanViet}',
                           ].join(' · '),
                           style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant),
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
                         ),
                     ],
                   ),
@@ -63,8 +65,12 @@ class LacVietPanel extends ConsumerWidget {
                 IconButton(
                   icon: const Icon(Icons.edit),
                   tooltip: 'Sửa nghĩa (UserDict — ưu tiên cao nhất)',
-                  onPressed: () => showEntryEditDialog(context, ref,
-                      word: result.word, toNames: false),
+                  onPressed: () => showEntryEditDialog(
+                    context,
+                    ref,
+                    word: result.word,
+                    toNames: false,
+                  ),
                 ),
               ],
             ),
@@ -77,10 +83,13 @@ class LacVietPanel extends ConsumerWidget {
                 result.sections.isEmpty
                     ? 'Không tìm thấy trong từ điển.'
                     : result.sections
-                        .map((s) => s.displayText)
-                        .join('\n-----------------\n'),
+                          .map((s) => s.displayText)
+                          .join('\n-----------------\n'),
                 style: ref.watch(
-                    settingsProvider.select((s) => s.paneTextStyle())),
+                  settingsProvider.select(
+                    (s) => s.paneTextStyleFor(PaneId.meaning),
+                  ),
+                ),
               ),
             ),
           ),
@@ -112,24 +121,26 @@ class _OnlineLookupButtonState extends ConsumerState<_OnlineLookupButton> {
     if (!ok) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-            content: Text('Không lấy được nghĩa online (mạng hoặc không có).')),
+          content: Text('Không lấy được nghĩa online (mạng hoặc không có).'),
+        ),
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
-      return const Padding(
-        padding: EdgeInsets.all(12),
-        child: SizedBox(
-            width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-      );
-    }
+    // Giữ nguyên IconButton (không đổi loại widget khi loading) để tránh
+    // teardown node semantics giữa chừng → lỗi accessibility_bridge AXTree 107.
     return IconButton(
-      icon: const Icon(Icons.travel_explore),
+      icon: _loading
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(Icons.travel_explore),
       tooltip: 'Tra thêm nghĩa online (Nhật: Mazii, Trung: Google Dịch)',
-      onPressed: _fetch,
+      onPressed: _loading ? null : _fetch,
     );
   }
 }

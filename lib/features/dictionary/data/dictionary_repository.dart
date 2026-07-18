@@ -48,13 +48,12 @@ class LoadedDictionaries {
   TranslationEngine engineWith({
     TranslationAlgorithm algorithm = TranslationAlgorithm.leftToRight,
     bool prioritizeNames = false,
-  }) =>
-      TranslationEngine(
-        dicts: [userDict, names, vietPhrase],
-        hanVietFallback: chinesePhienAm,
-        algorithm: algorithm,
-        prioritizeNames: prioritizeNames,
-      );
+  }) => TranslationEngine(
+    dicts: [userDict, names, vietPhrase],
+    hanVietFallback: chinesePhienAm,
+    algorithm: algorithm,
+    prioritizeNames: prioritizeNames,
+  );
 
   /// Engine phiên âm Hán Việt toàn văn (tab Hán Việt).
   TranslationEngine get hanVietEngine =>
@@ -68,8 +67,11 @@ class DictionaryRepository {
 
   /// File đã sửa trong appdata (`<tên>_JP.txt`) được ưu tiên hơn file nguồn.
   /// Chỉ áp dụng cho mode Nhật — bộ CN dùng thẳng file cấu hình.
-  String resolveSourcePath(DictType type, String configuredPath,
-      {required TranslationMode mode}) {
+  String resolveSourcePath(
+    DictType type,
+    String configuredPath, {
+    required TranslationMode mode,
+  }) {
     if (mode != TranslationMode.japanese) return configuredPath;
     final base = p.basenameWithoutExtension(configuredPath);
     final repaired = p.join(paths.dictionariesDir.path, '${base}_JP.txt');
@@ -82,14 +84,21 @@ class DictionaryRepository {
   String get userNamesPath =>
       p.join(paths.dictionariesDir.path, 'UserNames.txt');
 
-  Future<LoadedDictionaries> loadAll(Map<DictType, String> dictPaths,
-      {required TranslationMode mode}) async {
-    Future<LoadResult> loadPath(DictType type, String source) =>
-        loadDictionary(
-          sourcePath: source,
-          cachePath: paths.cacheFileFor(source),
-          type: type,
-        );
+  String sharedVietPhrasePath(TranslationMode mode) =>
+      p.join(paths.dictionariesDir.path, 'SharedVietPhrase_${mode.name}.txt');
+
+  String sharedLacVietPath(TranslationMode mode) =>
+      p.join(paths.dictionariesDir.path, 'SharedLacViet_${mode.name}.txt');
+
+  Future<LoadedDictionaries> loadAll(
+    Map<DictType, String> dictPaths, {
+    required TranslationMode mode,
+  }) async {
+    Future<LoadResult> loadPath(DictType type, String source) => loadDictionary(
+      sourcePath: source,
+      cachePath: paths.cacheFileFor(source),
+      type: type,
+    );
 
     Future<LoadResult> load(DictType type) {
       final source = type == DictType.userDict
@@ -112,21 +121,42 @@ class DictionaryRepository {
       load(DictType.jaVi),
       load(DictType.zhVi),
       loadPath(DictType.names, userNamesPath), // overlay "Thêm vào Names"
+      loadPath(DictType.vietPhrase, sharedVietPhrasePath(mode)),
+      loadPath(DictType.lacViet, sharedLacVietPath(mode)),
     ]);
 
-    // UserNames overlay đè lên Names gốc (không đụng file gốc).
     var names = results[1].dictionary;
     final userNames = results[12].dictionary;
     if (!userNames.isEmpty) {
-      names = PhraseDictionary(
-          DictType.names, {...names.entries, ...userNames.entries});
+      names = PhraseDictionary(DictType.names, {
+        ...names.entries,
+        ...userNames.entries,
+      });
+    }
+
+    var vietPhrase = results[2].dictionary;
+    final sharedVietPhrase = results[13].dictionary;
+    if (!sharedVietPhrase.isEmpty) {
+      vietPhrase = PhraseDictionary(DictType.vietPhrase, {
+        ...vietPhrase.entries,
+        ...sharedVietPhrase.entries,
+      });
+    }
+
+    var lacViet = results[3].dictionary;
+    final sharedLacViet = results[14].dictionary;
+    if (!sharedLacViet.isEmpty) {
+      lacViet = PhraseDictionary(DictType.lacViet, {
+        ...lacViet.entries,
+        ...sharedLacViet.entries,
+      });
     }
 
     return LoadedDictionaries(
       userDict: results[0].dictionary,
       names: names,
-      vietPhrase: results[2].dictionary,
-      lacViet: results[3].dictionary,
+      vietPhrase: vietPhrase,
+      lacViet: lacViet,
       chinesePhienAm: results[4].dictionary,
       pronouns: results[5].dictionary,
       babylon: results[6].dictionary,

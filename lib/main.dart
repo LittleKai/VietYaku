@@ -22,8 +22,10 @@ Future<void> main() async {
     await windowManager.focus();
   });
 
-  runApp(ProviderScope(
-    overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
-    child: const VietYakuApp(),
-  ));
+  runApp(
+    ProviderScope(
+      overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+      child: const VietYakuApp(),
+    ),
+  );
 }

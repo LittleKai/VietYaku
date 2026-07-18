@@ -1,72 +1,55 @@
-import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
+import '../../dictionary/domain/dict_type.dart';
+import '../../settings/settings_provider.dart';
+import '../../translation/application/translation_controller.dart';
+import '../../translation/domain/translation_engine.dart';
 import '../application/repair_controller.dart';
-import '../domain/jp_repair_pipeline.dart';
-import 'repair_preview.dart';
 
 class RepairScreen extends ConsumerWidget {
   const RepairScreen({super.key});
-
-  Future<void> _pickFile(WidgetRef ref) async {
-    const typeGroup = XTypeGroup(label: 'Text', extensions: ['txt']);
-    final file = await openFile(acceptedTypeGroups: [typeGroup]);
-    if (file != null) {
-      await ref.read(repairControllerProvider.notifier).pickFile(file.path);
-    }
-  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(repairControllerProvider);
     final notifier = ref.read(repairControllerProvider.notifier);
+    final mode = ref.watch(currentModeProvider);
+    final settings = ref.watch(settingsProvider);
+    final paths = settings.dictPathsFor(mode);
     final report = state.report;
+    final modeLabel = mode == TranslationMode.japanese ? 'Nhật' : 'Trung';
 
     return Padding(
       padding: const EdgeInsets.all(12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              FilledButton.tonalIcon(
-                icon: const Icon(Icons.folder_open),
-                label: const Text('Chọn file từ điển'),
-                onPressed: state.running ? null : () => _pickFile(ref),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(state.filePath ?? 'Chưa chọn file',
-                    overflow: TextOverflow.ellipsis),
-              ),
-            ],
+          Text(
+            'Sửa từ điển ($modeLabel)',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Chọn 1 file trong bộ data/${modeDirNames[mode]} để sửa key (xóa '
+            'space + simp→JP). Chính sách "Key thuần Hán" chỉnh trong Cài đặt.',
+            style: Theme.of(context).textTheme.bodySmall,
           ),
           const SizedBox(height: 12),
           Row(
             children: [
-              const Text('Key thuần Hán: '),
-              const SizedBox(width: 8),
-              SegmentedButton<RepairPolicy>(
-                segments: const [
-                  ButtonSegment(
-                    value: RepairPolicy.addVariant,
-                    label: Text('Giữ gốc + thêm bản JP'),
-                  ),
-                  ButtonSegment(
-                    value: RepairPolicy.convert,
-                    label: Text('Convert hết'),
-                  ),
-                  ButtonSegment(
-                    value: RepairPolicy.keepOnly,
-                    label: Text('Không convert'),
-                  ),
+              DropdownMenu<DictType>(
+                width: 340,
+                enabled: !state.running,
+                label: const Text('File từ điển'),
+                onSelected: (type) {
+                  if (type != null) notifier.pickFile(paths[type]!);
+                },
+                dropdownMenuEntries: [
+                  for (final type in dictFileNames.keys)
+                    DropdownMenuEntry(value: type, label: dictFileNames[type]!),
                 ],
-                selected: {state.policy},
-                onSelectionChanged: state.running
-                    ? null
-                    : (selection) => notifier.setPolicy(selection.first),
               ),
               const Spacer(),
               FilledButton.icon(
@@ -78,6 +61,14 @@ class RepairScreen extends ConsumerWidget {
               ),
             ],
           ),
+          if (state.filePath != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              state.filePath!,
+              style: Theme.of(context).textTheme.bodySmall,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
           if (state.running) ...[
             const SizedBox(height: 12),
             LinearProgressIndicator(value: state.progress),
@@ -85,28 +76,13 @@ class RepairScreen extends ConsumerWidget {
           if (state.error != null)
             Padding(
               padding: const EdgeInsets.only(top: 8),
-              child: Text(state.error!,
-                  style:
-                      TextStyle(color: Theme.of(context).colorScheme.error)),
+              child: Text(
+                state.error!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
             ),
           const SizedBox(height: 12),
           if (report != null) _ReportCard(state: state, notifier: notifier),
-          const SizedBox(height: 8),
-          Text(
-            report == null
-                ? 'Preview (50 dòng thay đổi đầu tiên):'
-                : 'Preview:',
-            style: Theme.of(context).textTheme.titleSmall,
-          ),
-          const SizedBox(height: 4),
-          Expanded(
-            child: Card(
-              margin: EdgeInsets.zero,
-              child: state.fileContent == null
-                  ? const Center(child: Text('Chọn file để xem preview'))
-                  : RepairPreview(pairs: state.preview),
-            ),
-          ),
         ],
       ),
     );
@@ -144,26 +120,36 @@ class _ReportCard extends ConsumerWidget {
               ExpansionTile(
                 dense: true,
                 title: Text(
-                    'Conflict (giữ dòng đầu) — ${report.conflicts.length}'),
+                  'Conflict (giữ dòng đầu) — ${report.conflicts.length}',
+                ),
                 children: [
                   for (final c in report.conflicts.take(100))
                     ListTile(
-                        dense: true,
-                        title: Text(c,
-                            maxLines: 1, overflow: TextOverflow.ellipsis)),
+                      dense: true,
+                      title: Text(
+                        c,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                 ],
               ),
             if (report.ambiguous.isNotEmpty)
               ExpansionTile(
                 dense: true,
                 title: Text(
-                    'Ambiguous (không convert) — ${report.ambiguous.length}'),
+                  'Ambiguous (không convert) — ${report.ambiguous.length}',
+                ),
                 children: [
                   for (final e in report.ambiguous.entries)
                     ListTile(
-                        dense: true,
-                        title: Text('${e.key} → ${e.value}',
-                            maxLines: 1, overflow: TextOverflow.ellipsis)),
+                      dense: true,
+                      title: Text(
+                        '${e.key} → ${e.value}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                 ],
               ),
             const SizedBox(height: 4),
@@ -171,11 +157,14 @@ class _ReportCard extends ConsumerWidget {
               children: [
                 FilledButton.tonalIcon(
                   icon: const Icon(Icons.save),
-                  label: Text(state.exportedPath == null
-                      ? 'Xuất file _JP.txt'
-                      : 'Đã xuất: ${p.basename(state.exportedPath!)}'),
-                  onPressed:
-                      state.exportedPath == null ? notifier.export : null,
+                  label: Text(
+                    state.exportedPath == null
+                        ? 'Xuất file _JP.txt'
+                        : 'Đã xuất: ${p.basename(state.exportedPath!)}',
+                  ),
+                  onPressed: state.exportedPath == null
+                      ? notifier.export
+                      : null,
                 ),
                 const SizedBox(width: 12),
                 FilledButton.icon(

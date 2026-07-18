@@ -18,15 +18,23 @@ void main() {
 
   group('BinaryCache', () {
     test('encode/decode round-trip preserves all entries', () {
-      final bytes = BinaryCache.encode(sample,
-          srcHash: 0x1234, srcSize: 100, srcMtimeMs: 999);
+      final bytes = BinaryCache.encode(
+        sample,
+        srcHash: 0x1234,
+        srcSize: 100,
+        srcMtimeMs: 999,
+      );
       final decoded = BinaryCache.decode(bytes);
       expect(decoded, sample);
     });
 
     test('header round-trip', () {
-      final bytes = BinaryCache.encode(sample,
-          srcHash: -42, srcSize: 5270000, srcMtimeMs: 1720000000000);
+      final bytes = BinaryCache.encode(
+        sample,
+        srcHash: -42,
+        srcSize: 5270000,
+        srcMtimeMs: 1720000000000,
+      );
       final header = BinaryCache.readHeader(bytes)!;
       expect(header.srcHash, -42);
       expect(header.srcSize, 5270000);
@@ -36,47 +44,69 @@ void main() {
 
     test('rejects garbage and truncated bytes', () {
       expect(BinaryCache.decode(Uint8List.fromList([1, 2, 3])), isNull);
-      final bytes = BinaryCache.encode(sample,
-          srcHash: 1, srcSize: 1, srcMtimeMs: 1);
+      final bytes = BinaryCache.encode(
+        sample,
+        srcHash: 1,
+        srcSize: 1,
+        srcMtimeMs: 1,
+      );
       expect(BinaryCache.decode(bytes.sublist(0, bytes.length - 3)), isNull);
     });
 
     test('isValid: same size+mtime → valid without hashing', () {
-      final bytes = BinaryCache.encode(sample,
-          srcHash: 0xAB, srcSize: 100, srcMtimeMs: 50);
+      final bytes = BinaryCache.encode(
+        sample,
+        srcHash: 0xAB,
+        srcSize: 100,
+        srcMtimeMs: 50,
+      );
       var hashed = false;
-      final valid = BinaryCache.isValid(bytes,
-          srcSize: 100,
-          srcMtimeMs: 50,
-          readSrcBytes: () {
-            hashed = true;
-            return Uint8List(0);
-          });
+      final valid = BinaryCache.isValid(
+        bytes,
+        srcSize: 100,
+        srcMtimeMs: 50,
+        readSrcBytes: () {
+          hashed = true;
+          return Uint8List(0);
+        },
+      );
       expect(valid, isTrue);
       expect(hashed, isFalse);
     });
 
     test('isValid: size changed → invalid', () {
-      final bytes = BinaryCache.encode(sample,
-          srcHash: 0xAB, srcSize: 100, srcMtimeMs: 50);
+      final bytes = BinaryCache.encode(
+        sample,
+        srcHash: 0xAB,
+        srcSize: 100,
+        srcMtimeMs: 50,
+      );
       expect(
-        BinaryCache.isValid(bytes,
-            srcSize: 101, srcMtimeMs: 50, readSrcBytes: () => Uint8List(0)),
+        BinaryCache.isValid(
+          bytes,
+          srcSize: 101,
+          srcMtimeMs: 50,
+          readSrcBytes: () => Uint8List(0),
+        ),
         isFalse,
       );
     });
 
     test('isValid: mtime changed, content identical → valid via FNV-1a', () {
       final srcBytes = Uint8List.fromList(utf8.encode('一=nhất\n'));
-      final bytes = BinaryCache.encode(sample,
-          srcHash: fnv1a64(srcBytes),
-          srcSize: srcBytes.length,
-          srcMtimeMs: 50);
+      final bytes = BinaryCache.encode(
+        sample,
+        srcHash: fnv1a64(srcBytes),
+        srcSize: srcBytes.length,
+        srcMtimeMs: 50,
+      );
       expect(
-        BinaryCache.isValid(bytes,
-            srcSize: srcBytes.length,
-            srcMtimeMs: 99999, // Google Drive sync đổi mtime
-            readSrcBytes: () => srcBytes),
+        BinaryCache.isValid(
+          bytes,
+          srcSize: srcBytes.length,
+          srcMtimeMs: 99999, // Google Drive sync đổi mtime
+          readSrcBytes: () => srcBytes,
+        ),
         isTrue,
       );
     });
@@ -84,15 +114,19 @@ void main() {
     test('isValid: mtime changed and content changed → invalid', () {
       final oldBytes = Uint8List.fromList(utf8.encode('一=nhất\n'));
       final newBytes = Uint8List.fromList(utf8.encode('一=mới!\n'));
-      final bytes = BinaryCache.encode(sample,
-          srcHash: fnv1a64(oldBytes),
-          srcSize: oldBytes.length,
-          srcMtimeMs: 50);
+      final bytes = BinaryCache.encode(
+        sample,
+        srcHash: fnv1a64(oldBytes),
+        srcSize: oldBytes.length,
+        srcMtimeMs: 50,
+      );
       expect(
-        BinaryCache.isValid(bytes,
-            srcSize: newBytes.length,
-            srcMtimeMs: 99999,
-            readSrcBytes: () => newBytes),
+        BinaryCache.isValid(
+          bytes,
+          srcSize: newBytes.length,
+          srcMtimeMs: 99999,
+          readSrcBytes: () => newBytes,
+        ),
         isFalse,
       );
     });
@@ -115,17 +149,19 @@ void main() {
       final cachePath = '${temp.path}\\dict.vydc';
 
       final cold = loadDictionarySync(
-          sourcePath: src.path,
-          cachePath: cachePath,
-          type: DictType.vietPhrase);
+        sourcePath: src.path,
+        cachePath: cachePath,
+        type: DictType.vietPhrase,
+      );
       expect(cold.fromCache, isFalse);
       expect(cold.dictionary.entries['覚悟'], 'giác ngộ');
       expect(File(cachePath).existsSync(), isTrue);
 
       final warm = loadDictionarySync(
-          sourcePath: src.path,
-          cachePath: cachePath,
-          type: DictType.vietPhrase);
+        sourcePath: src.path,
+        cachePath: cachePath,
+        type: DictType.vietPhrase,
+      );
       expect(warm.fromCache, isTrue);
       expect(warm.dictionary.entries, cold.dictionary.entries);
     });
@@ -134,15 +170,17 @@ void main() {
       final src = File('${temp.path}\\dict.txt')..writeAsStringSync('一=nhất\n');
       final cachePath = '${temp.path}\\dict.vydc';
       loadDictionarySync(
-          sourcePath: src.path,
-          cachePath: cachePath,
-          type: DictType.vietPhrase);
+        sourcePath: src.path,
+        cachePath: cachePath,
+        type: DictType.vietPhrase,
+      );
 
       src.writeAsStringSync('一=nhất\n二=nhị\n');
       final reload = loadDictionarySync(
-          sourcePath: src.path,
-          cachePath: cachePath,
-          type: DictType.vietPhrase);
+        sourcePath: src.path,
+        cachePath: cachePath,
+        type: DictType.vietPhrase,
+      );
       expect(reload.fromCache, isFalse);
       expect(reload.dictionary.entries.length, 2);
     });
@@ -151,23 +189,26 @@ void main() {
       final src = File('${temp.path}\\dict.txt')..writeAsStringSync('一=nhất\n');
       final cachePath = '${temp.path}\\dict.vydc';
       loadDictionarySync(
-          sourcePath: src.path,
-          cachePath: cachePath,
-          type: DictType.vietPhrase);
+        sourcePath: src.path,
+        cachePath: cachePath,
+        type: DictType.vietPhrase,
+      );
 
       src.setLastModifiedSync(DateTime.now().add(const Duration(hours: 1)));
       final reload = loadDictionarySync(
-          sourcePath: src.path,
-          cachePath: cachePath,
-          type: DictType.vietPhrase);
+        sourcePath: src.path,
+        cachePath: cachePath,
+        type: DictType.vietPhrase,
+      );
       expect(reload.fromCache, isTrue);
     });
 
     test('missing source file → empty dictionary', () {
       final result = loadDictionarySync(
-          sourcePath: '${temp.path}\\missing.txt',
-          cachePath: '${temp.path}\\missing.vydc',
-          type: DictType.userDict);
+        sourcePath: '${temp.path}\\missing.txt',
+        cachePath: '${temp.path}\\missing.vydc',
+        type: DictType.userDict,
+      );
       expect(result.dictionary.isEmpty, isTrue);
     });
   });

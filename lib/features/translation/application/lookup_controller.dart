@@ -10,8 +10,9 @@ import '../domain/translation_engine.dart';
 import 'translation_controller.dart';
 
 final maziiApiProvider = Provider<MaziiApi>((ref) => MaziiApi());
-final googleTranslateProvider =
-    Provider<GoogleTranslateClient>((ref) => GoogleTranslateClient());
+final googleTranslateProvider = Provider<GoogleTranslateClient>(
+  (ref) => GoogleTranslateClient(),
+);
 
 /// Một mục trong ô Nghĩa: `từ <<Từ điển>> nội dung` kiểu QuickTranslator.
 class LookupSection {
@@ -22,8 +23,9 @@ class LookupSection {
   const LookupSection(this.word, this.label, this.body);
 
   /// Body 1 dòng → cùng dòng header; nhiều dòng → xuống dòng.
-  String get displayText =>
-      body.contains('\n') ? '$word <<$label>>\n$body' : '$word <<$label>> $body';
+  String get displayText => body.contains('\n')
+      ? '$word <<$label>>\n$body'
+      : '$word <<$label>> $body';
 }
 
 class LookupResult {
@@ -57,14 +59,14 @@ class LookupResult {
   bool get found => body != null || sections.isNotEmpty;
 
   LookupResult withExtraSection(LookupSection section) => LookupResult(
-        word: word,
-        matchedKey: matchedKey,
-        reading: reading,
-        readingKind: readingKind,
-        hanViet: hanViet,
-        body: body,
-        sections: [...sections, section],
-      );
+    word: word,
+    matchedKey: matchedKey,
+    reading: reading,
+    readingKind: readingKind,
+    hanViet: hanViet,
+    body: body,
+    sections: [...sections, section],
+  );
 }
 
 class LookupController extends Notifier<LookupResult?> {
@@ -76,12 +78,28 @@ class LookupController extends Notifier<LookupResult?> {
   void lookup(String word, {String sentence = ''}) {
     final dicts = ref.read(dictionariesProvider).valueOrNull;
     if (dicts == null || word.isEmpty) return;
+    final mode = ref.read(currentModeProvider);
 
     final sections = <LookupSection>[];
     final firstChar = word.substring(0, runeLengthAt(word, 0));
 
-    // Thứ tự hiển thị: (header từ + phát âm) → Lạc Việt → Cedict/Babylon →
-    // Thiều Chửu → VietPhrase → Nhật Việt/Trung Việt → Phiên Âm.
+    // Nhật Việt tra sẵn: dùng cho vị trí hiển thị + fallback phát âm.
+    final jaVi = dicts.jaVi.entries[word] ?? dicts.jaVi.entries[firstChar];
+    final jaViKey = dicts.jaVi.entries.containsKey(word) ? word : firstChar;
+
+    // Thứ tự hiển thị: VietPhrase → Lạc Việt → (Nhật) Nhật Việt →
+    // Cedict/Babylon → Thiều Chửu → Trung Việt/(Trung) Nhật Việt → Phiên Âm.
+
+    // 0. VietPhrase (UserDict/Names/VietPhrase) — lên trước Lạc Việt.
+    void addPhraseSection(String w) {
+      final hit = _phraseValue(dicts, w);
+      if (hit != null) {
+        sections.add(LookupSection(w, hit.label, _joinMeanings(hit.value)));
+      }
+    }
+
+    addPhraseSection(word);
+    if (firstChar != word) addPhraseSection(firstChar);
 
     // 1. Lạc Việt: exact trước, miss thì prefix ngắn dần (theo rune).
     String? matchedKey;
@@ -102,8 +120,14 @@ class LookupController extends Notifier<LookupResult?> {
       }
     }
     if (lacVietValue != null) {
-      sections.add(LookupSection(
-          matchedKey!, 'Lạc Việt', unescapeLacViet(lacVietValue)));
+      sections.add(
+        LookupSection(matchedKey!, 'Lạc Việt', unescapeLacViet(lacVietValue)),
+      );
+    }
+
+    // 1b. Nhật Việt ngay sau Lạc Việt (chỉ mode Nhật).
+    if (mode == TranslationMode.japanese && jaVi != null) {
+      sections.add(LookupSection(jaViKey, 'Nhật Việt', unescapeLacViet(jaVi)));
     }
 
     // 2. Cedict (ưu tiên) / Babylon cho cụm và chữ đầu.
@@ -128,25 +152,13 @@ class LookupController extends Notifier<LookupResult?> {
     if (thieuChuu != null) {
       final key = dicts.thieuChuu.entries.containsKey(word) ? word : firstChar;
       sections.add(
-          LookupSection(key, 'Thiều Chửu', unescapeLacViet(thieuChuu)));
+        LookupSection(key, 'Thiều Chửu', unescapeLacViet(thieuChuu)),
+      );
     }
 
-    // 4. VietPhrase (UserDict/Names/VietPhrase) cho cụm và chữ đầu.
-    void addPhraseSection(String w) {
-      final hit = _phraseValue(dicts, w);
-      if (hit != null) {
-        sections.add(LookupSection(w, hit.label, _joinMeanings(hit.value)));
-      }
-    }
-
-    addPhraseSection(word);
-    if (firstChar != word) addPhraseSection(firstChar);
-
-    // 5. Nhật Việt / Trung Việt (StarDict từ VocabFlip): cụm, miss thì chữ đầu.
-    final jaVi = dicts.jaVi.entries[word] ?? dicts.jaVi.entries[firstChar];
-    if (jaVi != null) {
-      final key = dicts.jaVi.entries.containsKey(word) ? word : firstChar;
-      sections.add(LookupSection(key, 'Nhật Việt', unescapeLacViet(jaVi)));
+    // 5. Nhật Việt (mode khác Nhật) / Trung Việt (StarDict từ VocabFlip).
+    if (mode != TranslationMode.japanese && jaVi != null) {
+      sections.add(LookupSection(jaViKey, 'Nhật Việt', unescapeLacViet(jaVi)));
     }
     final zhVi = dicts.zhVi.entries[word] ?? dicts.zhVi.entries[firstChar];
     if (zhVi != null) {
@@ -169,9 +181,16 @@ class LookupController extends Notifier<LookupResult?> {
       if (v != null) hanViet = v.split('/').first.trim();
     }
 
-    // Phát âm: LacViet trước; miss thì lấy kana `{...}` từ Nhật Việt.
-    var reading = lacVietValue == null ? null : extractReading(lacVietValue);
-    reading ??= jaVi == null ? null : extractKanaReading(jaVi);
+    // Phát âm: mode Nhật → ưu tiên kana `{...}` từ Nhật Việt; mode khác →
+    // LacViet trước, kana Nhật Việt là fallback.
+    ({String text, ReadingKind kind})? reading;
+    if (mode == TranslationMode.japanese) {
+      reading = jaVi == null ? null : extractKanaReading(jaVi);
+      reading ??= lacVietValue == null ? null : extractReading(lacVietValue);
+    } else {
+      reading = lacVietValue == null ? null : extractReading(lacVietValue);
+      reading ??= jaVi == null ? null : extractKanaReading(jaVi);
+    }
     state = LookupResult(
       word: word,
       matchedKey: matchedKey,
@@ -218,7 +237,9 @@ class LookupController extends Notifier<LookupResult?> {
 
   /// Value cụm trong UserDict > Names > VietPhrase kèm nhãn từ điển.
   static ({String label, String value})? _phraseValue(
-      LoadedDictionaries dicts, String w) {
+    LoadedDictionaries dicts,
+    String w,
+  ) {
     final user = dicts.userDict.entries[w];
     if (user != null) return (label: 'UserDict', value: user);
     final name = dicts.names.entries[w];

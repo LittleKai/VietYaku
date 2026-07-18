@@ -46,7 +46,8 @@ class BinaryCache {
 
   /// Metadata nguồn lưu trong cache; null nếu bytes không phải .vydc hợp lệ.
   static ({int srcHash, int srcSize, int srcMtimeMs, int count})? readHeader(
-      Uint8List bytes) {
+    Uint8List bytes,
+  ) {
     if (bytes.length < headerLength) return null;
     final data = ByteData.sublistView(bytes);
     if (data.getUint32(0, Endian.little) != magic) return null;

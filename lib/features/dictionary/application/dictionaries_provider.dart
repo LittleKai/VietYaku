@@ -15,15 +15,19 @@ class DictionariesNotifier extends AsyncNotifier<LoadedDictionaries> {
     // Bộ dict theo ngôn ngữ đang dịch; đổi mode → nạp lại (cache .vydc giữ nhanh).
     final mode = ref.watch(currentModeProvider);
     // Chỉ phụ thuộc dictPaths của mode — đổi thuật toán/tùy chọn khác không reload.
-    final dictPaths =
-        ref.watch(settingsProvider.select((s) => s.dictPathsFor(mode)));
+    final dictPaths = ref.watch(
+      settingsProvider.select((s) => s.dictPathsFor(mode)),
+    );
     final sw = Stopwatch()..start();
-    final loaded =
-        await DictionaryRepository(paths).loadAll(dictPaths, mode: mode);
-    debugPrint('Dictionaries loaded in ${sw.elapsedMilliseconds}ms: '
-        '${loaded.stats.entries.map((e) => '${e.key.name} '
-            '${e.value.fromCache ? "cache" : "parse"} '
-            '${e.value.elapsedMs}ms').join(', ')}');
+    final loaded = await DictionaryRepository(
+      paths,
+    ).loadAll(dictPaths, mode: mode);
+    debugPrint(
+      'Dictionaries loaded in ${sw.elapsedMilliseconds}ms: '
+      '${loaded.stats.entries.map((e) => '${e.key.name} '
+          '${e.value.fromCache ? "cache" : "parse"} '
+          '${e.value.elapsedMs}ms').join(', ')}',
+    );
     return loaded;
   }
 
@@ -36,4 +40,5 @@ class DictionariesNotifier extends AsyncNotifier<LoadedDictionaries> {
 
 final dictionariesProvider =
     AsyncNotifierProvider<DictionariesNotifier, LoadedDictionaries>(
-        DictionariesNotifier.new);
+      DictionariesNotifier.new,
+    );
