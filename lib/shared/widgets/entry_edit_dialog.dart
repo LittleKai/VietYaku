@@ -14,13 +14,17 @@ Future<void> showEntryEditDialog(
   WidgetRef ref, {
   required String word,
   required bool toNames,
+  String? title,
+  String? initialMeaning,
 }) async {
   final dicts = ref.read(dictionariesProvider).valueOrNull;
-  final existing = dicts == null
-      ? null
-      : (dicts.userDict.entries[word] ??
-            dicts.names.entries[word] ??
-            dicts.vietPhrase.entries[word]);
+  final existing =
+      initialMeaning ??
+      (dicts == null
+          ? null
+          : (dicts.userDict.entries[word] ??
+                dicts.names.entries[word] ??
+                dicts.vietPhrase.entries[word]));
 
   final keyController = TextEditingController(text: word);
   final meaningController = TextEditingController(text: existing ?? '');
@@ -28,7 +32,9 @@ Future<void> showEntryEditDialog(
   final saved = await showDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
-      title: Text(toNames ? 'Thêm vào Names' : 'Sửa nghĩa (UserDict)'),
+      title: Text(
+        title ?? (toNames ? 'Thêm vào Names' : 'Sửa nghĩa (UserDict)'),
+      ),
       content: SizedBox(
         width: 420,
         child: Column(

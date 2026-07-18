@@ -1,19 +1,19 @@
 # Project Summary — VietYaku
 
-**Last Updated:** 2026-07-18
-**Session:** #8 — Đồng bộ VietPhrase/Lạc Việt chung qua LittleKai-server: public delta pull, admin JWT publish, overlay/cursor theo mode, nút sync cuối menu bar
+**Last Updated:** 2026-07-19
+**Session:** #12 — Ô VietPhrase: chuột phải (không tô đen) vào từ → paste nghĩa DƯỚI CON TRỎ vào ô Bản dịch (đa nghĩa "[a/b/c]" lấy đúng nghĩa bị nhấn; hoạt động cả với từ đơn/unmatched; bỏ auto-paste khi click trái). Vị trí nhấn lấy từ Listener + `renderEditable.getPositionForPoint` vì trên Windows chuột phải không dời caret khi field đã focus (xem IMPORTANT_FIXED_BUGS). Chuột phải khi tô đen → menu gọn 3 mục "Thêm/Sửa (VietPhrase/Lạc Việt/Names)" — nhãn Thêm hay Sửa theo key có sẵn trong dict hay chưa, key = source CJK của các token trong vùng tô đen; dialog sửa entry nhận `title`/`initialMeaning` tuỳ mục. Mục admin publish giữ nguyên khi đăng nhập. TokenTextView chuyển sang ConsumerStatefulWidget.
 
 ---
 
 ## 1. Project Overview
 
-- **Type:** Desktop app (Windows) — dịch Nhật/Trung→Việt kiểu VietPhrase + công cụ sửa từ điển JP, thay thế QuickTranslator_Jap (WinForms). Dịch chính offline; có thêm tính năng online tùy chọn: tra nghĩa Mazii/Google Dịch và tab Google Translate (endpoint gtx + fallback crawl translate.google.com/m).
+- **Type:** App đa nền tảng (Windows desktop + Android) — dịch Nhật/Trung→Việt kiểu VietPhrase + công cụ sửa từ điển JP, thay thế QuickTranslator_Jap (WinForms). Dịch chính offline; có thêm tính năng online tùy chọn: tra nghĩa Mazii/Google Dịch và tab Google Translate (endpoint gtx + fallback crawl translate.google.com/m). Android: chỉ dịch + TTS; ẩn Sửa từ điển/đồng bộ file (desktop-only).
 - **Tech Stack:** Flutter 3.44.2, Dart ^3.12, Material 3
 - **Package Manager:** pub (flutter pub)
 - **i18n:** None (UI tiếng Việt cố định)
 - **State Management:** Riverpod 2 — manual providers (Notifier/AsyncNotifier), KHÔNG codegen
 - **Styling:** Material 3, hệ thiết kế tập trung `lib/core/theme/app_theme.dart` (`AppTheme.light`/`.dark`, seed indigo `0xFF4F46E5`, font chrome Segoe UI, ~15 component theme cho dialog/ô nhập/dropdown/tab/nút/rail/card/tooltip/snackbar/slider/menu). Theme tối tự theo hệ điều hành (`ThemeMode.system`). Màu tô nổi + token Names qua `ThemeExtension AppSemanticColors` (sáng/tối riêng).
-- **Deployment:** `flutter build windows --release` → exe độc lập tại `build\windows\x64\runner\Release\vietyaku.exe` (đã verify chạy standalone)
+- **Deployment:** Windows: `flutter build windows --release` → exe độc lập tại `build\windows\x64\runner\Release\vietyaku.exe`. Android: `flutter build apk --release` (org `com.littlekai.vietyaku`) — từ điển đi kèm dạng assets nên APK/exe lớn thêm ~130MB.
 
 Dữ liệu từ điển bundle trong dự án (commit git), mỗi ngôn ngữ một bộ tại `data/jp/` và `data/cn/` — đường dẫn hardcode (`defaultDataDir` trong settings_provider), không còn UI chọn file trong Cài đặt:
 - `data/jp/` (nguồn Drive QuickTranslator_Jap, đã repair simp→JP): VietPhrase.txt (187.419 — bản `_JP` repair), LacViet.txt (103.632 — bản `_JP`), Names.txt, JaViDict.txt (172.321), + ThieuChuu/Babylon/cedict_ts.u8/ChinesePhienAm*/Pronouns.
@@ -29,17 +29,18 @@ Dữ liệu từ điển bundle trong dự án (commit git), mỗi ngôn ngữ m
 ```
 VietYaku/
 ├── CLAUDE.md, .claude/             # docs hệ thống (summary, conventions, fixed bugs, setup report)
+├── docs/                            # nghiên cứu/roadmap; NGHIEN_CUU_DINH_HUONG_PHAT_TRIEN.md
 ├── data/jp/, data/cn/              # bộ từ điển bundle theo ngôn ngữ (commit git, ~123MB)
 ├── assets/mappings/                # simp2jp.tsv (3.932 + 69 ambiguous), jp_valid_kanji.txt (3.030), simp2jp_overrides.tsv (soạn tay)
 ├── tool/                           # build_simp2jp.dart (sinh assets, cần mạng), export_jp.dart (CLI repair + verify), export_vocabflip_dicts.py (sinh JaViDict/ZhViDict.txt từ DB VocabFlip)
 ├── lib/
 │   ├── main.dart                   # window_manager (1200×760, min 1000×640), SharedPreferences override, ProviderScope
-│   ├── app.dart                    # MaterialApp M3 + HomeShell (NavigationRail + IndexedStack 3 tab)
+│   ├── app.dart                    # MaterialApp M3 + HomeShell (NavigationRail + IndexedStack 2 tab: Dịch, Cài đặt — Sửa từ điển đã gộp vào Cài đặt)
 │   ├── core/                       # cjk.dart, app_paths.dart, fnv_hash.dart, tts_service.dart, google_translate.dart (gtx + fallback crawl /m), theme/app_theme.dart (design system + AppSemanticColors)
 │   ├── features/
 │   │   ├── dictionary/             # domain (dict_type, phrase_dictionary) · data (dict_parser, binary_cache, dictionary_loader, dictionary_repository, user_dict_service) · application (dictionaries_provider)
 │   │   ├── dictionary_sync/        # domain shared entry · typed HTTP API · merge overlay · Riverpod admin session/sync controller
-│   │   ├── translation/            # domain (translation_engine, token, reading_extractor) · data (mazii_api) · application (translation_controller + currentModeProvider, lookup_controller, token_selection) · presentation (translate_screen + menu bar, source_pane, result_pane + tab Google Dịch, han_viet_pane, token_text_view, lacviet_panel + nút tra online)
+│   │   ├── translation/            # domain (translation_engine, token, reading_extractor) · data (mazii_api) · application (translation_controller + currentModeProvider, lookup_controller, token_selection, viet_draft — controller dùng chung ô Bản dịch) · presentation (translate_screen: 2 cột kéo được + lưu tỷ lệ, menu bar, source_pane + hover tô đỏ, result_pane chỉ VietPhrase + tab Google Dịch, viet_pane — ô Bản dịch Việt luôn trống, han_viet_pane, token_text_view — chuẩn hoá dấu câu/toàn-hình + menu chèn nghĩa, lacviet_panel + nhãn từ điển có màu + nút tra online)
 │   │   ├── repair/                 # domain (jp_repair_pipeline, simp2jp_table, repair_report) · application (repair_controller) · presentation (repair_screen, repair_preview)
 │   │   └── settings/               # settings_provider, settings_screen
 │   └── shared/widgets/             # tts_button, entry_edit_dialog
@@ -73,7 +74,7 @@ Feature-first: mỗi feature chia `domain/` (thuần Dart, không Flutter) · `d
 - `dictionariesProvider` watch `currentModeProvider` (đổi Nhật/Trung → nạp lại bộ dict của mode, cache .vydc giữ nhanh) + `settingsProvider.select(dictPathsFor(mode))` — đổi thuật toán không reload dict. LƯU Ý: không được watch `translationControllerProvider` từ dictionariesProvider (vòng phụ thuộc Riverpod — xem IMPORTANT_FIXED_BUGS.md); mode tách riêng ở `currentModeProvider`.
 
 ### Data Flow
-settings (paths) → dictionaries_provider → DictionaryRepository.loadAll (12 dict chính + UserNames local + 2 shared overlay, tải song song qua `Isolate.run`; cache `.vydc` hợp lệ → decode, không thì parse text + ghi cache) → shared VietPhrase/Lạc Việt đè entry cùng key trong file bundle → LoadedDictionaries.engineWith(algorithm, prioritizeNames) → translation_controller.translate → tokens + hanVietTokens → TokenTextView: nháy chuột → lookup; chuột phải → sửa UserDict/Names local hoặc, khi đã login admin, cập nhật VietPhrase/Lạc Việt chung.
+settings (paths) → dictionaries_provider → DictionaryRepository.loadAll (12 dict chính + UserNames local + 2 shared overlay, tải song song qua `Isolate.run`; cache `.vydc` hợp lệ → decode, không thì parse text + ghi cache) → shared VietPhrase/Lạc Việt đè entry cùng key trong file bundle → LoadedDictionaries.engineWith(algorithm, prioritizeNames) → translation_controller.translate → tokens + hanVietTokens → TokenTextView: nháy chuột → lookup; chuột phải không tô đen → paste nghĩa từ đó vào ô Bản dịch (ô VietPhrase); chuột phải khi tô đen → menu Thêm/Sửa (VietPhrase/Lạc Việt/Names, key = source CJK của token trong vùng chọn, ghi vào UserDict/Names local) + mục cập nhật chung khi đã login admin.
 
 ### Layout màn hình Dịch (kiểu QuickTranslator, tham khảo .claude/image.png)
 Menu bar trên cùng (chọn Nhật/Trung + Dán & Dịch). Trái (flex 2): tabs [Nguồn | Hán Việt] qua TabBar + IndexedStack (giữ state SourcePane) trên, LacVietPanel ("Nghĩa", có nút tra online) dưới. Phải (flex 3): ResultPane với tabs [VietPhrase một nghĩa | VietPhrase (đa nghĩa) — mặc định | Google Dịch (tab tạo khi bấm nút, dịch online cả đoạn)] — 1 TokenTextView duy nhất, đổi tab chỉ đổi `textOf` (display/displayAll). Nút chỉnh cỡ chữ + font các ô nằm ở NavigationRail trái.
@@ -93,6 +94,8 @@ RepairScreen → pick file → preview per-line (Isolate.run, 50 dòng đổi đ
 | Core engine + parser | ✅ Done | translation_engine, dict_parser, phrase_dictionary | Dịch 10k ký tự ~60ms |
 | Binary cache .vydc + isolate loader | ✅ Done | binary_cache, dictionary_loader | Cold 1,28s → warm 0,45s (5 file thật) |
 | Màn hình Dịch 3 cột + click-lookup + reading + TTS | ✅ Done | translate_screen, source_pane, result_pane, lacviet_panel, reading_extractor, tts_service | TTS thiếu voice → disable + tooltip |
+| Chọn giọng đọc + tốc độ TTS | ✅ Done | tts_service (voicesFor/speak voiceKey+rate), settings_provider (ttsVoiceJa/Zh, ttsSpeechRate), settings_screen (_TtsSettings), tts_button | Giọng theo ngôn ngữ (Nhật/Trung, '' = tự động) + tốc độ 0.1–1.0, lưu prefs, "Nghe thử" |
+| Nền tảng Android | ✅ Done | android/*, main.dart (guard window_manager + seed), app_paths (seedBundledData), pubspec (assets data/jp,cn), settings_screen (ẩn repair/sync) | Từ điển seed từ assets → app storage lần đầu; AndroidManifest queries TTS_SERVICE |
 | JP repair pipeline + RepairScreen | ✅ Done | jp_repair_pipeline, simp2jp_table, repair_controller, repair_screen | VietPhrase: 13.317 space, 81.299 chữ converted |
 | UserDict/UserNames overlay | ✅ Done | user_dict_service, entry_edit_dialog, dictionary_repository | Sửa nghĩa áp dụng ngay, không đụng file gốc |
 | Đồng bộ VietPhrase/Lạc Việt chung | ✅ Done | dictionary_sync/*, dictionary_repository, entry_edit_dialog, token_text_view, translate_screen, settings_screen | Mọi app pull delta; chỉ admin publish từ menu chuột phải; UserDict/Names luôn local; mật khẩu/JWT không lưu xuống đĩa |
@@ -122,6 +125,7 @@ RepairScreen → pick file → preview per-line (Isolate.run, 50 dòng đổi đ
 
 ### 🟡 Medium Priority
 - [ ] Chuột phải token (menu edit) chưa có widget test (hit-test TextSpan với kSecondaryButton phức tạp) — verify tay.
+- [ ] Từ điển bundle dạng assets (`data/jp`, `data/cn`) áp cho MỌI nền tảng → APK Android + build Windows đều +~130MB; mobile copy sang app storage lần đầu tốn thêm ~130MB đĩa. pubspec không cho khai báo assets theo nền tảng nên chấp nhận (đổi lại Windows portable hơn). Nếu cần giảm: seed data cho Android bằng cơ chế riêng (asset pack / tải server).
 
 ### 🟢 Low Priority / Nice to Have (Backlog v2 — KHÔNG làm v1)
 - [ ] Furigana per-token cho kanji ngoài từ điển (cần MeCab, không có port Dart thuần).

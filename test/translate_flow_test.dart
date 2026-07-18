@@ -58,14 +58,19 @@ void main() {
     await tester.tap(find.text('Dịch'));
     await tester.pump();
 
-    // Kết quả phải có status line "N token · Xms".
-    expect(find.textContaining('token ·'), findsOneWidget);
-
-    // Mô phỏng click token → panel LacViet hiện nghĩa + reading.
-    // (`翻译` là entry key lành trong LacViet thật, value có ✚[fānyì].)
     final container = ProviderScope.containerOf(
       tester.element(find.byType(TranslateScreen)),
     );
+
+    // Dịch xong phải có token (dòng status "N token · Xms" đã bị bỏ).
+    expect(
+      container.read(translationControllerProvider).tokens,
+      isNotEmpty,
+      reason: 'phải có token sau khi dịch',
+    );
+
+    // Mô phỏng click token → panel LacViet hiện nghĩa + reading.
+    // (`翻译` là entry key lành trong LacViet thật, value có ✚[fānyì].)
     container.read(lookupControllerProvider.notifier).lookup('翻译');
     await tester.pump();
 

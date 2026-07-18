@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/tts_service.dart';
+import '../../features/settings/settings_provider.dart';
 import '../../features/translation/domain/translation_engine.dart';
 
 /// Nút 🔊: disable + tooltip hướng dẫn cài voice khi thiếu voice offline.
@@ -29,8 +30,17 @@ class TtsButton extends ConsumerWidget {
           ? tooltip
           : 'Chưa có voice $language.\nCài tại Settings > Time & Language > '
               'Speech > Add voices',
-      onPressed:
-          available ? () => tts!.speak(textProvider(), mode) : null,
+      onPressed: available
+          ? () {
+              final settings = ref.read(settingsProvider);
+              tts!.speak(
+                textProvider(),
+                mode,
+                voiceKey: settings.ttsVoiceFor(mode),
+                rate: settings.ttsSpeechRate,
+              );
+            }
+          : null,
     );
   }
 }

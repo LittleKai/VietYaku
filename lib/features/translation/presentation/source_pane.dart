@@ -12,9 +12,11 @@ import '../domain/token.dart';
 /// Nội dung ô Nguồn đang gõ (nút Dịch trên menu bar đọc giá trị này).
 final sourceDraftProvider = StateProvider<String>((ref) => '');
 
-/// TextEditingController tô nổi đỏ cụm đang chọn + tô đậm tất cả các từ có trong từ điển.
+/// TextEditingController tô nổi đỏ cụm đang chọn (click) và cụm đang rê chuột
+/// (hover) + tô đậm tất cả các từ có trong từ điển.
 class _HighlightTextEditingController extends TextEditingController {
   TextRange? _highlight;
+  TextRange? _hover;
   List<Token> _tokens = const [];
 
   void setHighlight(TextRange? range) {
@@ -23,9 +25,22 @@ class _HighlightTextEditingController extends TextEditingController {
     notifyListeners();
   }
 
+  void setHover(TextRange? range) {
+    if (range == _hover) return;
+    _hover = range;
+    notifyListeners();
+  }
+
   void setTokens(List<Token> tokens) {
     _tokens = tokens;
     notifyListeners();
+  }
+
+  bool _overlaps(TextRange? r, int start, int end) {
+    if (r == null) return false;
+    final s = r.start.clamp(0, text.length);
+    final e = r.end.clamp(0, text.length);
+    return s < e && start < e && s < end;
   }
 
   @override
@@ -42,15 +57,9 @@ class _HighlightTextEditingController extends TextEditingController {
       );
     }
 
-    // Clamp range chọn về [0, text.length]: vẫn tô đỏ khi tokens/selection lệch
-    // nhẹ (vd offset chọn hơi vượt biên) thay vì mất hẳn màu.
-    final raw = _highlight;
-    final hs = raw == null ? 0 : raw.start.clamp(0, text.length);
-    final he = raw == null ? 0 : raw.end.clamp(0, text.length);
-    final hasHighlight = raw != null && !withComposing && hs < he;
+    final hasRanges = !withComposing && (_highlight != null || _hover != null);
 
-    // Nếu không có tokens và không có highlight, dùng mặc định
-    if (_tokens.isEmpty && !hasHighlight) {
+    if (_tokens.isEmpty && !hasRanges) {
       return super.buildTextSpan(
         context: context,
         style: style,
@@ -60,17 +69,19 @@ class _HighlightTextEditingController extends TextEditingController {
 
     final hl = AppSemanticColors.of(context).highlight;
     final spans = <TextSpan>[];
-    int totalTokenLen = _tokens.fold(0, (sum, t) => sum + t.source.length);
+    final totalTokenLen = _tokens.fold(0, (sum, t) => sum + t.source.length);
 
     if (_tokens.isNotEmpty && totalTokenLen == text.length) {
       for (final token in _tokens) {
         final tStart = token.sourceStart;
         final tEnd = tStart + token.source.length;
 
-        bool isHighlighted = hasHighlight && tStart < he && hs < tEnd;
+        final isRed =
+            _overlaps(_highlight, tStart, tEnd) ||
+            _overlaps(_hover, tStart, tEnd);
 
-        TextStyle tokenStyle = style ?? const TextStyle();
-        if (isHighlighted) {
+        var tokenStyle = style ?? const TextStyle();
+        if (isRed) {
           tokenStyle = tokenStyle.copyWith(
             color: hl,
             fontWeight: FontWeight.bold,
@@ -82,8 +93,11 @@ class _HighlightTextEditingController extends TextEditingController {
         spans.add(TextSpan(text: token.source, style: tokenStyle));
       }
     } else {
-      // Fallback khi gõ dở hoặc lệch tokens
-      if (hasHighlight) {
+      // Fallback khi gõ dở hoặc lệch tokens: chỉ tô range highlight.
+      final raw = _highlight;
+      final hs = raw == null ? 0 : raw.start.clamp(0, text.length);
+      final he = raw == null ? 0 : raw.end.clamp(0, text.length);
+      if (raw != null && !withComposing && hs < he) {
         final highlightStyle = (style ?? const TextStyle()).copyWith(
           color: hl,
           fontWeight: FontWeight.bold,
@@ -91,9 +105,7 @@ class _HighlightTextEditingController extends TextEditingController {
         if (hs > 0) {
           spans.add(TextSpan(text: text.substring(0, hs), style: style));
         }
-        spans.add(
-          TextSpan(text: text.substring(hs, he), style: highlightStyle),
-        );
+        spans.add(TextSpan(text: text.substring(hs, he), style: highlightStyle));
         if (he < text.length) {
           spans.add(TextSpan(text: text.substring(he), style: style));
         }
@@ -115,7 +127,10 @@ class SourcePane extends ConsumerStatefulWidget {
 
 class _SourcePaneState extends ConsumerState<SourcePane> {
   final _controller = _HighlightTextEditingController();
+  final _scrollController = ScrollController();
   int _lastCaret = -1;
+
+  static const _padding = 12.0;
 
   @override
   void initState() {
@@ -125,6 +140,7 @@ class _SourcePaneState extends ConsumerState<SourcePane> {
 
   @override
   void dispose() {
+    _scrollController.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -144,20 +160,52 @@ class _SourcePaneState extends ConsumerState<SourcePane> {
         .selectAtSourceOffset(selection.baseOffset);
   }
 
-  Widget _buildEditor(BuildContext context) {
+  /// Rê chuột → tô đỏ cụm dưới con trỏ (không tra, chỉ preview).
+  void _onHover(Offset localPosition, double contentWidth, TextStyle style) {
+    if (_controller.text !=
+        ref.read(translationControllerProvider).sourceText) {
+      _controller.setHover(null);
+      return;
+    }
+    final painter = TextPainter(
+      text: TextSpan(text: _controller.text, style: style),
+      textDirection: TextDirection.ltr,
+    )..layout(maxWidth: contentWidth);
+    final local = Offset(
+      localPosition.dx - _padding,
+      localPosition.dy - _padding +
+          (_scrollController.hasClients ? _scrollController.offset : 0),
+    );
+    final offset = painter.getPositionForOffset(local).offset;
+    painter.dispose();
+
+    final tokens = ref.read(translationControllerProvider).tokens;
+    for (final t in tokens) {
+      if (t.kind == TokenKind.passthrough) continue;
+      if (offset >= t.sourceStart &&
+          offset < t.sourceStart + t.source.length) {
+        _controller.setHover(
+          TextRange(start: t.sourceStart, end: t.sourceStart + t.source.length),
+        );
+        return;
+      }
+    }
+    _controller.setHover(null);
+  }
+
+  Widget _buildEditor(BuildContext context, TextStyle style) {
     return TextField(
       controller: _controller,
+      scrollController: _scrollController,
       maxLines: null,
       expands: true,
       textAlignVertical: TextAlignVertical.top,
-      style: ref.watch(
-        settingsProvider.select((s) => s.paneTextStyleFor(PaneId.source)),
-      ),
+      style: style,
       onChanged: (value) =>
           ref.read(sourceDraftProvider.notifier).state = value,
       decoration: const InputDecoration(
         border: InputBorder.none,
-        contentPadding: EdgeInsets.all(12),
+        contentPadding: EdgeInsets.all(_padding),
         hintText: 'Dán văn bản Nhật/Trung vào đây…',
       ),
       contextMenuBuilder: (context, editableTextState) {
@@ -191,6 +239,10 @@ class _SourcePaneState extends ConsumerState<SourcePane> {
 
   @override
   Widget build(BuildContext context) {
+    final style = ref.watch(
+      settingsProvider.select((s) => s.paneTextStyleFor(PaneId.source)),
+    );
+
     // Tô nổi cụm đang chọn (đồng bộ với các pane khác).
     ref.listen(tokenSelectionProvider, (previous, next) {
       _controller.setHighlight(
@@ -230,7 +282,17 @@ class _SourcePaneState extends ConsumerState<SourcePane> {
                 ),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: _buildEditor(context),
+              child: LayoutBuilder(
+                builder: (context, constraints) => MouseRegion(
+                  onHover: (event) => _onHover(
+                    event.localPosition,
+                    constraints.maxWidth - 2 * _padding,
+                    style,
+                  ),
+                  onExit: (_) => _controller.setHover(null),
+                  child: _buildEditor(context, style),
+                ),
+              ),
             ),
           ),
         ),

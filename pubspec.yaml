@@ -33,3 +33,7 @@ flutter:
 
   assets:
     - assets/mappings/
+    # Từ điển bundle: cần cho Android (offline). Trên desktop vẫn nạp qua
+    # đường dẫn tuyệt đối; assets này khiến build desktop cũng lớn thêm (~130MB).
+    - data/jp/
+    - data/cn/

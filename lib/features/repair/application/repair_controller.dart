@@ -70,7 +70,7 @@ class RepairController extends Notifier<RepairState> {
   @override
   RepairState build() => const RepairState();
 
-  /// Nạp một file dict cố định (từ data/<mode>) để repair. Không còn preview.
+  /// Nạp một file dict cố định (từ `data/<mode>`) để repair. Không còn preview.
   Future<void> pickFile(String path) async {
     try {
       final content = await File(path).readAsString();

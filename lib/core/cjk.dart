@@ -39,6 +39,37 @@ int codePointAt(String text, int index) {
   return lead;
 }
 
+/// Dấu câu CJK → dấu tiếng Việt (những ký tự KHÔNG nằm trong dải toàn-hình
+/// FF01–FF5E; các ký tự toàn-hình được hạ về nửa-hình bằng phép trừ 0xFEE0).
+const _cjkPunctuation = <int, String>{
+  0x3002: '.', // 。
+  0x3001: ',', // 、
+  0x300C: '"', // 「
+  0x300D: '"', // 」
+  0x300E: '"', // 『
+  0x300F: '"', // 』
+  0x3000: ' ', // khoảng trắng toàn-hình
+  0x30FB: '·', // ・
+};
+
+/// Chuẩn hoá đoạn văn bản passthrough để hiển thị: hạ ký tự toàn-hình
+/// (ＡＡＨ, ，！？…) về nửa-hình và đổi dấu câu CJK (。、「」) sang dấu tiếng Việt.
+String normalizeDisplayText(String text) {
+  final sb = StringBuffer();
+  for (var i = 0; i < text.length; i++) {
+    final cu = text.codeUnitAt(i);
+    final punct = _cjkPunctuation[cu];
+    if (punct != null) {
+      sb.write(punct);
+    } else if (cu >= 0xFF01 && cu <= 0xFF5E) {
+      sb.writeCharCode(cu - 0xFEE0); // toàn-hình → nửa-hình ASCII
+    } else {
+      sb.writeCharCode(cu);
+    }
+  }
+  return sb.toString();
+}
+
 /// Số code unit của rune bắt đầu tại [index] (1 hoặc 2).
 int runeLengthAt(String text, int index) {
   final lead = text.codeUnitAt(index);

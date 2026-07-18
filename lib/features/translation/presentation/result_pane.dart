@@ -9,8 +9,8 @@ import '../domain/token.dart';
 import '../domain/translation_engine.dart';
 import 'token_text_view.dart';
 
-/// Kết quả dịch: tabs [VietPhrase một nghĩa | VietPhrase (đa nghĩa)] trên
-/// cùng một token list — đổi tab chỉ đổi cách hiển thị, không dịch lại.
+/// Kết quả dịch: tabs [VietPhrase một nghĩa | VietPhrase (đa nghĩa) | Google Dịch]
+/// trên cùng một token list — đổi tab chỉ đổi cách hiển thị, không dịch lại.
 class ResultPane extends ConsumerStatefulWidget {
   const ResultPane({super.key});
 
@@ -21,7 +21,6 @@ class ResultPane extends ConsumerStatefulWidget {
 class _ResultPaneState extends ConsumerState<ResultPane>
     with TickerProviderStateMixin {
   late TabController _tabController;
-  late final TextEditingController _vietController;
 
   // Tab Google Dịch (tạo khi bấm nút, dịch cả đoạn nguồn online).
   bool _gtTabOpen = false;
@@ -36,7 +35,6 @@ class _ResultPaneState extends ConsumerState<ResultPane>
     super.initState();
     // Đa nghĩa là tab mặc định.
     _tabController = _makeController(length: 2, initialIndex: 1);
-    _vietController = TextEditingController();
   }
 
   TabController _makeController({
@@ -91,7 +89,6 @@ class _ResultPaneState extends ConsumerState<ResultPane>
   @override
   void dispose() {
     _tabController.dispose();
-    _vietController.dispose();
     super.dispose();
   }
 
@@ -101,19 +98,6 @@ class _ResultPaneState extends ConsumerState<ResultPane>
     final String Function(Token) textOf = _multiMeaning
         ? (t) => t.displayAll
         : (t) => t.display;
-
-    // Lắng nghe thay đổi của tokens để tự động điền gợi ý bản dịch thô vào ô Việt
-    ref.listen(translationControllerProvider.select((s) => s.tokens), (
-      previous,
-      next,
-    ) {
-      if (next.isNotEmpty) {
-        final plain = TokenTextView.plainText(next, (t) => t.display);
-        _vietController.text = plain;
-      } else {
-        _vietController.clear();
-      }
-    });
 
     // Đổi đoạn nguồn khi tab Google Dịch đang mở → dịch lại online.
     ref.listen(translationControllerProvider.select((s) => s.sourceText), (
@@ -151,132 +135,14 @@ class _ResultPaneState extends ConsumerState<ResultPane>
           const Expanded(
             child: Center(child: Text('Kết quả dịch sẽ hiện ở đây')),
           )
-        else ...[
-          // Phần 1: Vietphrase (chiếm flex 3)
+        else
           Expanded(
-            flex: 3,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
-                  child: Row(
-                    children: [
-                      Text(
-                        '${state.tokens.length} token · ${state.elapsedMs}ms',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      const Spacer(),
-                      IconButton(
-                        icon: const Icon(Icons.copy, size: 18),
-                        tooltip: 'Copy VietPhrase',
-                        onPressed: () {
-                          final text = TokenTextView.plainText(
-                            state.tokens,
-                            textOf,
-                          );
-                          Clipboard.setData(ClipboardData(text: text));
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Đã copy VietPhrase'),
-                              duration: Duration(seconds: 1),
-                            ),
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: TokenTextView(
-                    tokens: state.tokens,
-                    textOf: textOf,
-                    paneId: PaneId.vietPhrase,
-                  ),
-                ),
-              ],
+            child: TokenTextView(
+              tokens: state.tokens,
+              textOf: textOf,
+              paneId: PaneId.vietPhrase,
             ),
           ),
-          const Divider(height: 1, thickness: 1),
-          // Phần 2: Ô Việt (chiếm flex 2)
-          Expanded(
-            flex: 2,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.edit_note,
-                        size: 20,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Bản dịch Việt',
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
-                      ),
-                      const Spacer(),
-                      IconButton(
-                        icon: const Icon(Icons.copy, size: 18),
-                        tooltip: 'Copy bản dịch Việt',
-                        onPressed: () {
-                          Clipboard.setData(
-                            ClipboardData(text: _vietController.text),
-                          );
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Đã copy bản dịch Việt'),
-                              duration: Duration(seconds: 1),
-                            ),
-                          );
-                        },
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.restart_alt, size: 18),
-                        tooltip: 'Đặt lại theo VietPhrase',
-                        onPressed: () {
-                          final plain = TokenTextView.plainText(
-                            state.tokens,
-                            (t) => t.display,
-                          );
-                          setState(() => _vietController.text = plain);
-                        },
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Expanded(
-                    child: TextField(
-                      controller: _vietController,
-                      maxLines: null,
-                      expands: true,
-                      textAlignVertical: TextAlignVertical.top,
-                      style: ref.watch(
-                        settingsProvider.select(
-                          (s) => s.paneTextStyleFor(PaneId.viet),
-                        ),
-                      ),
-                      decoration: InputDecoration(
-                        hintText:
-                            'Nhập hoặc chỉnh sửa bản dịch thuần Việt tại đây...',
-                        contentPadding: const EdgeInsets.all(10),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
       ],
     );
   }

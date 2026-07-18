@@ -65,7 +65,8 @@ class LookupResult {
     readingKind: readingKind,
     hanViet: hanViet,
     body: body,
-    sections: [...sections, section],
+    // Tra thêm online → chèn lên trên cùng ô Nghĩa.
+    sections: [section, ...sections],
   );
 }
 

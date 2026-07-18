@@ -3,21 +3,51 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../dictionary/application/dictionaries_provider.dart';
 import '../../dictionary_sync/application/dictionary_sync_controller.dart';
+import '../../settings/settings_provider.dart';
 import '../application/translation_controller.dart';
 import '../domain/translation_engine.dart';
 import 'han_viet_pane.dart';
 import 'lacviet_panel.dart';
 import 'result_pane.dart';
 import 'source_pane.dart';
+import 'viet_pane.dart';
 
-/// Bố cục kiểu QuickTranslator: trái-trên tabs [Nguồn | Hán Việt],
-/// trái-dưới ô Nghĩa (LacViet), phải tabs VietPhrase.
-class TranslateScreen extends ConsumerWidget {
+/// Bố cục kiểu QuickTranslator, 2 cột, mỗi ô kéo được (chiều cao trong cột +
+/// bề rộng giữa 2 cột). Trái: [Nguồn | Hán Việt] tabs trên, ô Nghĩa dưới.
+/// Phải: VietPhrase trên, ô Bản dịch Việt dưới. Tỷ lệ được lưu để khôi phục.
+class TranslateScreen extends ConsumerStatefulWidget {
   const TranslateScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<TranslateScreen> createState() => _TranslateScreenState();
+}
+
+class _TranslateScreenState extends ConsumerState<TranslateScreen> {
+  @override
+  Widget build(BuildContext context) {
     final dicts = ref.watch(dictionariesProvider);
+    final columns = ref.watch(
+      settingsProvider.select((s) => s.columnsRatio),
+    );
+    final left = ref.watch(settingsProvider.select((s) => s.leftSplitRatio));
+    final right = ref.watch(settingsProvider.select((s) => s.rightSplitRatio));
+    final notifier = ref.read(settingsProvider.notifier);
+
+    final leftColumn = _DraggableSplit(
+      axis: Axis.vertical,
+      ratio: left,
+      onChangedEnd: (v) => notifier.setLayoutRatio('left', v),
+      first: const _SourceTabs(),
+      second: const LacVietPanel(),
+    );
+
+    final rightColumn = _DraggableSplit(
+      axis: Axis.vertical,
+      ratio: right,
+      onChangedEnd: (v) => notifier.setLayoutRatio('right', v),
+      first: const ResultPane(),
+      second: const VietPane(),
+    );
 
     return Column(
       children: [
@@ -35,25 +65,113 @@ class TranslateScreen extends ConsumerWidget {
               ),
             ],
           ),
-        const Expanded(
-          child: Row(
-            children: [
-              Expanded(
-                flex: 2,
-                child: Column(
-                  children: [
-                    Expanded(flex: 3, child: _SourceTabs()),
-                    Divider(height: 1, thickness: 1),
-                    Expanded(flex: 2, child: LacVietPanel()),
-                  ],
-                ),
-              ),
-              VerticalDivider(width: 1, thickness: 1),
-              Expanded(flex: 3, child: ResultPane()),
-            ],
+        Expanded(
+          child: _DraggableSplit(
+            axis: Axis.horizontal,
+            ratio: columns,
+            onChangedEnd: (v) => notifier.setLayoutRatio('columns', v),
+            first: leftColumn,
+            second: rightColumn,
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Chia hai ô theo [axis] với thanh kéo ở giữa; [ratio] là tỷ lệ ô đầu tiên.
+/// Stateful để khi kéo chỉ rebuild ô chia (không rebuild cả màn hình/provider).
+class _DraggableSplit extends StatefulWidget {
+  const _DraggableSplit({
+    required this.axis,
+    required this.ratio,
+    required this.first,
+    required this.second,
+    required this.onChangedEnd,
+  });
+
+  final Axis axis;
+  final double ratio;
+  final Widget first;
+  final Widget second;
+  final ValueChanged<double> onChangedEnd;
+
+  @override
+  State<_DraggableSplit> createState() => _DraggableSplitState();
+}
+
+class _DraggableSplitState extends State<_DraggableSplit> {
+  static const _handle = 8.0;
+  late double _ratio = widget.ratio;
+
+  @override
+  void didUpdateWidget(_DraggableSplit old) {
+    super.didUpdateWidget(old);
+    // Đồng bộ khi tỷ lệ lưu đổi từ ngoài (không phải do kéo).
+    if (widget.ratio != old.ratio) _ratio = widget.ratio;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final horizontal = widget.axis == Axis.horizontal;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final total = horizontal
+            ? constraints.maxWidth
+            : constraints.maxHeight;
+        final avail = (total - _handle).clamp(1.0, double.infinity);
+        final firstSize = (avail * _ratio).clamp(avail * 0.15, avail * 0.85);
+
+        // Cộng dồn delta trực tiếp vào _ratio: nhiều sự kiện move trong 1 frame
+        // đều tích luỹ (nếu tính lại từ firstSize cũ sẽ mất delta → kéo bị chậm).
+        void drag(double delta) {
+          setState(
+            () => _ratio = (_ratio + delta / avail).clamp(0.15, 0.85),
+          );
+        }
+
+        final divider = MouseRegion(
+          cursor: horizontal
+              ? SystemMouseCursors.resizeColumn
+              : SystemMouseCursors.resizeRow,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onHorizontalDragUpdate: horizontal ? (d) => drag(d.delta.dx) : null,
+            onHorizontalDragEnd: horizontal
+                ? (_) => widget.onChangedEnd(_ratio)
+                : null,
+            onVerticalDragUpdate: horizontal ? null : (d) => drag(d.delta.dy),
+            onVerticalDragEnd: horizontal
+                ? null
+                : (_) => widget.onChangedEnd(_ratio),
+            child: Center(
+              child: Container(
+                width: horizontal ? 1 : double.infinity,
+                height: horizontal ? double.infinity : 1,
+                color: Theme.of(context).colorScheme.outlineVariant,
+              ),
+            ),
+          ),
+        );
+
+        final children = <Widget>[
+          SizedBox(
+            width: horizontal ? firstSize : null,
+            height: horizontal ? null : firstSize,
+            child: RepaintBoundary(child: widget.first),
+          ),
+          SizedBox(
+            width: horizontal ? _handle : null,
+            height: horizontal ? null : _handle,
+            child: divider,
+          ),
+          Expanded(child: RepaintBoundary(child: widget.second)),
+        ];
+
+        return horizontal
+            ? Row(children: children)
+            : Column(children: children);
+      },
     );
   }
 }

@@ -5,7 +5,7 @@ import 'package:vietyaku/app.dart';
 import 'package:vietyaku/features/settings/settings_provider.dart';
 
 void main() {
-  testWidgets('HomeShell shows three navigation destinations', (tester) async {
+  testWidgets('HomeShell shows two navigation destinations', (tester) async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
 
@@ -17,8 +17,8 @@ void main() {
     );
     await tester.pump();
 
+    // "Sửa từ điển" đã chuyển vào tab Cài đặt (không còn là destination riêng).
     expect(find.text('Dịch'), findsWidgets);
-    expect(find.text('Sửa từ điển'), findsOneWidget);
     expect(find.text('Cài đặt'), findsOneWidget);
   });
 }

@@ -79,18 +79,89 @@ class LacVietPanel extends ConsumerWidget {
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-              child: SelectableText(
-                result.sections.isEmpty
-                    ? 'Không tìm thấy trong từ điển.'
-                    : result.sections
-                          .map((s) => s.displayText)
-                          .join('\n-----------------\n'),
-                style: ref.watch(
-                  settingsProvider.select(
-                    (s) => s.paneTextStyleFor(PaneId.meaning),
+              child: result.sections.isEmpty
+                  ? SelectableText(
+                      'Không tìm thấy trong từ điển.',
+                      style: ref.watch(
+                        settingsProvider.select(
+                          (s) => s.paneTextStyleFor(PaneId.meaning),
+                        ),
+                      ),
+                    )
+                  : _MeaningSections(sections: result.sections),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// Màu nhãn `<<Từ điển>>` theo loại từ điển trong ô Nghĩa.
+Color meaningLabelColor(String label, ColorScheme scheme) {
+  switch (label) {
+    case 'UserDict':
+      return scheme.tertiary;
+    case 'Names':
+      return const Color(0xFF00897B); // teal
+    case 'VietPhrase':
+      return const Color(0xFF3949AB); // indigo
+    case 'Lạc Việt':
+      return const Color(0xFFD81B60); // pink
+    case 'Nhật Việt':
+      return const Color(0xFFE65100); // deep orange
+    case 'Cedict':
+    case 'Babylon':
+      return const Color(0xFF6A1B9A); // purple
+    case 'Thiều Chửu':
+      return const Color(0xFF00838F); // cyan
+    case 'Trung Việt':
+      return const Color(0xFFC62828); // red
+    case 'Mazii':
+      return const Color(0xFF2E7D32); // green
+    case 'Google Dịch':
+      return const Color(0xFF1565C0); // blue
+    default:
+      return scheme.primary;
+  }
+}
+
+/// Danh sách mục tra từ điển, mỗi mục có nhãn `<<Từ điển>>` màu riêng.
+class _MeaningSections extends ConsumerWidget {
+  const _MeaningSections({required this.sections});
+
+  final List<LookupSection> sections;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    final style = ref.watch(
+      settingsProvider.select((s) => s.paneTextStyleFor(PaneId.meaning)),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var i = 0; i < sections.length; i++) ...[
+          if (i > 0)
+            Divider(color: scheme.outlineVariant, height: 16),
+          SelectableText.rich(
+            TextSpan(
+              style: style,
+              children: [
+                TextSpan(text: '${sections[i].word} '),
+                TextSpan(
+                  text: '<<${sections[i].label}>>',
+                  style: TextStyle(
+                    color: meaningLabelColor(sections[i].label, scheme),
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-              ),
+                TextSpan(
+                  text: sections[i].body.contains('\n')
+                      ? '\n${sections[i].body}'
+                      : ' ${sections[i].body}',
+                ),
+              ],
             ),
           ),
         ],
