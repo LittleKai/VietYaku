@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../dictionary/application/dictionaries_provider.dart';
 import '../../settings/settings_provider.dart';
+import '../domain/jp_input_normalizer.dart';
+import '../domain/kanji_numeral.dart';
 import '../domain/token.dart';
 import '../domain/translation_engine.dart';
 
@@ -63,6 +65,8 @@ class TranslationController extends Notifier<TranslationState> {
   Future<void> setMode(TranslationMode mode) async {
     if (state.mode == mode) return;
     ref.read(currentModeProvider.notifier).set(mode);
+    // Lưu mode vào prefs để lần mở sau dùng lại mode cuối.
+    ref.read(settingsProvider.notifier).setDefaultMode(mode);
     state = state.copyWith(mode: mode);
     if (state.sourceText.isNotEmpty && state.hasResult) {
       // Bộ dict theo mode nạp lại xong mới dịch lại bằng dict mới.
@@ -81,7 +85,25 @@ class TranslationController extends Notifier<TranslationState> {
       prioritizeNames: settings.prioritizeNames,
     );
     final sw = Stopwatch()..start();
-    final tokens = engine.translate(text, mode: state.mode);
+    List<Token> tokens;
+    if (state.mode == TranslationMode.japanese) {
+      // Chuẩn hoá halfwidth katakana trước khi tra; token map ngược về
+      // offset văn bản gốc (docs/NGHIEN_CUU_SUDACHI.md §2.5, §3.1).
+      if (settings.normalizeHalfwidthKana) {
+        final norm = normalizeJapaneseInput(text);
+        tokens = engine.translate(norm.text, mode: state.mode);
+        if (norm.changed) {
+          tokens = remapTokensToOriginal(tokens, text, norm.toOriginal);
+        }
+      } else {
+        tokens = engine.translate(text, mode: state.mode);
+      }
+      if (settings.joinKanjiNumerals) {
+        tokens = joinKanjiNumerals(tokens);
+      }
+    } else {
+      tokens = engine.translate(text, mode: state.mode);
+    }
     sw.stop();
     final hanVietTokens = dicts.hanVietEngine.translate(text, mode: state.mode);
     state = state.copyWith(

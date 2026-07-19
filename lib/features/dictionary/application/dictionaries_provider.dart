@@ -18,10 +18,14 @@ class DictionariesNotifier extends AsyncNotifier<LoadedDictionaries> {
     final dictPaths = ref.watch(
       settingsProvider.select((s) => s.dictPathsFor(mode)),
     );
+    // Bật/tắt merge biến thể Sudachi → nạp lại bộ dict.
+    final useSudachiVariants = ref.watch(
+      settingsProvider.select((s) => s.sudachiVariants),
+    );
     final sw = Stopwatch()..start();
     final loaded = await DictionaryRepository(
       paths,
-    ).loadAll(dictPaths, mode: mode);
+    ).loadAll(dictPaths, mode: mode, useSudachiVariants: useSudachiVariants);
     debugPrint(
       'Dictionaries loaded in ${sw.elapsedMilliseconds}ms: '
       '${loaded.stats.entries.map((e) => '${e.key.name} '

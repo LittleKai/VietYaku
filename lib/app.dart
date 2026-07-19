@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'core/theme/app_theme.dart';
+import 'features/settings/appearance_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/translation/presentation/translate_screen.dart';
 
@@ -66,6 +67,11 @@ class _HomeShellState extends State<HomeShell> {
                 label: Text('Dịch'),
               ),
               NavigationRailDestination(
+                icon: Icon(Icons.palette_outlined),
+                selectedIcon: Icon(Icons.palette),
+                label: Text('Giao diện'),
+              ),
+              NavigationRailDestination(
                 icon: Icon(Icons.settings_outlined),
                 selectedIcon: Icon(Icons.settings),
                 label: Text('Cài đặt'),
@@ -78,6 +84,7 @@ class _HomeShellState extends State<HomeShell> {
               index: _selectedIndex,
               children: const [
                 TranslateScreen(),
+                AppearanceScreen(),
                 SettingsScreen(),
               ],
             ),

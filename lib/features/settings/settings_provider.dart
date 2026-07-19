@@ -106,6 +106,20 @@ class AppSettings {
   /// Names thắng cụm VietPhrase dài hơn tại cùng vị trí (UserDict vẫn cao nhất).
   final bool prioritizeNames;
 
+  /// Mode Nhật: gộp run số kanji không match thành số Ả Rập (三百二十五 → 325).
+  final bool joinKanjiNumerals;
+
+  /// Mode Nhật: chuẩn hoá halfwidth katakana (ｱｲｳ → アイウ) trước khi tra.
+  final bool normalizeHalfwidthKana;
+
+  /// Mode Nhật: merge từ điển biến thể Sudachi (data/jp/SudachiVariants.txt)
+  /// dưới VietPhrase. Đổi setting → nạp lại bộ từ điển.
+  final bool sudachiVariants;
+
+  /// Mode Nhật: fallback phát âm kana từ data/jp/SudachiReadings.txt
+  /// trong ô Nghĩa khi Nhật Việt/Lạc Việt không có.
+  final bool sudachiReadings;
+
   /// Chính sách repair Key thuần Hán (màn Sửa từ điển) — chỉnh ở Cài đặt.
   final RepairPolicy repairPolicy;
 
@@ -125,6 +139,13 @@ class AppSettings {
   /// Màu chữ katakana/furigana (kana không match) trong ô VietPhrase (ARGB).
   final int katakanaColor;
 
+  /// Tab đa nghĩa: bọc `[ ]` cả cụm có trong từ điển mà chỉ có 1 nghĩa.
+  final bool bracketSingleMeaning;
+
+  /// Giữ nguyên ngoặc kép CJK đặc biệt 『』《》〈〉〝〞〟 khi hiển thị
+  /// (false → chuyển thành `"`). 「」 luôn chuyển thành `"`.
+  final bool keepSpecialQuotes;
+
   /// Voice TTS đã chọn theo ngôn ngữ (`"name::locale"`; '' = tự động chọn).
   final String ttsVoiceJa;
   final String ttsVoiceZh;
@@ -137,6 +158,10 @@ class AppSettings {
     required this.defaultMode,
     this.translationAlgorithm = TranslationAlgorithm.leftToRight,
     this.prioritizeNames = false,
+    this.joinKanjiNumerals = true,
+    this.normalizeHalfwidthKana = true,
+    this.sudachiVariants = true,
+    this.sudachiReadings = true,
     this.repairPolicy = RepairPolicy.addVariant,
     this.paneFonts = const {},
     this.syncServerUrl = defaultSyncServerUrl,
@@ -145,6 +170,8 @@ class AppSettings {
     this.leftSplitRatio = 0.6,
     this.rightSplitRatio = 0.6,
     this.katakanaColor = 0xFF2E7D32,
+    this.bracketSingleMeaning = true,
+    this.keepSpecialQuotes = true,
     this.ttsVoiceJa = '',
     this.ttsVoiceZh = '',
     this.ttsSpeechRate = 0.5,
@@ -167,6 +194,10 @@ class AppSettings {
     TranslationMode? defaultMode,
     TranslationAlgorithm? translationAlgorithm,
     bool? prioritizeNames,
+    bool? joinKanjiNumerals,
+    bool? normalizeHalfwidthKana,
+    bool? sudachiVariants,
+    bool? sudachiReadings,
     RepairPolicy? repairPolicy,
     Map<PaneId, PaneFont>? paneFonts,
     String? syncServerUrl,
@@ -175,6 +206,8 @@ class AppSettings {
     double? leftSplitRatio,
     double? rightSplitRatio,
     int? katakanaColor,
+    bool? bracketSingleMeaning,
+    bool? keepSpecialQuotes,
     String? ttsVoiceJa,
     String? ttsVoiceZh,
     double? ttsSpeechRate,
@@ -183,6 +216,11 @@ class AppSettings {
     defaultMode: defaultMode ?? this.defaultMode,
     translationAlgorithm: translationAlgorithm ?? this.translationAlgorithm,
     prioritizeNames: prioritizeNames ?? this.prioritizeNames,
+    joinKanjiNumerals: joinKanjiNumerals ?? this.joinKanjiNumerals,
+    normalizeHalfwidthKana:
+        normalizeHalfwidthKana ?? this.normalizeHalfwidthKana,
+    sudachiVariants: sudachiVariants ?? this.sudachiVariants,
+    sudachiReadings: sudachiReadings ?? this.sudachiReadings,
     repairPolicy: repairPolicy ?? this.repairPolicy,
     paneFonts: paneFonts ?? this.paneFonts,
     syncServerUrl: syncServerUrl ?? this.syncServerUrl,
@@ -191,6 +229,8 @@ class AppSettings {
     leftSplitRatio: leftSplitRatio ?? this.leftSplitRatio,
     rightSplitRatio: rightSplitRatio ?? this.rightSplitRatio,
     katakanaColor: katakanaColor ?? this.katakanaColor,
+    bracketSingleMeaning: bracketSingleMeaning ?? this.bracketSingleMeaning,
+    keepSpecialQuotes: keepSpecialQuotes ?? this.keepSpecialQuotes,
     ttsVoiceJa: ttsVoiceJa ?? this.ttsVoiceJa,
     ttsVoiceZh: ttsVoiceZh ?? this.ttsVoiceZh,
     ttsSpeechRate: ttsSpeechRate ?? this.ttsSpeechRate,
@@ -219,12 +259,18 @@ class SettingsNotifier extends Notifier<AppSettings> {
   static const _modeKey = 'defaultMode';
   static const _algorithmKey = 'translationAlgorithm';
   static const _prioritizeNamesKey = 'prioritizeNames';
+  static const _joinKanjiNumeralsKey = 'translate.joinKanjiNumerals';
+  static const _normalizeHalfwidthKanaKey = 'translate.normalizeHalfwidthKana';
+  static const _sudachiVariantsKey = 'translate.sudachiVariants';
+  static const _sudachiReadingsKey = 'translate.sudachiReadings';
   static const _repairPolicyKey = 'repairPolicy';
   static const _syncServerUrlKey = 'syncServerUrl';
   static const _columnsRatioKey = 'layout.columnsRatio';
   static const _leftSplitRatioKey = 'layout.leftSplitRatio';
   static const _rightSplitRatioKey = 'layout.rightSplitRatio';
   static const _katakanaColorKey = 'katakanaColor';
+  static const _bracketSingleMeaningKey = 'display.bracketSingle';
+  static const _keepSpecialQuotesKey = 'display.keepSpecialQuotes';
   static const _ttsVoiceJaKey = 'tts.voice.ja';
   static const _ttsVoiceZhKey = 'tts.voice.zh';
   static const _ttsSpeechRateKey = 'tts.speechRate';
@@ -256,6 +302,11 @@ class SettingsNotifier extends Notifier<AppSettings> {
           )] ??
           TranslationAlgorithm.leftToRight,
       prioritizeNames: prefs.getBool(_prioritizeNamesKey) ?? false,
+      joinKanjiNumerals: prefs.getBool(_joinKanjiNumeralsKey) ?? true,
+      normalizeHalfwidthKana:
+          prefs.getBool(_normalizeHalfwidthKanaKey) ?? true,
+      sudachiVariants: prefs.getBool(_sudachiVariantsKey) ?? true,
+      sudachiReadings: prefs.getBool(_sudachiReadingsKey) ?? true,
       repairPolicy:
           RepairPolicy.values.asNameMap()[prefs.getString(_repairPolicyKey)] ??
           RepairPolicy.addVariant,
@@ -272,6 +323,8 @@ class SettingsNotifier extends Notifier<AppSettings> {
       leftSplitRatio: prefs.getDouble(_leftSplitRatioKey) ?? 0.6,
       rightSplitRatio: prefs.getDouble(_rightSplitRatioKey) ?? 0.6,
       katakanaColor: prefs.getInt(_katakanaColorKey) ?? 0xFF2E7D32,
+      bracketSingleMeaning: prefs.getBool(_bracketSingleMeaningKey) ?? true,
+      keepSpecialQuotes: prefs.getBool(_keepSpecialQuotesKey) ?? true,
       ttsVoiceJa: prefs.getString(_ttsVoiceJaKey) ?? '',
       ttsVoiceZh: prefs.getString(_ttsVoiceZhKey) ?? '',
       ttsSpeechRate: prefs.getDouble(_ttsSpeechRateKey) ?? 0.5,
@@ -300,6 +353,18 @@ class SettingsNotifier extends Notifier<AppSettings> {
     final prefs = ref.read(sharedPreferencesProvider);
     await prefs.setInt(_katakanaColorKey, color);
     state = state.copyWith(katakanaColor: color);
+  }
+
+  Future<void> setBracketSingleMeaning(bool value) async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    await prefs.setBool(_bracketSingleMeaningKey, value);
+    state = state.copyWith(bracketSingleMeaning: value);
+  }
+
+  Future<void> setKeepSpecialQuotes(bool value) async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    await prefs.setBool(_keepSpecialQuotesKey, value);
+    state = state.copyWith(keepSpecialQuotes: value);
   }
 
   /// Lưu tỷ lệ bố cục (gọi khi thả thanh kéo). [which]: 'columns'|'left'|'right'.
@@ -350,6 +415,30 @@ class SettingsNotifier extends Notifier<AppSettings> {
     final prefs = ref.read(sharedPreferencesProvider);
     await prefs.setBool(_prioritizeNamesKey, value);
     state = state.copyWith(prioritizeNames: value);
+  }
+
+  Future<void> setJoinKanjiNumerals(bool value) async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    await prefs.setBool(_joinKanjiNumeralsKey, value);
+    state = state.copyWith(joinKanjiNumerals: value);
+  }
+
+  Future<void> setNormalizeHalfwidthKana(bool value) async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    await prefs.setBool(_normalizeHalfwidthKanaKey, value);
+    state = state.copyWith(normalizeHalfwidthKana: value);
+  }
+
+  Future<void> setSudachiVariants(bool value) async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    await prefs.setBool(_sudachiVariantsKey, value);
+    state = state.copyWith(sudachiVariants: value);
+  }
+
+  Future<void> setSudachiReadings(bool value) async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    await prefs.setBool(_sudachiReadingsKey, value);
+    state = state.copyWith(sudachiReadings: value);
   }
 
   Future<void> setRepairPolicy(RepairPolicy policy) async {

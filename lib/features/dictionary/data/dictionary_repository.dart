@@ -22,6 +22,10 @@ class LoadedDictionaries {
   final PhraseDictionary jaVi;
   final PhraseDictionary zhVi;
 
+  /// Phát âm kana từ SudachiDict (data/jp/SudachiReadings.txt, chỉ mode Nhật;
+  /// rỗng khi thiếu file). Dùng làm fallback phát âm trong ô Nghĩa.
+  final PhraseDictionary sudachiReadings;
+
   /// fromCache + thời gian load từng dict (log/hiển thị).
   final Map<DictType, ({bool fromCache, int elapsedMs})> stats;
 
@@ -38,8 +42,10 @@ class LoadedDictionaries {
     required this.chinesePhienAmEnglish,
     required this.jaVi,
     required this.zhVi,
+    PhraseDictionary? sudachiReadings,
     required this.stats,
-  });
+  }) : sudachiReadings =
+           sudachiReadings ?? PhraseDictionary(DictType.jaVi, const {});
 
   /// Engine với thứ tự ưu tiên UserDict > Names > VietPhrase.
   TranslationEngine get engine => engineWith();
@@ -93,11 +99,23 @@ class DictionaryRepository {
   Future<LoadedDictionaries> loadAll(
     Map<DictType, String> dictPaths, {
     required TranslationMode mode,
+    bool useSudachiVariants = true,
   }) async {
     Future<LoadResult> loadPath(DictType type, String source) => loadDictionary(
       sourcePath: source,
       cachePath: paths.cacheFileFor(source),
       type: type,
+    );
+
+    // File Sudachi sinh bởi tool/build_sudachi_assets.dart, nằm cạnh
+    // VietPhrase nguồn (data/jp; data/cn không có → dict rỗng).
+    String sudachiPath(String fileName) =>
+        p.join(p.dirname(dictPaths[DictType.vietPhrase]!), fileName);
+
+    Future<LoadResult> emptyResult(DictType type) async => LoadResult(
+      PhraseDictionary(type, const {}),
+      fromCache: false,
+      elapsedMs: 0,
     );
 
     Future<LoadResult> load(DictType type) {
@@ -123,6 +141,10 @@ class DictionaryRepository {
       loadPath(DictType.names, userNamesPath), // overlay "Thêm vào Names"
       loadPath(DictType.vietPhrase, sharedVietPhrasePath(mode)),
       loadPath(DictType.lacViet, sharedLacVietPath(mode)),
+      useSudachiVariants
+          ? loadPath(DictType.vietPhrase, sudachiPath('SudachiVariants.txt'))
+          : emptyResult(DictType.vietPhrase),
+      loadPath(DictType.jaVi, sudachiPath('SudachiReadings.txt')),
     ]);
 
     var names = results[1].dictionary;
@@ -135,9 +157,13 @@ class DictionaryRepository {
     }
 
     var vietPhrase = results[2].dictionary;
+    final sudachiVariants = results[15].dictionary;
     final sharedVietPhrase = results[13].dictionary;
-    if (!sharedVietPhrase.isEmpty) {
+    if (!sudachiVariants.isEmpty || !sharedVietPhrase.isEmpty) {
+      // Biến thể Sudachi merge DƯỚI VietPhrase (key trùng thì VietPhrase
+      // thắng), Shared đè trên cùng.
       vietPhrase = PhraseDictionary(DictType.vietPhrase, {
+        ...sudachiVariants.entries,
         ...vietPhrase.entries,
         ...sharedVietPhrase.entries,
       });
@@ -165,6 +191,7 @@ class DictionaryRepository {
       chinesePhienAmEnglish: results[9].dictionary,
       jaVi: results[10].dictionary,
       zhVi: results[11].dictionary,
+      sudachiReadings: results[16].dictionary,
       stats: {
         for (final r in results.take(12))
           r.dictionary.type: (fromCache: r.fromCache, elapsedMs: r.elapsedMs),

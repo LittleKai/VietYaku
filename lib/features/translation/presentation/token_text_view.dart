@@ -51,10 +51,16 @@ class TokenTextView extends ConsumerStatefulWidget {
     '}',
     '…',
     '%',
+    '』',
+    '〉',
+    '》',
+    '〞',
+    '〟',
+    '﹄',
   };
 
   /// Dấu mở → KHÔNG chèn space phía sau.
-  static const _openPunct = {'(', '[', '{'};
+  static const _openPunct = {'(', '[', '{', '『', '〈', '《', '〝', '﹃'};
 
   /// Có cần 1 space giữa hai đoạn text liền kề khi render/copy.
   static bool _needSpaceBetween(String cur, String next) {
@@ -102,10 +108,16 @@ class TokenTextView extends ConsumerStatefulWidget {
 
   /// Text hiển thị của 1 token: passthrough được chuẩn hoá dấu câu/toàn-hình
   /// và chèn space sau dấu câu.
-  static String _displayText(Token token, String Function(Token) textOf) {
+  static String _displayText(
+    Token token,
+    String Function(Token) textOf,
+    bool keepSpecialQuotes,
+  ) {
     final text = textOf(token);
     if (token.kind == TokenKind.passthrough) {
-      return _spacePunctuation(normalizeDisplayText(text));
+      return _spacePunctuation(
+        normalizeDisplayText(text, keepSpecialQuotes: keepSpecialQuotes),
+      );
     }
     return text;
   }
@@ -114,11 +126,12 @@ class TokenTextView extends ConsumerStatefulWidget {
   /// để không tạo khoảng trống thừa, rồi viết hoa sau dấu kết câu.
   static List<_Piece> _pieces(
     List<Token> paragraph,
-    String Function(Token) textOf,
-  ) {
+    String Function(Token) textOf, {
+    bool keepSpecialQuotes = true,
+  }) {
     final pieces = <_Piece>[];
     for (final token in paragraph) {
-      final text = _displayText(token, textOf);
+      final text = _displayText(token, textOf, keepSpecialQuotes);
       if (token.kind != TokenKind.passthrough && text.trim().isEmpty) {
         continue; // token bị lọc → bỏ hẳn
       }
@@ -133,10 +146,14 @@ class TokenTextView extends ConsumerStatefulWidget {
   }
 
   /// Ghép text thuần từ [tokens] theo cùng quy tắc render (dùng cho nút copy).
-  static String plainText(List<Token> tokens, String Function(Token) textOf) {
+  static String plainText(
+    List<Token> tokens,
+    String Function(Token) textOf, {
+    bool keepSpecialQuotes = true,
+  }) {
     return paragraphs(tokens)
         .map((p) {
-          final pieces = _pieces(p, textOf);
+          final pieces = _pieces(p, textOf, keepSpecialQuotes: keepSpecialQuotes);
           final sb = StringBuffer();
           for (var i = 0; i < pieces.length; i++) {
             sb.write(pieces[i].text);
@@ -180,15 +197,39 @@ class TokenTextView extends ConsumerStatefulWidget {
   /// Ký tự kết câu (ASCII + toàn-hình CJK) → chữ Việt kế tiếp viết hoa.
   static const _sentenceEnders = {'.', '!', '?', '…', '。', '．', '！', '？', '⋯'};
 
+  /// Nháy/ngoặc mở "trong suốt" khi xét viết hoa: `" [hành/đi]` đầu hàng
+  /// hoặc sau dấu kết câu vẫn viết hoa chữ cái đầu.
+  static const _capitalizeTransparent = {
+    '"',
+    "'",
+    '(',
+    '[',
+    '{',
+    '«',
+    '“',
+    '‘',
+    '『',
+    '〈',
+    '《',
+    '〝',
+    '﹃',
+  };
+
   static bool _shouldCapitalize(List<_Piece> pieces, int index) {
     if (index == 0) return true;
     for (var j = index - 1; j >= 0; j--) {
-      final prevText = pieces[j].text.trim();
+      var prevText = pieces[j].text.trim();
+      // Bỏ nháy/ngoặc mở ở cuối (vd `"` hay `. "`) — không chặn viết hoa.
+      while (prevText.isNotEmpty &&
+          _capitalizeTransparent.contains(prevText[prevText.length - 1])) {
+        prevText = prevText.substring(0, prevText.length - 1).trimRight();
+      }
       if (prevText.isEmpty) continue;
       final lastChar = prevText[prevText.length - 1];
       return _sentenceEnders.contains(lastChar);
     }
-    return false;
+    // Phía trước chỉ toàn nháy/ngoặc mở → coi như đầu hàng.
+    return true;
   }
 
   static String _capitalize(String text) {
@@ -284,36 +325,50 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
         .toList();
 
     if (!sel.isValid || sel.isCollapsed) {
-      // Không tô đen: chuột phải vào từ trong ô VietPhrase → paste nghĩa
-      // dưới con trỏ vào ô Bản dịch, không hiện menu. (Đổi controller phải
-      // chờ hết frame vì contextMenuBuilder chạy trong lúc build overlay.)
+      if (widget.paneId != PaneId.vietPhrase) {
+        return AdaptiveTextSelectionToolbar.buttonItems(
+          anchors: editableTextState.contextMenuAnchors,
+          buttonItems: items,
+        );
+      }
+      // Không tô đen trong ô VietPhrase: chuột phải vào CỤM CÓ TRONG TỪ ĐIỂN
+      // (matched) → paste nghĩa dưới con trỏ vào ô Bản dịch; chữ ngoài cụm /
+      // hán-kanji ngoài từ điển → không làm gì. Không hiện menu.
+      // TIÊU THỤ vị trí nhấn: toolbar có thể rebuild nhiều lần khi đang hiện
+      // (selectToken/insert gây rebuild) — nếu không tiêu thụ sẽ paste lặp.
       final tapPos = _secondaryTapPosition;
-      if (widget.paneId == PaneId.vietPhrase && tapPos != null) {
+      _secondaryTapPosition = null;
+      Token? hitToken;
+      var meaning = '';
+      if (tapPos != null) {
         final tapOffset = editableTextState.renderEditable
             .getPositionForPoint(tapPos)
             .offset;
         for (final (start, end, token) in ranges) {
-          if (tapOffset >= start && tapOffset < end) {
-            final meaning = _meaningAt(
+          if (tapOffset >= start &&
+              tapOffset < end &&
+              token.kind == TokenKind.matched) {
+            hitToken = token;
+            meaning = _meaningAt(
               value.text.substring(start, end),
               tapOffset - start,
             );
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              editableTextState.hideToolbar();
-              ref.read(tokenSelectionProvider.notifier).selectToken(token);
-              insertIntoVietDraft(
-                ref.read(vietDraftControllerProvider),
-                meaning,
-              );
-            });
-            return const SizedBox.shrink();
+            break;
           }
         }
       }
-      return AdaptiveTextSelectionToolbar.buttonItems(
-        anchors: editableTextState.contextMenuAnchors,
-        buttonItems: items,
-      );
+      // Luôn ẩn toolbar (kể cả khi không paste) — nếu để "đang hiện",
+      // lần chuột phải sau bị toggleToolbar nuốt mất, paste lúc được lúc
+      // không. Đổi controller phải chờ hết frame (đang build overlay).
+      final token = hitToken;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        editableTextState.hideToolbar();
+        if (token != null) {
+          ref.read(tokenSelectionProvider.notifier).selectToken(token);
+          insertIntoVietDraft(ref.read(vietDraftControllerProvider), meaning);
+        }
+      });
+      return const SizedBox.shrink();
     }
 
     // Tô đen → key từ điển là source CJK của các token nằm trong vùng chọn
@@ -430,6 +485,9 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
     final katakanaColor = Color(
       ref.watch(settingsProvider.select((s) => s.katakanaColor)),
     );
+    final keepQuotes = ref.watch(
+      settingsProvider.select((s) => s.keepSpecialQuotes),
+    );
     final paras = TokenTextView.paragraphs(widget.tokens);
 
     return Listener(
@@ -444,7 +502,11 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
         padding: const EdgeInsets.all(12),
         itemCount: paras.length,
         itemBuilder: (context, index) {
-          final pieces = TokenTextView._pieces(paras[index], widget.textOf);
+          final pieces = TokenTextView._pieces(
+            paras[index],
+            widget.textOf,
+            keepSpecialQuotes: keepQuotes,
+          );
           final spans = <InlineSpan>[];
           // Range hiển thị (offset trong text của đoạn) → token, để map caret.
           final ranges = <(int, int, Token)>[];

@@ -95,8 +95,11 @@ class _ResultPaneState extends ConsumerState<ResultPane>
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(translationControllerProvider);
+    final bracketSingle = ref.watch(
+      settingsProvider.select((s) => s.bracketSingleMeaning),
+    );
     final String Function(Token) textOf = _multiMeaning
-        ? (t) => t.displayAll
+        ? (t) => t.displayAllWith(bracketSingle: bracketSingle)
         : (t) => t.display;
 
     // Đổi đoạn nguồn khi tab Google Dịch đang mở → dịch lại online.

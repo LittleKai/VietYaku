@@ -48,7 +48,8 @@ class Token {
   String get display => meaning ?? source;
 
   /// Hiển thị đa nghĩa kiểu QuickTranslator: >1 nghĩa → `[nghĩa1/nghĩa2]`.
-  String get displayAll {
+  /// [bracketSingle] bọc ngoặc vuông cả cụm chỉ có 1 nghĩa.
+  String displayAllWith({bool bracketSingle = false}) {
     final raw = rawValue;
     if (raw == null) return source;
     final parts = raw
@@ -57,9 +58,11 @@ class Token {
         .where((s) => s.isNotEmpty)
         .toList();
     if (parts.isEmpty) return source;
-    if (parts.length == 1) return parts.first;
+    if (parts.length == 1 && !bracketSingle) return parts.first;
     return '[${parts.join('/')}]';
   }
+
+  String get displayAll => displayAllWith();
 
   @override
   String toString() => 'Token($kind, "$source" → "$display")';

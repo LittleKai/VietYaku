@@ -4,6 +4,7 @@ import '../../../core/cjk.dart';
 import '../../../core/google_translate.dart';
 import '../../dictionary/application/dictionaries_provider.dart';
 import '../../dictionary/data/dictionary_repository.dart';
+import '../../settings/settings_provider.dart';
 import '../data/mazii_api.dart';
 import '../domain/reading_extractor.dart';
 import '../domain/translation_engine.dart';
@@ -187,6 +188,13 @@ class LookupController extends Notifier<LookupResult?> {
     ({String text, ReadingKind kind})? reading;
     if (mode == TranslationMode.japanese) {
       reading = jaVi == null ? null : extractKanaReading(jaVi);
+      // Fallback phát âm kana từ SudachiDict (docs/NGHIEN_CUU_SUDACHI.md §2.6b).
+      if (reading == null && ref.read(settingsProvider).sudachiReadings) {
+        final sudachi = dicts.sudachiReadings.entries[word];
+        if (sudachi != null) {
+          reading = (text: sudachi, kind: ReadingKind.kana);
+        }
+      }
       reading ??= lacVietValue == null ? null : extractReading(lacVietValue);
     } else {
       reading = lacVietValue == null ? null : extractReading(lacVietValue);
