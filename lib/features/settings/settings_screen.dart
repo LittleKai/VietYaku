@@ -6,7 +6,6 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../core/tts_service.dart';
 import '../../shared/widgets/settings_layout.dart';
-import '../dictionary/application/dictionaries_provider.dart';
 import '../dictionary_sync/application/dictionary_sync_controller.dart';
 import '../repair/domain/jp_repair_pipeline.dart';
 import '../repair/presentation/repair_screen.dart';
@@ -192,30 +191,6 @@ class SettingsScreen extends ConsumerWidget {
           description:
               'Kéo bản mới từ server; tự động đồng bộ hoặc cập nhật thủ công. Đăng nhập quản trị để xuất bản thay đổi.',
           children: [_DictionarySyncSettings()],
-        ),
-        SettingsSection(
-          icon: Icons.menu_book_outlined,
-          accentColor: const Color(0xFFC62828),
-          title: 'Dữ liệu từ điển',
-          description:
-              'Mỗi ngôn ngữ dùng một bộ riêng; bản _JP.txt đã sửa được ưu tiên cho tiếng Nhật.',
-          children: [
-            SettingsControlRow(
-              title: 'Nạp lại từ điển',
-              description:
-                  'Đọc lại dữ liệu trên đĩa và cập nhật bộ dịch đang dùng.',
-              controlWidth: 210,
-              control: Align(
-                alignment: Alignment.centerRight,
-                child: FilledButton.tonalIcon(
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Nạp lại dữ liệu'),
-                  onPressed: () =>
-                      ref.read(dictionariesProvider.notifier).reload(),
-                ),
-              ),
-            ),
-          ],
         ),
         const SettingsSection(
           icon: Icons.system_update_alt_outlined,
@@ -639,7 +614,7 @@ class _UpdateSettingsState extends ConsumerState<_UpdateSettings> {
         SettingsSwitchRow(
           title: 'Tự động kiểm tra cập nhật',
           description:
-              'Kiểm tra bản mới trên GitHub mỗi khi khởi động ứng dụng.',
+              'Kiểm tra bản mới mỗi khi khởi động ứng dụng.',
           value: settings.autoCheckUpdates,
           onChanged: (value) =>
               ref.read(settingsProvider.notifier).setAutoCheckUpdates(value),
