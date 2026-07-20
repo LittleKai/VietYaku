@@ -14,12 +14,14 @@ import '../domain/shared_dictionary_entry.dart';
 class DictionarySyncState {
   final bool isLoggingIn;
   final bool isSyncing;
+  final bool isPublishing;
   final AdminSession? session;
   final String? message;
 
   const DictionarySyncState({
     this.isLoggingIn = false,
     this.isSyncing = false,
+    this.isPublishing = false,
     this.session,
     this.message,
   });
@@ -29,6 +31,7 @@ class DictionarySyncState {
   DictionarySyncState copyWith({
     bool? isLoggingIn,
     bool? isSyncing,
+    bool? isPublishing,
     AdminSession? session,
     bool clearSession = false,
     String? message,
@@ -36,17 +39,33 @@ class DictionarySyncState {
   }) => DictionarySyncState(
     isLoggingIn: isLoggingIn ?? this.isLoggingIn,
     isSyncing: isSyncing ?? this.isSyncing,
+    isPublishing: isPublishing ?? this.isPublishing,
     session: clearSession ? null : (session ?? this.session),
     message: clearMessage ? null : (message ?? this.message),
   );
 }
 
 class DictionarySyncController extends Notifier<DictionarySyncState> {
+  static const _sessionUsernameKey = 'dictionarySync.admin.username';
+  static const _sessionTokenKey = 'dictionarySync.admin.token';
+
+  /// Số sửa đổi cục bộ đang chờ mà khi đạt tới sẽ tự động Update lên server,
+  /// ngoài việc bấm nút Update thủ công.
+  static const _autoPublishThreshold = 10;
+
   static String _cursorKey(TranslationMode mode) =>
       'sharedDictionary.cursor.${mode.name}';
 
   @override
-  DictionarySyncState build() => const DictionarySyncState();
+  DictionarySyncState build() {
+    final prefs = ref.watch(sharedPreferencesProvider);
+    final username = prefs.getString(_sessionUsernameKey);
+    final token = prefs.getString(_sessionTokenKey);
+    final session = username == null || token == null || token.isEmpty
+        ? null
+        : AdminSession(username: username, token: token);
+    return DictionarySyncState(session: session);
+  }
 
   static String _messageFor(Object error) {
     if (error is DictionarySyncException) return error.message;
@@ -69,6 +88,9 @@ class DictionarySyncController extends Notifier<DictionarySyncState> {
         serverUrl: serverUrl,
         client: client,
       ).login(username.trim(), password);
+      final prefs = ref.read(sharedPreferencesProvider);
+      await prefs.setString(_sessionUsernameKey, session.username);
+      await prefs.setString(_sessionTokenKey, session.token);
       state = state.copyWith(
         isLoggingIn: false,
         session: session,
@@ -82,41 +104,96 @@ class DictionarySyncController extends Notifier<DictionarySyncState> {
     }
   }
 
-  void logout() {
+  Future<void> logout() async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    await prefs.remove(_sessionUsernameKey);
+    await prefs.remove(_sessionTokenKey);
     state = state.copyWith(clearSession: true, message: 'Đã đăng xuất.');
   }
 
-  Future<void> publish({
+  Future<void> stageLocalEdit({
     required TranslationMode mode,
     required SharedDictionaryKind kind,
     required String source,
     required String target,
   }) async {
-    final session = state.session;
-    if (session == null) return;
+    if (!state.isAdmin) return;
     final entry = SharedDictionaryEntry(
       kind: kind,
       source: source,
       target: target,
     );
+    final paths = await ref.read(appPathsProvider.future);
+    final service = SharedDictionaryService(paths);
+    await service.stageLocalEdit(mode, entry);
+    await _reloadCurrentTranslation();
+    final dictionaryName = kind == SharedDictionaryKind.vietPhrase
+        ? 'VietPhrase'
+        : 'Lạc Việt';
+
+    var pendingCount = 0;
+    for (final m in TranslationMode.values) {
+      pendingCount += (await service.pendingEntries(m)).length;
+    }
+    if (pendingCount >= _autoPublishThreshold) {
+      // Đủ số sửa đổi chờ: tự động Update, không cần bấm nút thủ công.
+      try {
+        await publishPending();
+      } catch (_) {
+        // publishPending() đã ánh xạ lỗi vào state.message.
+      }
+      return;
+    }
+
+    state = state.copyWith(
+      message: 'Đã lưu $dictionaryName. Bấm Update để gửi lên server.',
+    );
+  }
+
+  /// Gửi tất cả sửa đổi admin đang chờ của cả hai ngôn ngữ lên server.
+  Future<int> publishPending() async {
+    final session = state.session;
+    if (session == null || state.isPublishing) return 0;
+    state = state.copyWith(isPublishing: true, clearMessage: true);
     final client = http.Client();
     try {
-      await DictionarySyncApi(
+      final api = DictionarySyncApi(
         serverUrl: ref.read(settingsProvider).syncServerUrl,
         client: client,
-      ).publish(session.token, mode, entry);
+      );
       final paths = await ref.read(appPathsProvider.future);
-      await SharedDictionaryService(paths).applyDelta(mode, [entry]);
-      await _reloadCurrentTranslation();
-      final dictionaryName = kind == SharedDictionaryKind.vietPhrase
-          ? 'VietPhrase'
-          : 'Lạc Việt';
-      state = state.copyWith(message: 'Đã cập nhật $dictionaryName chung.');
+      final service = SharedDictionaryService(paths);
+      var published = 0;
+      for (final mode in TranslationMode.values) {
+        final entries = await service.pendingEntries(mode);
+        for (final entry in entries) {
+          await api.publish(session.token, mode, entry);
+        }
+        if (entries.isNotEmpty) {
+          await service.clearPending(mode);
+          published += entries.length;
+        }
+      }
+      state = state.copyWith(
+        isPublishing: false,
+        message: published == 0
+            ? 'Không có thay đổi nào đang chờ Update.'
+            : 'Đã Update $published mục VietPhrase/Lạc Việt lên server.',
+      );
+      return published;
     } catch (error) {
       if (error is DictionarySyncException && error.statusCode == 401) {
-        state = state.copyWith(clearSession: true, message: error.message);
+        await _clearPersistedSession();
+        state = state.copyWith(
+          isPublishing: false,
+          clearSession: true,
+          message: error.message,
+        );
       } else {
-        state = state.copyWith(message: _messageFor(error));
+        state = state.copyWith(
+          isPublishing: false,
+          message: _messageFor(error),
+        );
       }
       rethrow;
     } finally {
@@ -152,11 +229,15 @@ class DictionarySyncController extends Notifier<DictionarySyncState> {
       }
 
       final paths = await ref.read(appPathsProvider.future);
-      final changed = await SharedDictionaryService(
-        paths,
-      ).applyDelta(mode, entries);
+      final service = SharedDictionaryService(paths);
+      final changed = await service.applyDelta(mode, entries);
+      // Bản server không được ghi đè các sửa đổi admin chưa bấm Update.
+      final restored = await service.applyDelta(
+        mode,
+        await service.pendingEntries(mode),
+      );
       await prefs.setString(_cursorKey(mode), cursor);
-      if (changed > 0) {
+      if (changed > 0 || restored > 0) {
         await _reloadCurrentTranslation();
       }
       state = state.copyWith(
@@ -182,6 +263,12 @@ class DictionarySyncController extends Notifier<DictionarySyncState> {
           .read(translationControllerProvider.notifier)
           .translate(translation.sourceText);
     }
+  }
+
+  Future<void> _clearPersistedSession() async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    await prefs.remove(_sessionUsernameKey);
+    await prefs.remove(_sessionTokenKey);
   }
 }
 

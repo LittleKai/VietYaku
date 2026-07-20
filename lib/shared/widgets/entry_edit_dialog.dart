@@ -6,6 +6,7 @@ import '../../features/dictionary/data/user_dict_service.dart';
 import '../../features/dictionary_sync/application/dictionary_sync_controller.dart';
 import '../../features/dictionary_sync/domain/shared_dictionary_entry.dart';
 import '../../features/translation/application/translation_controller.dart';
+import 'app_dialog.dart';
 
 /// Dialog sửa nghĩa / thêm entry vào UserDict (hoặc UserNames overlay).
 /// Lưu xong: reload từ điển + dịch lại văn bản hiện tại ngay.
@@ -29,48 +30,54 @@ Future<void> showEntryEditDialog(
   final keyController = TextEditingController(text: word);
   final meaningController = TextEditingController(text: existing ?? '');
 
-  final saved = await showDialog<bool>(
+  final saved = await showAppDialog<bool>(
     context: context,
-    builder: (context) => AlertDialog(
-      title: Text(
-        title ?? (toNames ? 'Thêm vào Names' : 'Sửa nghĩa (UserDict)'),
-      ),
-      content: SizedBox(
-        width: 420,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: keyController,
-              decoration: const InputDecoration(labelText: 'Từ (key)'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: meaningController,
-              decoration: const InputDecoration(
-                labelText: 'Nghĩa (nhiều nghĩa ngăn bằng /)',
-              ),
-              autofocus: true,
-            ),
-          ],
+    icon: toNames ? Icons.badge_outlined : Icons.edit_note,
+    accentColor: toNames ? const Color(0xFF00897B) : const Color(0xFFEF6C00),
+    title: title ?? (toNames ? 'Thêm vào Names' : 'Sửa nghĩa trong UserDict'),
+    description: toNames
+        ? 'Tên riêng được ưu tiên khi dịch và chỉ lưu trên máy này.'
+        : 'Mục UserDict được ưu tiên cao nhất khi dịch.',
+    width: 540,
+    content: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        TextField(
+          controller: keyController,
+          decoration: const InputDecoration(labelText: 'Từ nguồn'),
         ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context, false),
-          child: const Text('Hủy'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.pop(context, true),
-          child: const Text('Lưu'),
+        const SizedBox(height: 14),
+        TextField(
+          controller: meaningController,
+          minLines: 6,
+          maxLines: 10,
+          textAlignVertical: TextAlignVertical.top,
+          decoration: const InputDecoration(
+            labelText: 'Nghĩa',
+            helperText: 'Dùng dấu / để ngăn cách nhiều nghĩa.',
+          ),
+          autofocus: true,
         ),
       ],
     ),
+    actionsBuilder: (dialogContext) => [
+      TextButton(
+        onPressed: () => Navigator.pop(dialogContext, false),
+        child: const Text('Hủy'),
+      ),
+      FilledButton.icon(
+        icon: const Icon(Icons.save_outlined),
+        onPressed: () => Navigator.pop(dialogContext, true),
+        label: const Text('Lưu từ'),
+      ),
+    ],
   );
 
+  final key = saved == true ? keyController.text.trim() : '';
+  final meaning = saved == true ? meaningController.text.trim() : '';
+  keyController.dispose();
+  meaningController.dispose();
   if (saved != true) return;
-  final key = keyController.text.trim();
-  final meaning = meaningController.text.trim();
   if (key.isEmpty || meaning.isEmpty) return;
 
   final paths = await ref.read(appPathsProvider.future);
@@ -91,7 +98,8 @@ Future<void> showEntryEditDialog(
   }
 }
 
-/// Dialog cập nhật VietPhrase/Lạc Việt chung, chỉ gọi khi đã đăng nhập admin.
+/// Dialog sửa trực tiếp VietPhrase/Lạc Việt cục bộ của admin.
+/// Mục đã sửa chỉ lên server khi admin bấm Update trong Cài đặt.
 Future<void> showSharedEntryEditDialog(
   BuildContext context,
   WidgetRef ref, {
@@ -109,51 +117,57 @@ Future<void> showSharedEntryEditDialog(
   final keyController = TextEditingController(text: word);
   final meaningController = TextEditingController(text: existing ?? '');
 
-  final saved = await showDialog<bool>(
+  final saved = await showAppDialog<bool>(
     context: context,
-    builder: (context) => AlertDialog(
-      title: Text('Cập nhật $dictionaryName chung'),
-      content: SizedBox(
-        width: 420,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: keyController,
-              decoration: const InputDecoration(labelText: 'Từ (key)'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: meaningController,
-              decoration: const InputDecoration(labelText: 'Nghĩa'),
-              autofocus: true,
-            ),
-          ],
+    icon: Icons.edit_note,
+    accentColor: const Color(0xFF00838F),
+    title: 'Sửa vào $dictionaryName',
+    description:
+        'Lưu cục bộ trước; bấm Update trong Cài đặt để gửi lên server.',
+    width: 540,
+    content: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        TextField(
+          controller: keyController,
+          decoration: const InputDecoration(labelText: 'Từ nguồn'),
         ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context, false),
-          child: const Text('Hủy'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.pop(context, true),
-          child: const Text('Cập nhật'),
+        const SizedBox(height: 14),
+        TextField(
+          controller: meaningController,
+          minLines: 6,
+          maxLines: 10,
+          textAlignVertical: TextAlignVertical.top,
+          decoration: const InputDecoration(labelText: 'Nghĩa'),
+          autofocus: true,
         ),
       ],
     ),
+    actionsBuilder: (dialogContext) => [
+      TextButton(
+        onPressed: () => Navigator.pop(dialogContext, false),
+        child: const Text('Hủy'),
+      ),
+      FilledButton.icon(
+        icon: const Icon(Icons.save_outlined),
+        onPressed: () => Navigator.pop(dialogContext, true),
+        label: const Text('Lưu từ'),
+      ),
+    ],
   );
 
+  final key = saved == true ? keyController.text.trim() : '';
+  final meaning = saved == true ? meaningController.text.trim() : '';
+  keyController.dispose();
+  meaningController.dispose();
   if (saved != true) return;
-  final key = keyController.text.trim();
-  final meaning = meaningController.text.trim();
   if (key.isEmpty || meaning.isEmpty) return;
 
   try {
     final mode = ref.read(translationControllerProvider).mode;
     await ref
         .read(dictionarySyncProvider.notifier)
-        .publish(mode: mode, kind: kind, source: key, target: meaning);
+        .stageLocalEdit(mode: mode, kind: kind, source: key, target: meaning);
   } catch (_) {
     // Controller giữ thông báo lỗi đã ánh xạ cho UI.
   }

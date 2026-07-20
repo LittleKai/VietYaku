@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/cjk.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/entry_edit_dialog.dart';
+import '../../../shared/widgets/icon_context_menu.dart';
 import '../../dictionary/application/dictionaries_provider.dart';
 import '../../dictionary/domain/dict_type.dart';
 import '../../dictionary_sync/application/dictionary_sync_controller.dart';
@@ -153,7 +154,11 @@ class TokenTextView extends ConsumerStatefulWidget {
   }) {
     return paragraphs(tokens)
         .map((p) {
-          final pieces = _pieces(p, textOf, keepSpecialQuotes: keepSpecialQuotes);
+          final pieces = _pieces(
+            p,
+            textOf,
+            keepSpecialQuotes: keepSpecialQuotes,
+          );
           final sb = StringBuffer();
           for (var i = 0; i < pieces.length; i++) {
             sb.write(pieces[i].text);
@@ -253,6 +258,7 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
   /// (text_selection.dart onSecondaryTap) → không dùng selection để biết
   /// từ nào bị nhấn; map điểm nhấn qua renderEditable.getPositionForPoint.
   Offset? _secondaryTapPosition;
+  bool _ignoreCollapsedSelection = false;
 
   TextStyle _styleFor(
     Token token,
@@ -312,10 +318,12 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
   }
 
   Widget _contextMenu(
-    BuildContext context,
     EditableTextState editableTextState,
     List<(int, int, Token)> ranges,
   ) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _ignoreCollapsedSelection = false;
+    });
     final value = editableTextState.textEditingValue;
     final sel = value.selection;
 
@@ -364,7 +372,7 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         editableTextState.hideToolbar();
         if (token != null) {
-          ref.read(tokenSelectionProvider.notifier).selectToken(token);
+          ref.read(tokenSelectionProvider.notifier).clear();
           insertIntoVietDraft(ref.read(vietDraftControllerProvider), meaning);
         }
       });
@@ -392,56 +400,13 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
     final namesMeaning = dicts?.names.entries[word];
     String verb(bool exists) => exists ? 'Sửa' : 'Thêm';
 
-    final custom = <ContextMenuButtonItem>[
-      ContextMenuButtonItem(
-        label: '${verb(userMeaning != null || vpMeaning != null)} '
-            '"$word" (VietPhrase)',
-        onPressed: () {
-          editableTextState.hideToolbar();
-          showEntryEditDialog(
-            context,
-            ref,
-            word: word,
-            toNames: false,
-            title: '${verb(userMeaning != null || vpMeaning != null)} '
-                '(VietPhrase)',
-            initialMeaning: userMeaning ?? vpMeaning,
-          );
-        },
-      ),
-      ContextMenuButtonItem(
-        label: '${verb(lacVietMeaning != null)} "$word" (Lạc Việt)',
-        onPressed: () {
-          editableTextState.hideToolbar();
-          showEntryEditDialog(
-            context,
-            ref,
-            word: word,
-            toNames: false,
-            title: '${verb(lacVietMeaning != null)} (Lạc Việt)',
-            initialMeaning: userMeaning ?? lacVietMeaning,
-          );
-        },
-      ),
-      ContextMenuButtonItem(
-        label: '${verb(namesMeaning != null)} "$word" (Names)',
-        onPressed: () {
-          editableTextState.hideToolbar();
-          showEntryEditDialog(
-            context,
-            ref,
-            word: word,
-            toNames: true,
-            title: '${verb(namesMeaning != null)} (Names)',
-            initialMeaning: namesMeaning,
-          );
-        },
-      ),
-    ];
-    if (ref.read(dictionarySyncProvider).isAdmin) {
+    final isAdmin = ref.read(dictionarySyncProvider).isAdmin;
+    final custom = <IconContextMenuItem>[];
+    if (isAdmin) {
       custom.addAll([
-        ContextMenuButtonItem(
-          label: 'Cập nhật "$word" vào VietPhrase chung',
+        IconContextMenuItem(
+          icon: Icons.menu_book_outlined,
+          label: '${verb(vpMeaning != null)} vào VietPhrase',
           onPressed: () {
             editableTextState.hideToolbar();
             showSharedEntryEditDialog(
@@ -452,8 +417,9 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
             );
           },
         ),
-        ContextMenuButtonItem(
-          label: 'Cập nhật "$word" vào Lạc Việt chung',
+        IconContextMenuItem(
+          icon: Icons.local_library_outlined,
+          label: '${verb(lacVietMeaning != null)} vào Lạc Việt',
           onPressed: () {
             editableTextState.hideToolbar();
             showSharedEntryEditDialog(
@@ -465,12 +431,47 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
           },
         ),
       ]);
+    } else {
+      custom.add(
+        IconContextMenuItem(
+          icon: Icons.person_add_alt_1_outlined,
+          label: '${verb(userMeaning != null)} vào UserDict',
+          onPressed: () {
+            editableTextState.hideToolbar();
+            showEntryEditDialog(
+              context,
+              ref,
+              word: word,
+              toNames: false,
+              title: '${verb(userMeaning != null)} vào UserDict',
+              initialMeaning: userMeaning ?? vpMeaning,
+            );
+          },
+        ),
+      );
     }
+    custom.add(
+      IconContextMenuItem(
+        icon: Icons.badge_outlined,
+        label: '${verb(namesMeaning != null)} vào Names',
+        onPressed: () {
+          editableTextState.hideToolbar();
+          showEntryEditDialog(
+            context,
+            ref,
+            word: word,
+            toNames: true,
+            title: '${verb(namesMeaning != null)} vào Names',
+            initialMeaning: namesMeaning,
+          );
+        },
+      ),
+    );
 
     // Tô đen → chỉ hiện các mục Thêm/Sửa (+ mục admin nếu đăng nhập).
-    return AdaptiveTextSelectionToolbar.buttonItems(
+    return IconContextMenu(
       anchors: editableTextState.contextMenuAnchors,
-      buttonItems: custom,
+      items: custom,
     );
   }
 
@@ -496,6 +497,7 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
       onPointerDown: (event) {
         if ((event.buttons & kSecondaryMouseButton) != 0) {
           _secondaryTapPosition = event.position;
+          _ignoreCollapsedSelection = true;
         }
       },
       child: ListView.builder(
@@ -539,6 +541,8 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
                 if (!textSelection.isValid || !textSelection.isCollapsed) {
                   return;
                 }
+                // Chuột phải chỉ chèn nghĩa/mở menu, không active cụm.
+                if (_ignoreCollapsedSelection) return;
                 final caret = textSelection.baseOffset;
                 for (final (start, end, token) in ranges) {
                   if (caret >= start && caret < end) {
@@ -550,7 +554,7 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
                 }
               },
               contextMenuBuilder: (context, editableTextState) =>
-                  _contextMenu(context, editableTextState, ranges),
+                  _contextMenu(editableTextState, ranges),
             ),
           );
         },

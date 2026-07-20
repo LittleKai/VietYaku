@@ -121,10 +121,10 @@ class AppTheme {
 
       // ── Dialog ───────────────────────────────────────────────────────────
       dialogTheme: DialogThemeData(
-        backgroundColor: scheme.surfaceContainerHigh,
+        backgroundColor: scheme.surfaceContainer,
         surfaceTintColor: Colors.transparent,
         elevation: 6,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         titleTextStyle: text.titleLarge,
         contentTextStyle: text.bodyMedium,
         insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
@@ -153,6 +153,31 @@ class AppTheme {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         ),
       ),
+      iconButtonTheme: IconButtonThemeData(
+        style: IconButton.styleFrom(
+          minimumSize: const Size.square(40),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      ),
+      switchTheme: SwitchThemeData(
+        thumbColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.disabled)) {
+            return scheme.onSurface.withValues(alpha: 0.38);
+          }
+          if (states.contains(WidgetState.selected)) return scheme.onPrimary;
+          return scheme.outline;
+        }),
+        trackColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.disabled)) {
+            return scheme.onSurface.withValues(alpha: 0.12);
+          }
+          if (states.contains(WidgetState.selected)) return scheme.primary;
+          return scheme.surfaceContainerHighest;
+        }),
+        trackOutlineColor: WidgetStatePropertyAll(scheme.outlineVariant),
+      ),
       segmentedButtonTheme: SegmentedButtonThemeData(
         style: SegmentedButton.styleFrom(
           selectedBackgroundColor: scheme.secondaryContainer,
@@ -166,6 +191,9 @@ class AppTheme {
       navigationRailTheme: NavigationRailThemeData(
         backgroundColor: scheme.surfaceContainer,
         indicatorColor: scheme.secondaryContainer,
+        indicatorShape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+        ),
         selectedIconTheme: IconThemeData(color: scheme.onSecondaryContainer),
         unselectedIconTheme: IconThemeData(color: scheme.onSurfaceVariant),
         selectedLabelTextStyle: text.labelMedium?.copyWith(
@@ -268,6 +296,10 @@ class AppTheme {
 
   /// Thang chữ product: một họ font, tương phản qua cỡ + độ đậm.
   static TextTheme _textTheme(TextTheme b) => b.copyWith(
+    headlineSmall: b.headlineSmall?.copyWith(
+      fontWeight: FontWeight.w600,
+      letterSpacing: -0.3,
+    ),
     titleLarge: b.titleLarge?.copyWith(
       fontWeight: FontWeight.w600,
       letterSpacing: -0.2,

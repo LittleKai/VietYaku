@@ -19,8 +19,14 @@ dependencies:
   path_provider: ^2.1.5
   path: ^1.9.0
   shared_preferences: ^2.3.4
+  package_info_plus: ^8.0.0
   collection: ^1.19.0
   flutter_tts: ^4.2.0
+  archive: ^4.0.9
+  xml: ^7.0.1
+  html: ^0.15.6
+  url_launcher: ^6.3.0
+  open_filex: ^4.5.0
 
 dev_dependencies:
   flutter_test:
@@ -33,6 +39,7 @@ flutter:
 
   assets:
     - assets/mappings/
+    - assets/branding/
     # Từ điển bundle: cần cho Android (offline). Trên desktop vẫn nạp qua
     # đường dẫn tuyệt đối; assets này khiến build desktop cũng lớn thêm (~130MB).
     - data/jp/

@@ -9,7 +9,9 @@ import '../../translation/domain/translation_engine.dart';
 import '../application/repair_controller.dart';
 
 class RepairScreen extends ConsumerWidget {
-  const RepairScreen({super.key});
+  const RepairScreen({super.key, this.showHeader = true});
+
+  final bool showHeader;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -27,17 +29,20 @@ class RepairScreen extends ConsumerWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Sửa từ điển ($modeLabel)',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Chọn 1 file trong bộ data/${modeDirNames[mode]} để sửa key (xóa '
-            'space + simp→JP). Chính sách "Key thuần Hán" chỉnh trong Cài đặt.',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-          const SizedBox(height: 12),
+          if (showHeader) ...[
+            Text(
+              'Sửa từ điển ($modeLabel)',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Chọn 1 file trong bộ data/${modeDirNames[mode]} để sửa key '
+              '(xóa space + simp→JP). Chính sách "Key thuần Hán" chỉnh trong '
+              'Cài đặt.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 12),
+          ],
           Row(
             children: [
               DropdownMenu<DictType>(

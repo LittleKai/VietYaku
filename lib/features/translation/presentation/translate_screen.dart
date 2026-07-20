@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../dictionary/application/dictionaries_provider.dart';
-import '../../dictionary_sync/application/dictionary_sync_controller.dart';
 import '../../settings/settings_provider.dart';
 import '../application/translation_controller.dart';
 import '../domain/translation_engine.dart';
@@ -26,9 +25,7 @@ class _TranslateScreenState extends ConsumerState<TranslateScreen> {
   @override
   Widget build(BuildContext context) {
     final dicts = ref.watch(dictionariesProvider);
-    final columns = ref.watch(
-      settingsProvider.select((s) => s.columnsRatio),
-    );
+    final columns = ref.watch(settingsProvider.select((s) => s.columnsRatio));
     final left = ref.watch(settingsProvider.select((s) => s.leftSplitRatio));
     final right = ref.watch(settingsProvider.select((s) => s.rightSplitRatio));
     final notifier = ref.read(settingsProvider.notifier);
@@ -116,18 +113,14 @@ class _DraggableSplitState extends State<_DraggableSplit> {
     final horizontal = widget.axis == Axis.horizontal;
     return LayoutBuilder(
       builder: (context, constraints) {
-        final total = horizontal
-            ? constraints.maxWidth
-            : constraints.maxHeight;
+        final total = horizontal ? constraints.maxWidth : constraints.maxHeight;
         final avail = (total - _handle).clamp(1.0, double.infinity);
         final firstSize = (avail * _ratio).clamp(avail * 0.15, avail * 0.85);
 
         // Cộng dồn delta trực tiếp vào _ratio: nhiều sự kiện move trong 1 frame
         // đều tích luỹ (nếu tính lại từ firstSize cũ sẽ mất delta → kéo bị chậm).
         void drag(double delta) {
-          setState(
-            () => _ratio = (_ratio + delta / avail).clamp(0.15, 0.85),
-          );
+          setState(() => _ratio = (_ratio + delta / avail).clamp(0.15, 0.85));
         }
 
         final divider = MouseRegion(
@@ -184,118 +177,66 @@ class _MenuBar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final mode = ref.watch(translationControllerProvider.select((s) => s.mode));
     final dictsLoading = ref.watch(dictionariesProvider).isLoading;
-    final syncing = ref.watch(
-      dictionarySyncProvider.select((s) => s.isSyncing),
-    );
-
-    Future<void> syncDictionary() async {
-      try {
-        await ref.read(dictionarySyncProvider.notifier).sync(mode);
-      } catch (_) {
-        // Controller đã ánh xạ lỗi kỹ thuật sang thông báo UI.
-      }
-      if (!context.mounted) return;
-      final message = ref.read(dictionarySyncProvider).message;
-      if (message != null) {
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(SnackBar(content: Text(message)));
-      }
-    }
-
-    final syncIcon = syncing
-        ? const SizedBox.square(
-            dimension: 16,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          )
-        : const Icon(Icons.sync, size: 17);
-    final onSync = dictsLoading || syncing ? null : syncDictionary;
 
     return Material(
       color: Theme.of(context).colorScheme.surfaceContainerLow,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        child: LayoutBuilder(
-          builder: (context, constraints) => Row(
-            children: [
-              SegmentedButton<TranslationMode>(
-                segments: const [
-                  ButtonSegment(
-                    value: TranslationMode.japanese,
-                    label: Text('Nhật', style: TextStyle(fontSize: 12)),
-                  ),
-                  ButtonSegment(
-                    value: TranslationMode.chinese,
-                    label: Text('Trung', style: TextStyle(fontSize: 12)),
-                  ),
-                ],
-                selected: {mode},
-                showSelectedIcon: false,
-                style: const ButtonStyle(visualDensity: VisualDensity.compact),
-                onSelectionChanged: (selection) => ref
-                    .read(translationControllerProvider.notifier)
-                    .setMode(selection.first),
-              ),
-              const SizedBox(width: 12),
-              FilledButton.icon(
-                icon: const Icon(Icons.translate, size: 16),
-                label: const Text('Dịch', style: TextStyle(fontSize: 13)),
-                onPressed: dictsLoading
-                    ? null
-                    : () => ref
-                          .read(translationControllerProvider.notifier)
-                          .translate(ref.read(sourceDraftProvider)),
-                style: FilledButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
+        child: Row(
+          children: [
+            SegmentedButton<TranslationMode>(
+              segments: const [
+                ButtonSegment(
+                  value: TranslationMode.japanese,
+                  label: Text('Nhật', style: TextStyle(fontSize: 12)),
+                ),
+                ButtonSegment(
+                  value: TranslationMode.chinese,
+                  label: Text('Trung', style: TextStyle(fontSize: 12)),
+                ),
+              ],
+              selected: {mode},
+              showSelectedIcon: false,
+              style: const ButtonStyle(visualDensity: VisualDensity.compact),
+              onSelectionChanged: (selection) => ref
+                  .read(translationControllerProvider.notifier)
+                  .setMode(selection.first),
+            ),
+            const SizedBox(width: 12),
+            FilledButton.icon(
+              icon: const Icon(Icons.translate, size: 16),
+              label: const Text('Dịch', style: TextStyle(fontSize: 13)),
+              onPressed: dictsLoading
+                  ? null
+                  : () => ref
+                        .read(translationControllerProvider.notifier)
+                        .translate(ref.read(sourceDraftProvider)),
+              style: FilledButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
                 ),
               ),
-              const SizedBox(width: 8),
-              FilledButton.icon(
-                icon: const Icon(Icons.paste, size: 16),
-                label: const Text('Dán & Dịch', style: TextStyle(fontSize: 13)),
-                onPressed: dictsLoading
-                    ? null
-                    : () => ref
-                          .read(translationControllerProvider.notifier)
-                          .pasteAndTranslate(),
-                style: FilledButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
+            ),
+            const SizedBox(width: 8),
+            FilledButton.icon(
+              icon: const Icon(Icons.paste, size: 16),
+              label: const Text('Dán & Dịch', style: TextStyle(fontSize: 13)),
+              onPressed: dictsLoading
+                  ? null
+                  : () => ref
+                        .read(translationControllerProvider.notifier)
+                        .pasteAndTranslate(),
+              style: FilledButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
                 ),
               ),
-              const Spacer(),
-              if (constraints.maxWidth < 760)
-                IconButton.outlined(
-                  icon: syncIcon,
-                  tooltip: 'Cập nhật từ điển',
-                  onPressed: onSync,
-                  visualDensity: VisualDensity.compact,
-                )
-              else
-                OutlinedButton.icon(
-                  icon: syncIcon,
-                  label: const Text(
-                    'Cập nhật từ điển',
-                    style: TextStyle(fontSize: 13),
-                  ),
-                  onPressed: onSync,
-                  style: OutlinedButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                  ),
-                ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

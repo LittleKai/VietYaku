@@ -3,8 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/widgets/entry_edit_dialog.dart';
 import '../../../shared/widgets/tts_button.dart';
+import '../../dictionary_sync/application/dictionary_sync_controller.dart';
+import '../../dictionary_sync/domain/shared_dictionary_entry.dart';
 import '../../settings/settings_provider.dart';
 import '../application/lookup_controller.dart';
+import '../application/token_selection.dart';
 import '../application/translation_controller.dart';
 
 /// Panel "Nghĩa": header (từ + reading + 🔊 + ✏️) + nội dung tra từ điển.
@@ -15,7 +18,22 @@ class LacVietPanel extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final result = ref.watch(lookupControllerProvider);
     final mode = ref.watch(translationControllerProvider.select((s) => s.mode));
+    final isAdmin = ref.watch(
+      dictionarySyncProvider.select((state) => state.isAdmin),
+    );
     final theme = Theme.of(context);
+    final selection = ref.watch(tokenSelectionProvider);
+    final popupTypes = ref.watch(
+      settingsProvider.select((s) => s.popupDictionaryTypes),
+    );
+    final hiddenTypes = selection?.origin == TokenSelectionOrigin.source
+        ? popupTypes
+        : const [];
+    final visibleSections =
+        result?.sections
+            .where((section) => !hiddenTypes.contains(section.dictionaryType))
+            .toList(growable: false) ??
+        const <LookupSection>[];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -64,13 +82,22 @@ class LacVietPanel extends ConsumerWidget {
                 ),
                 IconButton(
                   icon: const Icon(Icons.edit),
-                  tooltip: 'Sửa nghĩa (UserDict — ưu tiên cao nhất)',
-                  onPressed: () => showEntryEditDialog(
-                    context,
-                    ref,
-                    word: result.word,
-                    toNames: false,
-                  ),
+                  tooltip: isAdmin
+                      ? 'Sửa trực tiếp trong Lạc Việt'
+                      : 'Sửa nghĩa trong UserDict',
+                  onPressed: () => isAdmin
+                      ? showSharedEntryEditDialog(
+                          context,
+                          ref,
+                          word: result.word,
+                          kind: SharedDictionaryKind.lacViet,
+                        )
+                      : showEntryEditDialog(
+                          context,
+                          ref,
+                          word: result.word,
+                          toNames: false,
+                        ),
                 ),
               ],
             ),
@@ -79,7 +106,7 @@ class LacVietPanel extends ConsumerWidget {
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-              child: result.sections.isEmpty
+              child: visibleSections.isEmpty
                   ? SelectableText(
                       'Không tìm thấy trong từ điển.',
                       style: ref.watch(
@@ -88,7 +115,7 @@ class LacVietPanel extends ConsumerWidget {
                         ),
                       ),
                     )
-                  : _MeaningSections(sections: result.sections),
+                  : _MeaningSections(sections: visibleSections),
             ),
           ),
         ],
@@ -142,8 +169,7 @@ class _MeaningSections extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         for (var i = 0; i < sections.length; i++) ...[
-          if (i > 0)
-            Divider(color: scheme.outlineVariant, height: 16),
+          if (i > 0) Divider(color: scheme.outlineVariant, height: 16),
           SelectableText.rich(
             TextSpan(
               style: style,

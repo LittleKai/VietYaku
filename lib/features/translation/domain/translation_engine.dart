@@ -57,6 +57,29 @@ class TranslationEngine {
     }
   }
 
+  /// Match dài nhất bắt đầu CHÍNH XÁC tại [offset], bỏ qua ranh giới token
+  /// đã ghép trước đó. Dùng khi người dùng click lại vào giữa 1 cụm (VD
+  /// click vào 女 trong 少女達 đã ghép thành 1 token) để tra lại đúng từ vị
+  /// trí click, không phải từ đầu cụm.
+  Token matchAt(String text, int offset) {
+    final match = _longestMatchAt(text, offset, text.length);
+    if (match != null) {
+      return Token(
+        source: text.substring(offset, offset + match.len),
+        sourceStart: offset,
+        kind: TokenKind.matched,
+        dictType: match.dictType,
+        rawValue: match.value,
+      );
+    }
+    return _fallbackToken(
+      text,
+      offset,
+      runeLengthAt(text, offset),
+      codePointAt(text, offset),
+    );
+  }
+
   /// Match dài nhất tại [i], key kết thúc không vượt quá [limitEnd].
   _Match? _longestMatchAt(String text, int i, int limitEnd) {
     final firstUnit = text.codeUnitAt(i);

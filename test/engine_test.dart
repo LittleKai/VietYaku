@@ -264,6 +264,44 @@ void main() {
     });
   });
 
+  group('matchAt (click lại giữa 1 cụm đã ghép)', () {
+    test('click đầu cụm → cả cụm', () {
+      final engine = TranslationEngine(
+        dicts: [
+          dict(DictType.vietPhrase, {'少女達': 'các thiếu nữ', '女達': 'các cô gái'}),
+        ],
+      );
+      final match = engine.matchAt('少女達', 0);
+      expect(match.source, '少女達');
+      expect(match.meaning, 'các thiếu nữ');
+    });
+
+    test('click vào 女 giữa 少女達 → tra lại từ 女, bỏ qua 少', () {
+      final engine = TranslationEngine(
+        dicts: [
+          dict(DictType.vietPhrase, {'少女達': 'các thiếu nữ', '女達': 'các cô gái'}),
+        ],
+      );
+      final match = engine.matchAt('少女達', 1);
+      expect(match.source, '女達');
+      expect(match.sourceStart, 1);
+      expect(match.meaning, 'các cô gái');
+    });
+
+    test('click vào ký tự cuối, không match dài hơn → fallback 1 ký tự', () {
+      final engine = TranslationEngine(
+        dicts: [
+          dict(DictType.vietPhrase, {'少女達': 'các thiếu nữ'}),
+        ],
+        hanVietFallback: dict(DictType.chinesePhienAm, {'達': 'đạt'}),
+      );
+      final match = engine.matchAt('少女達', 2);
+      expect(match.source, '達');
+      expect(match.kind, TokenKind.hanViet);
+      expect(match.meaning, 'đạt');
+    });
+  });
+
   group('Hán Việt toàn văn (dicts rỗng + fallback)', () {
     test('per chữ Hán, kana unmatched, Latin passthrough', () {
       final engine = TranslationEngine(

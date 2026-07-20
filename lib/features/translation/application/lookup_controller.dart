@@ -7,6 +7,7 @@ import '../../dictionary/data/dictionary_repository.dart';
 import '../../settings/settings_provider.dart';
 import '../data/mazii_api.dart';
 import '../domain/reading_extractor.dart';
+import '../domain/lookup_dictionary_type.dart';
 import '../domain/translation_engine.dart';
 import 'translation_controller.dart';
 
@@ -22,6 +23,13 @@ class LookupSection {
   final String body;
 
   const LookupSection(this.word, this.label, this.body);
+
+  LookupDictionaryType? get dictionaryType {
+    for (final type in LookupDictionaryType.values) {
+      if (type.matchesLabel(label)) return type;
+    }
+    return null;
+  }
 
   /// Body 1 dòng → cùng dòng header; nhiều dòng → xuống dòng.
   String get displayText => body.contains('\n')
@@ -183,19 +191,32 @@ class LookupController extends Notifier<LookupResult?> {
       if (v != null) hanViet = v.split('/').first.trim();
     }
 
-    // Phát âm: mode Nhật → ưu tiên kana `{...}` từ Nhật Việt; mode khác →
+    // Phát âm: mode Nhật → ưu tiên theo cài đặt sudachiReadings; mode khác →
     // LacViet trước, kana Nhật Việt là fallback.
     ({String text, ReadingKind kind})? reading;
     if (mode == TranslationMode.japanese) {
-      reading = jaVi == null ? null : extractKanaReading(jaVi);
-      // Fallback phát âm kana từ SudachiDict (docs/NGHIEN_CUU_SUDACHI.md §2.6b).
-      if (reading == null && ref.read(settingsProvider).sudachiReadings) {
+      final sReadings = ref.read(settingsProvider).sudachiReadings;
+      if (sReadings == SudachiReadingsMode.sudachiFirst) {
         final sudachi = dicts.sudachiReadings.entries[word];
         if (sudachi != null) {
           reading = (text: sudachi, kind: ReadingKind.kana);
         }
+        reading ??= jaVi == null ? null : extractKanaReading(jaVi);
+        reading ??= lacVietValue == null ? null : extractReading(lacVietValue);
+      } else if (sReadings == SudachiReadingsMode.jaViFirst) {
+        reading = jaVi == null ? null : extractKanaReading(jaVi);
+        if (reading == null) {
+          final sudachi = dicts.sudachiReadings.entries[word];
+          if (sudachi != null) {
+            reading = (text: sudachi, kind: ReadingKind.kana);
+          }
+        }
+        reading ??= lacVietValue == null ? null : extractReading(lacVietValue);
+      } else {
+        // SudachiReadingsMode.disabled
+        reading = jaVi == null ? null : extractKanaReading(jaVi);
+        reading ??= lacVietValue == null ? null : extractReading(lacVietValue);
       }
-      reading ??= lacVietValue == null ? null : extractReading(lacVietValue);
     } else {
       reading = lacVietValue == null ? null : extractReading(lacVietValue);
       reading ??= jaVi == null ? null : extractKanaReading(jaVi);

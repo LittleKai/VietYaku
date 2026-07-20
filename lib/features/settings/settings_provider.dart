@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../features/translation/domain/translation_engine.dart';
+import '../translation/domain/lookup_dictionary_type.dart';
 import '../dictionary/domain/dict_type.dart';
 import '../repair/domain/jp_repair_pipeline.dart';
 
@@ -69,6 +70,8 @@ const dictFileNames = <DictType, String>{
   DictType.zhVi: 'ZhViDict.txt',
 };
 
+enum SudachiReadingsMode { sudachiFirst, jaViFirst, disabled }
+
 /// Các ô có cỡ chữ + font chỉnh riêng biệt nhau.
 enum PaneId { source, hanViet, vietPhrase, meaning, viet }
 
@@ -116,9 +119,9 @@ class AppSettings {
   /// dưới VietPhrase. Đổi setting → nạp lại bộ từ điển.
   final bool sudachiVariants;
 
-  /// Mode Nhật: fallback phát âm kana từ data/jp/SudachiReadings.txt
-  /// trong ô Nghĩa khi Nhật Việt/Lạc Việt không có.
-  final bool sudachiReadings;
+  /// Mode Nhật: cấu hình phát âm kana từ data/jp/SudachiReadings.txt
+  /// trong ô Nghĩa.
+  final SudachiReadingsMode sudachiReadings;
 
   /// Chính sách repair Key thuần Hán (màn Sửa từ điển) — chỉnh ở Cài đặt.
   final RepairPolicy repairPolicy;
@@ -153,6 +156,15 @@ class AppSettings {
   /// Tốc độ đọc TTS (0.1–1.0).
   final double ttsSpeechRate;
 
+  /// Các từ điển hiện trong popup khi active từ ở ô Nguồn (tối đa 2).
+  final List<LookupDictionaryType> popupDictionaryTypes;
+
+  /// Tự động kiểm tra bản cập nhật mới trên GitHub Releases lúc khởi động.
+  final bool autoCheckUpdates;
+
+  /// Tự động đồng bộ (kéo) từ điển chung từ server lúc khởi động. Mặc định tắt.
+  final bool autoSyncDictionary;
+
   const AppSettings({
     required this.dictPaths,
     required this.defaultMode,
@@ -161,7 +173,7 @@ class AppSettings {
     this.joinKanjiNumerals = true,
     this.normalizeHalfwidthKana = true,
     this.sudachiVariants = true,
-    this.sudachiReadings = true,
+    this.sudachiReadings = SudachiReadingsMode.sudachiFirst,
     this.repairPolicy = RepairPolicy.addVariant,
     this.paneFonts = const {},
     this.syncServerUrl = defaultSyncServerUrl,
@@ -175,6 +187,9 @@ class AppSettings {
     this.ttsVoiceJa = '',
     this.ttsVoiceZh = '',
     this.ttsSpeechRate = 0.5,
+    this.popupDictionaryTypes = const [LookupDictionaryType.lacViet],
+    this.autoCheckUpdates = true,
+    this.autoSyncDictionary = false,
   });
 
   /// Voice đã chọn cho [mode] ('' = tự động).
@@ -197,7 +212,7 @@ class AppSettings {
     bool? joinKanjiNumerals,
     bool? normalizeHalfwidthKana,
     bool? sudachiVariants,
-    bool? sudachiReadings,
+    SudachiReadingsMode? sudachiReadings,
     RepairPolicy? repairPolicy,
     Map<PaneId, PaneFont>? paneFonts,
     String? syncServerUrl,
@@ -211,6 +226,9 @@ class AppSettings {
     String? ttsVoiceJa,
     String? ttsVoiceZh,
     double? ttsSpeechRate,
+    List<LookupDictionaryType>? popupDictionaryTypes,
+    bool? autoCheckUpdates,
+    bool? autoSyncDictionary,
   }) => AppSettings(
     dictPaths: dictPaths ?? this.dictPaths,
     defaultMode: defaultMode ?? this.defaultMode,
@@ -224,7 +242,8 @@ class AppSettings {
     repairPolicy: repairPolicy ?? this.repairPolicy,
     paneFonts: paneFonts ?? this.paneFonts,
     syncServerUrl: syncServerUrl ?? this.syncServerUrl,
-    isSyncServerUrlOverridden: isSyncServerUrlOverridden ?? this.isSyncServerUrlOverridden,
+    isSyncServerUrlOverridden:
+        isSyncServerUrlOverridden ?? this.isSyncServerUrlOverridden,
     columnsRatio: columnsRatio ?? this.columnsRatio,
     leftSplitRatio: leftSplitRatio ?? this.leftSplitRatio,
     rightSplitRatio: rightSplitRatio ?? this.rightSplitRatio,
@@ -234,6 +253,9 @@ class AppSettings {
     ttsVoiceJa: ttsVoiceJa ?? this.ttsVoiceJa,
     ttsVoiceZh: ttsVoiceZh ?? this.ttsVoiceZh,
     ttsSpeechRate: ttsSpeechRate ?? this.ttsSpeechRate,
+    popupDictionaryTypes: popupDictionaryTypes ?? this.popupDictionaryTypes,
+    autoCheckUpdates: autoCheckUpdates ?? this.autoCheckUpdates,
+    autoSyncDictionary: autoSyncDictionary ?? this.autoSyncDictionary,
   );
 
   static AppSettings defaults() => AppSettings(
@@ -274,6 +296,9 @@ class SettingsNotifier extends Notifier<AppSettings> {
   static const _ttsVoiceJaKey = 'tts.voice.ja';
   static const _ttsVoiceZhKey = 'tts.voice.zh';
   static const _ttsSpeechRateKey = 'tts.speechRate';
+  static const _popupDictionaryTypesKey = 'lookup.popupDictionaries';
+  static const _autoCheckUpdatesKey = 'update.autoCheckUpdates';
+  static const _autoSyncDictionaryKey = 'dictionarySync.autoSync';
   static String _fontSizeKey(PaneId id) => 'paneFont.${id.name}.size';
   static String _fontFamilyKey(PaneId id) => 'paneFont.${id.name}.family';
 
@@ -303,10 +328,20 @@ class SettingsNotifier extends Notifier<AppSettings> {
           TranslationAlgorithm.leftToRight,
       prioritizeNames: prefs.getBool(_prioritizeNamesKey) ?? false,
       joinKanjiNumerals: prefs.getBool(_joinKanjiNumeralsKey) ?? true,
-      normalizeHalfwidthKana:
-          prefs.getBool(_normalizeHalfwidthKanaKey) ?? true,
+      normalizeHalfwidthKana: prefs.getBool(_normalizeHalfwidthKanaKey) ?? true,
       sudachiVariants: prefs.getBool(_sudachiVariantsKey) ?? true,
-      sudachiReadings: prefs.getBool(_sudachiReadingsKey) ?? true,
+      sudachiReadings: () {
+        final val = prefs.get(_sudachiReadingsKey);
+        if (val is String) {
+          return SudachiReadingsMode.values.asNameMap()[val] ??
+              SudachiReadingsMode.sudachiFirst;
+        } else if (val is bool) {
+          return val
+              ? SudachiReadingsMode.jaViFirst
+              : SudachiReadingsMode.disabled;
+        }
+        return SudachiReadingsMode.sudachiFirst;
+      }(),
       repairPolicy:
           RepairPolicy.values.asNameMap()[prefs.getString(_repairPolicyKey)] ??
           RepairPolicy.addVariant,
@@ -317,7 +352,9 @@ class SettingsNotifier extends Notifier<AppSettings> {
             family: prefs.getString(_fontFamilyKey(id)) ?? '',
           ),
       },
-      syncServerUrl: isOverridden ? envUrl : (prefs.getString(_syncServerUrlKey) ?? defaultSyncServerUrl),
+      syncServerUrl: isOverridden
+          ? envUrl
+          : (prefs.getString(_syncServerUrlKey) ?? defaultSyncServerUrl),
       isSyncServerUrlOverridden: isOverridden,
       columnsRatio: prefs.getDouble(_columnsRatioKey) ?? 0.42,
       leftSplitRatio: prefs.getDouble(_leftSplitRatioKey) ?? 0.6,
@@ -328,6 +365,17 @@ class SettingsNotifier extends Notifier<AppSettings> {
       ttsVoiceJa: prefs.getString(_ttsVoiceJaKey) ?? '',
       ttsVoiceZh: prefs.getString(_ttsVoiceZhKey) ?? '',
       ttsSpeechRate: prefs.getDouble(_ttsSpeechRateKey) ?? 0.5,
+      popupDictionaryTypes: () {
+        final saved = prefs.getStringList(_popupDictionaryTypesKey);
+        if (saved == null) return const [LookupDictionaryType.lacViet];
+        return saved
+            .map((name) => LookupDictionaryType.values.asNameMap()[name])
+            .whereType<LookupDictionaryType>()
+            .take(2)
+            .toList(growable: false);
+      }(),
+      autoCheckUpdates: prefs.getBool(_autoCheckUpdatesKey) ?? true,
+      autoSyncDictionary: prefs.getBool(_autoSyncDictionaryKey) ?? false,
     );
   }
 
@@ -347,6 +395,18 @@ class SettingsNotifier extends Notifier<AppSettings> {
     final prefs = ref.read(sharedPreferencesProvider);
     await prefs.setDouble(_ttsSpeechRateKey, v);
     state = state.copyWith(ttsSpeechRate: v);
+  }
+
+  Future<void> setPopupDictionaryTypes(
+    Iterable<LookupDictionaryType> values,
+  ) async {
+    final normalized = values.toSet().take(2).toList(growable: false);
+    final prefs = ref.read(sharedPreferencesProvider);
+    await prefs.setStringList(
+      _popupDictionaryTypesKey,
+      normalized.map((value) => value.name).toList(growable: false),
+    );
+    state = state.copyWith(popupDictionaryTypes: normalized);
   }
 
   Future<void> setKatakanaColor(int color) async {
@@ -435,9 +495,9 @@ class SettingsNotifier extends Notifier<AppSettings> {
     state = state.copyWith(sudachiVariants: value);
   }
 
-  Future<void> setSudachiReadings(bool value) async {
+  Future<void> setSudachiReadings(SudachiReadingsMode value) async {
     final prefs = ref.read(sharedPreferencesProvider);
-    await prefs.setBool(_sudachiReadingsKey, value);
+    await prefs.setString(_sudachiReadingsKey, value.name);
     state = state.copyWith(sudachiReadings: value);
   }
 
@@ -464,6 +524,18 @@ class SettingsNotifier extends Notifier<AppSettings> {
     final prefs = ref.read(sharedPreferencesProvider);
     await prefs.setString(_syncServerUrlKey, normalized);
     state = state.copyWith(syncServerUrl: normalized);
+  }
+
+  Future<void> setAutoCheckUpdates(bool value) async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    await prefs.setBool(_autoCheckUpdatesKey, value);
+    state = state.copyWith(autoCheckUpdates: value);
+  }
+
+  Future<void> setAutoSyncDictionary(bool value) async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    await prefs.setBool(_autoSyncDictionaryKey, value);
+    state = state.copyWith(autoSyncDictionary: value);
   }
 }
 

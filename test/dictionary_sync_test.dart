@@ -1,14 +1,17 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:path/path.dart' as p;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vietyaku/core/app_paths.dart';
 import 'package:vietyaku/features/dictionary/data/dict_parser.dart';
 import 'package:vietyaku/features/dictionary/data/dictionary_repository.dart';
 import 'package:vietyaku/features/dictionary/domain/dict_type.dart';
+import 'package:vietyaku/features/dictionary_sync/application/dictionary_sync_controller.dart';
 import 'package:vietyaku/features/dictionary_sync/data/dictionary_sync_api.dart';
 import 'package:vietyaku/features/dictionary_sync/data/shared_dictionary_service.dart';
 import 'package:vietyaku/features/dictionary_sync/domain/shared_dictionary_entry.dart';
@@ -110,6 +113,28 @@ void main() {
     });
   });
 
+  group('DictionarySyncController', () {
+    test('khôi phục phiên admin đã lưu và xóa khi đăng xuất', () async {
+      SharedPreferences.setMockInitialValues({
+        'dictionarySync.admin.username': 'admin',
+        'dictionarySync.admin.token': 'saved-jwt',
+      });
+      final prefs = await SharedPreferences.getInstance();
+      final container = ProviderContainer(
+        overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+      );
+      addTearDown(container.dispose);
+
+      final restored = container.read(dictionarySyncProvider);
+      expect(restored.session?.username, 'admin');
+      expect(restored.session?.token, 'saved-jwt');
+
+      await container.read(dictionarySyncProvider.notifier).logout();
+      expect(container.read(dictionarySyncProvider).isAdmin, isFalse);
+      expect(prefs.getString('dictionarySync.admin.token'), isNull);
+    });
+  });
+
   group('SharedDictionaryService', () {
     late Directory temp;
     late SharedDictionaryService service;
@@ -171,6 +196,51 @@ void main() {
         isFalse,
       );
     });
+
+    test(
+      'sửa admin được áp dụng cục bộ và giữ trong hàng đợi Update',
+      () async {
+        const first = SharedDictionaryEntry(
+          kind: SharedDictionaryKind.vietPhrase,
+          source: '学校',
+          target: 'trường học',
+        );
+        await service.stageLocalEdit(TranslationMode.japanese, first);
+
+        expect(
+          parseEntries(
+            service
+                .fileFor(
+                  TranslationMode.japanese,
+                  SharedDictionaryKind.vietPhrase,
+                )
+                .readAsStringSync(),
+          )['学校'],
+          'trường học',
+        );
+        expect(await service.pendingEntries(TranslationMode.japanese), [
+          isA<SharedDictionaryEntry>()
+              .having((entry) => entry.kind, 'kind', first.kind)
+              .having((entry) => entry.source, 'source', first.source)
+              .having((entry) => entry.target, 'target', first.target),
+        ]);
+
+        await service.stageLocalEdit(
+          TranslationMode.japanese,
+          const SharedDictionaryEntry(
+            kind: SharedDictionaryKind.vietPhrase,
+            source: '学校',
+            target: 'học đường',
+          ),
+        );
+        final pending = await service.pendingEntries(TranslationMode.japanese);
+        expect(pending, hasLength(1));
+        expect(pending.single.target, 'học đường');
+
+        await service.clearPending(TranslationMode.japanese);
+        expect(await service.pendingEntries(TranslationMode.japanese), isEmpty);
+      },
+    );
 
     test('repository chỉ áp shared cho VietPhrase và Lạc Việt', () async {
       final dataDir = Directory(p.join(temp.path, 'data'))

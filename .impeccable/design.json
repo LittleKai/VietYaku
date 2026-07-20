@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-19T12:00:00+07:00",
+  "title": "Design System: VietYaku",
+  "extensions": {
+    "colorMeta": {
+      "translation-indigo": {
+        "role": "primary",
+        "displayName": "Chàm chuyển ngữ",
+        "canonical": "#4F46E5",
+        "tonalRamp": ["#171443", "#262273", "#3731A5", "#4F46E5", "#7670EC", "#9E9AF3", "#C7C5F9", "#F0EFFF"]
+      },
+      "meaning-red-light": {
+        "role": "semantic",
+        "displayName": "Đỏ nghĩa sáng",
+        "canonical": "#D32F2F",
+        "tonalRamp": ["#400E0E", "#6A1818", "#952121", "#D32F2F", "#DE5B5B", "#E98A8A", "#F4BABA", "#FDEBEB"]
+      },
+      "names-teal-light": {
+        "role": "semantic",
+        "displayName": "Xanh Names sáng",
+        "canonical": "#00796B",
+        "tonalRamp": ["#00241F", "#003D36", "#00564C", "#00796B", "#36998F", "#6BB9B2", "#A4D9D5", "#E5F6F4"]
+      }
+    },
+    "typographyMeta": {
+      "headline": {"displayName": "Headline", "purpose": "Tên màn hình và tiêu đề dialog."},
+      "title": {"displayName": "Title", "purpose": "Tiêu đề nhóm và lựa chọn."},
+      "body": {"displayName": "Body", "purpose": "Nội dung và mô tả."},
+      "label": {"displayName": "Label", "purpose": "Nút, tab và nhãn điều khiển."}
+    },
+    "shadows": [
+      {"name": "menu-low", "value": "Material elevation 3", "purpose": "Dropdown và menu ngữ cảnh."},
+      {"name": "dialog", "value": "Material elevation 6", "purpose": "Tác vụ cần tập trung tạm thời."}
+    ],
+    "motion": [
+      {"name": "state-fast", "value": "150ms easeOutCubic", "purpose": "Hover và phản hồi điều khiển."},
+      {"name": "shell", "value": "200ms easeOutCubic", "purpose": "Thu gọn hoặc mở rộng sidebar."}
+    ],
+    "breakpoints": [
+      {"name": "compact", "value": "720px"},
+      {"name": "sidebar-extended", "value": "1050px"}
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Hành động chính có nhãn động từ và đối tượng.",
+      "html": "<button class=\"ds-btn-primary\">Lưu thay đổi</button>",
+      "css": ".ds-btn-primary{background:#4F46E5;color:#fff;border:0;border-radius:10px;padding:12px 18px;font:600 14px 'Segoe UI',sans-serif;transition:filter 150ms ease,transform 150ms ease}.ds-btn-primary:hover{filter:brightness(.94)}.ds-btn-primary:active{transform:translateY(1px)}.ds-btn-primary:focus-visible{outline:2px solid #4F46E5;outline-offset:2px}"
+    },
+    {
+      "name": "Filled Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Trường nhập tonal với focus rõ.",
+      "html": "<label class=\"ds-field\"><span>Giọng đọc</span><input value=\"Tự động\"></label>",
+      "css": ".ds-field{display:grid;gap:5px;color:#49454F;font:400 12px 'Segoe UI',sans-serif}.ds-field input{background:#F0F0F5;color:#1B1B1F;border:1px solid #C8C5D0;border-radius:10px;padding:13px 14px;font:400 14px 'Segoe UI',sans-serif}.ds-field input:focus-visible{border:2px solid #4F46E5;outline:0;padding:12px 13px}"
+    },
+    {
+      "name": "Settings Row",
+      "kind": "custom",
+      "refersTo": "settings-section",
+      "description": "Một lựa chọn có icon, nội dung và trạng thái tách bạch.",
+      "html": "<div class=\"ds-setting-row\"><span class=\"ds-setting-icon\">文</span><span><strong>Chuẩn hoá Katakana</strong><small>Áp dụng trước khi tra từ điển.</small></span><input type=\"checkbox\" checked></div>",
+      "css": ".ds-setting-row{display:grid;grid-template-columns:40px 1fr auto;align-items:center;gap:12px;background:#F7F7FC;color:#1B1B1F;padding:14px 16px;border-radius:12px;font:400 14px 'Segoe UI',sans-serif}.ds-setting-row strong,.ds-setting-row small{display:block}.ds-setting-row strong{font-weight:600}.ds-setting-row small{margin-top:3px;color:#49454F}.ds-setting-icon{display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:#E5E1FF;color:#4F46E5;font-weight:600}.ds-setting-row:focus-within{outline:2px solid #4F46E5;outline-offset:2px}"
+    },
+    {
+      "name": "Sidebar Destination",
+      "kind": "nav",
+      "description": "Điểm đến rõ nhãn với trạng thái chọn tonal.",
+      "html": "<button class=\"ds-nav-item ds-nav-item-selected\"><span>文</span><strong>Dịch</strong></button>",
+      "css": ".ds-nav-item{display:flex;align-items:center;gap:12px;width:100%;min-height:44px;border:0;border-radius:10px;padding:0 12px;background:transparent;color:#49454F;font:600 14px 'Segoe UI',sans-serif}.ds-nav-item:hover{background:#ECEAF3}.ds-nav-item-selected{background:#E5E1FF;color:#332F75}.ds-nav-item:focus-visible{outline:2px solid #4F46E5;outline-offset:2px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Bàn biên dịch tĩnh",
+    "overview": "VietYaku mang cảm giác của một bàn làm việc ngôn ngữ được sắp xếp kỹ: yên tĩnh, chính xác và đủ dày thông tin cho phiên dịch dài. Material 3 là nền tảng quen thuộc, còn khoảng cách, trạng thái và cấu trúc được siết lại để mọi điều khiển biến mất vào tác vụ.",
+    "keyCharacteristics": ["Mật độ desktop có nhịp.", "Một màu hành động chính.", "Điều khiển tiêu chuẩn và trạng thái rõ.", "Chuyển động chỉ giải thích trạng thái."],
+    "rules": [
+      {"name": "One Action Color", "body": "Chàm chuyển ngữ chỉ dành cho hành động, focus và trạng thái được chọn.", "section": "colors"},
+      {"name": "Reading First", "body": "Chrome ứng dụng luôn dùng Segoe UI để giữ điều hướng ổn định.", "section": "typography"},
+      {"name": "Structural Depth", "body": "Bề mặt trong luồng dùng lớp màu hoặc divider, không dùng bóng trang trí.", "section": "elevation"}
+    ],
+    "dos": ["Do dùng icon, tiêu đề, mô tả và divider để phân biệt từng dòng Settings.", "Do giữ control quen thuộc và đủ trạng thái tương tác."],
+    "donts": ["Don't tạo giao diện desktop cũ với đường viền dày và nhiều màu không có ý nghĩa.", "Don't dùng phong cách manga hoặc anime trang trí.", "Don't tạo dashboard SaaS chung chung với nhiều thẻ nổi và gradient."]
+  }
+}
