@@ -11,7 +11,11 @@
 .svn/
 .swiftpm/
 migrate_working_dir/
-.claude/
+
+# Antigravity/Claude local files
+.claude/*.local.json
+.claude/*.lock
+.claude/prompt.txt
 
 # IntelliJ related
 *.iml
@@ -34,7 +38,19 @@ migrate_working_dir/
 /build/
 /coverage/
 .env
-.codegraph/
+.flutter-plugins
+.packages
+
+# CodeGraph files
+.codegraph/*
+!.codegraph/.gitignore
+
+# Generated repair files
+**/*_JP.txt
+
+# Temporary files (keep UI screenshots)
+/tmp/*
+!/tmp/ui-qa/
 
 # Symbolication related
 app.*.symbols
