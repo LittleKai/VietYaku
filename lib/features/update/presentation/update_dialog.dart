@@ -71,7 +71,7 @@ class _UpdateDialogContent extends ConsumerWidget {
         return Text(
           body != null && body.isNotEmpty
               ? body
-              : 'Đã có phiên bản mới trên GitHub.',
+              : 'Đã có phiên bản mới.',
         );
     }
   }

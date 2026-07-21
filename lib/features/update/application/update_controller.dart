@@ -78,7 +78,7 @@ class UpdateController extends Notifier<UpdateState> {
       if (release == null) {
         state = UpdateState(
           phase: UpdatePhase.upToDate,
-          message: silent ? null : 'Chưa có bản phát hành nào trên GitHub.',
+          message: silent ? null : 'Chưa có bản phát hành nào.',
         );
         return;
       }

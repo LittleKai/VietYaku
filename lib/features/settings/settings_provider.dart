@@ -159,7 +159,7 @@ class AppSettings {
   /// Các từ điển hiện trong popup khi active từ ở ô Nguồn (tối đa 2).
   final List<LookupDictionaryType> popupDictionaryTypes;
 
-  /// Tự động kiểm tra bản cập nhật mới trên GitHub Releases lúc khởi động.
+  /// Tự động kiểm tra bản cập nhật mới lúc khởi động.
   final bool autoCheckUpdates;
 
   /// Tự động đồng bộ (kéo) từ điển chung từ server lúc khởi động. Mặc định tắt.

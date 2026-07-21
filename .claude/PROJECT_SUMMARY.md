@@ -1,6 +1,7 @@
 # Project Summary — VietYaku
 
 **Last Updated:** 2026-07-21
+**Session #24:** Giải quyết lỗi chạy codegraph index bị treo/chặn: (1) Thêm `.codegraph/` vào `.gitignore` để ngăn chặn việc quét các file nhị phân của SQLite (`codegraph.db`, `codegraph.db-shm`, `codegraph.db-wal`) gây ra lỗi encoding "bytes are not valid utf8"; (2) Tạo cấu hình `codegraph.json` loại trừ (`exclude`) thư mục từ điển `data/` chứa hơn 1.2 triệu dòng text để tăng tốc độ indexer.
 **Session #23:** Tùy chọn auto-sync + gom nút "Cập nhật từ điển" vào Cài đặt: (1) thêm setting `autoSyncDictionary` (bool, mặc định TẮT, key `dictionarySync.autoSync`) trong `settings_provider.dart` + setter `setAutoSyncDictionary`; (2) khi bật, `app.dart` initState kéo `sync()` cả hai ngôn ngữ JP+CN tuần tự lúc khởi động (sync() chặn chạy song song nên phải await lần lượt; lỗi mạng mỗi mode nuốt qua try/catch rồi kéo mode tiếp theo); (3) section "Từ điển chung" trong Settings giờ hiện trên MỌI nền tảng (bỏ gate `!Platform.isAndroid`), thêm hàng switch auto-sync + nút "Cập nhật từ điển" (gọi `sync(currentMode)`); (4) gỡ nút "Cập nhật từ điển" khỏi menu bar tab Dịch (`translate_screen.dart`) — dọn `dictionarySyncProvider` import, `LayoutBuilder`/`Spacer` thừa. `flutter analyze` sạch, tests liên quan pass.
 **Session #22:** Đồng bộ từ điển tự động khi đủ 10 sửa đổi: `DictionarySyncController.stageLocalEdit` đếm tổng pending entries (cả 2 mode JP/CN, cả 2 kind VietPhrase/LạcViệt) sau mỗi lần lưu; đạt ngưỡng `_autoPublishThreshold = 10` thì tự gọi `publishPending()` (không cần bấm nút Update thủ công); ngưỡng tự reset về 0 mỗi lần publish thành công nên tính theo "mỗi 10 sửa đổi mới". Nút Update thủ công vẫn hoạt động như cũ để gửi sớm hơn ngưỡng. `flutter analyze` sạch, `flutter test test/dictionary_sync_test.dart` 9 pass.
 **Session #21:** Thiết kế và thay thế icon ứng dụng mới (Minimalist Origami): (1) Thay thế logo hiển thị trong ứng dụng `assets/branding/app_icon.png` (1024x1024); (2) Tạo file Windows `.ico` đa kích thước (16x16 đến 256x256) tại `windows/runner/resources/app_icon.ico`; (3) Sinh và thay thế các launcher icon Android trong thư mục `android/app/src/main/res/mipmap-*` (từ 48x48 đến 192x192). `flutter analyze` sạch.
@@ -39,6 +40,7 @@ Dữ liệu từ điển bundle trong dự án (commit git), mỗi ngôn ngữ m
 ```
 VietYaku/
 ├── CLAUDE.md, .claude/             # docs hệ thống (summary, conventions, fixed bugs, setup report)
+├── codegraph.json                  # cấu hình loại trừ file/folder khỏi CodeGraph indexer
 ├── docs/                            # nghiên cứu/roadmap; NGHIEN_CUU_DINH_HUONG_PHAT_TRIEN.md, NGHIEN_CUU_SUDACHI.md
 ├── data/jp/, data/cn/              # bộ từ điển bundle theo ngôn ngữ (commit git, ~123MB)
 ├── assets/mappings/                # simp2jp.tsv (3.932 + 69 ambiguous), jp_valid_kanji.txt (3.030), simp2jp_overrides.tsv (soạn tay)

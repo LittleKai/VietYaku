@@ -1,0 +1,9 @@
+{
+  "exclude": [
+    "data/",
+    "build/",
+    ".dart_tool/",
+    "tmp/",
+    ".claude/"
+  ]
+}
