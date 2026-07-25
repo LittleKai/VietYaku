@@ -5,11 +5,15 @@ class IconContextMenuItem {
     required this.icon,
     required this.label,
     required this.onPressed,
+    this.iconColor,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback onPressed;
+
+  /// Màu riêng cho icon; null → dùng màu mặc định của TextButton.
+  final Color? iconColor;
 }
 
 /// Context menu riêng của ứng dụng, có icon và không tự chèn các lệnh sửa text.
@@ -30,7 +34,7 @@ class IconContextMenu extends StatelessWidget {
       children: [
         for (final item in items)
           TextButton.icon(
-            icon: Icon(item.icon, size: 18),
+            icon: Icon(item.icon, size: 18, color: item.iconColor),
             label: Text(item.label),
             onPressed: item.onPressed,
             style: TextButton.styleFrom(

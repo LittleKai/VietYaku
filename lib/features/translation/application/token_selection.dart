@@ -3,8 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/cjk.dart';
 import '../../dictionary/application/dictionaries_provider.dart';
 import '../../settings/settings_provider.dart';
+import '../domain/secondary_phrase.dart';
 import '../domain/token.dart';
 import 'lookup_controller.dart';
+import 'secondary_phrases_provider.dart';
 import 'translation_controller.dart';
 
 /// Cụm đang được chọn (nháy chuột) — range theo UTF-16 offset trong văn bản
@@ -36,6 +38,17 @@ class TokenSelectionNotifier extends Notifier<TokenSelection?> {
   /// Chọn 1 token (từ ô kết quả / Hán Việt).
   void selectToken(Token token) {
     if (token.kind == TokenKind.passthrough) return;
+    // Kana không match nằm trong cụm từ điển phụ → chọn cả cụm để hiện nghĩa.
+    final phrase = _secondaryPhraseAt(token.sourceStart);
+    if (phrase != null) {
+      _apply(
+        phrase.start,
+        phrase.end,
+        phrase.source,
+        TokenSelectionOrigin.result,
+      );
+      return;
+    }
     _apply(
       token.sourceStart,
       token.sourceStart + token.source.length,
@@ -51,6 +64,17 @@ class TokenSelectionNotifier extends Notifier<TokenSelection?> {
   /// click, bỏ qua phần đứng trước trong cụm gốc.
   void selectAtSourceOffset(int offset) {
     final state = ref.read(translationControllerProvider);
+    // Ưu tiên cụm từ điển phụ chứa vị trí click (kana không match VietPhrase).
+    final phrase = _secondaryPhraseAt(offset);
+    if (phrase != null) {
+      _apply(
+        phrase.start,
+        phrase.end,
+        phrase.source,
+        TokenSelectionOrigin.source,
+      );
+      return;
+    }
     for (final t in state.tokens) {
       if (t.kind == TokenKind.passthrough) continue;
       if (offset < t.sourceStart || offset >= t.sourceStart + t.source.length) {
@@ -89,6 +113,14 @@ class TokenSelectionNotifier extends Notifier<TokenSelection?> {
       );
       return;
     }
+  }
+
+  /// Cụm từ điển phụ chứa [offset] (nếu có).
+  SecondaryPhrase? _secondaryPhraseAt(int offset) {
+    for (final p in ref.read(secondaryPhrasesProvider)) {
+      if (p.contains(offset)) return p;
+    }
+    return null;
   }
 
   /// Bỏ active/highlight hiện tại mà không thay đổi nội dung tra cứu đã tải.

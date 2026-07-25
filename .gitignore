@@ -16,6 +16,14 @@ migrate_working_dir/
 .claude/*.local.json
 .claude/*.lock
 .claude/prompt.txt
+.claude/code/*.db
+.claude/code/*.db-wal
+.claude/code/*.db-shm
+
+# Từ điển Mazii crawl (SQLite, sinh bởi .claude/code/mazii_crawler.py) — quá lớn để commit
+data/jp/MaziiDict.db
+data/jp/MaziiDict.db-wal
+data/jp/MaziiDict.db-shm
 
 # IntelliJ related
 *.iml
@@ -40,6 +48,7 @@ migrate_working_dir/
 .env
 .flutter-plugins
 .packages
+data/
 
 # CodeGraph files
 .codegraph/*

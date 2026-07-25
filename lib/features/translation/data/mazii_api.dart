@@ -2,15 +2,16 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
-/// Tra nghĩa Nhật→Việt qua Mazii (API không chính thức, không cần key).
-/// POST https://mazii.net/api/search {dict: javi, type: word, query, ...}
+/// Tra nghĩa qua Mazii (API không chính thức, không cần key).
+/// POST https://mazii.net/api/search {dict, type: word, query, ...}
+/// [dict]: `javi` (Nhật→Việt) hoặc `cnvi` (Trung→Việt).
 /// → format thành text hiển thị trong ô Nghĩa. Trả null khi miss/lỗi.
 class MaziiApi {
   final http.Client _client;
 
   MaziiApi({http.Client? client}) : _client = client ?? http.Client();
 
-  Future<String?> lookup(String word) async {
+  Future<String?> lookup(String word, {String dict = 'javi'}) async {
     try {
       final res = await _client
           .post(
@@ -21,7 +22,7 @@ class MaziiApi {
               'User-Agent': 'VietYaku/1.0',
             },
             body: jsonEncode({
-              'dict': 'javi',
+              'dict': dict,
               'type': 'word',
               'query': word,
               'limit': 3,
@@ -50,7 +51,8 @@ class MaziiApi {
   static String? _format(Map item) {
     final lines = <String>[];
     final word = item['word'];
-    final phonetic = item['phonetic'];
+    // javi dùng `phonetic`, cnvi (Trung) dùng `pinyin`.
+    final phonetic = item['phonetic'] ?? item['pinyin'];
     final han = item['han'];
     final header = [
       if (word is String && word.isNotEmpty) word,

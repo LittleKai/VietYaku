@@ -13,6 +13,7 @@ class LoadedDictionaries {
   final PhraseDictionary names;
   final PhraseDictionary vietPhrase;
   final PhraseDictionary lacViet;
+  final PhraseDictionary mazii;
   final PhraseDictionary chinesePhienAm;
   final PhraseDictionary pronouns;
   final PhraseDictionary babylon;
@@ -34,6 +35,7 @@ class LoadedDictionaries {
     required this.names,
     required this.vietPhrase,
     required this.lacViet,
+    PhraseDictionary? mazii,
     required this.chinesePhienAm,
     required this.pronouns,
     required this.babylon,
@@ -44,7 +46,8 @@ class LoadedDictionaries {
     required this.zhVi,
     PhraseDictionary? sudachiReadings,
     required this.stats,
-  }) : sudachiReadings =
+  }) : mazii = mazii ?? PhraseDictionary(DictType.mazii, const {}),
+       sudachiReadings =
            sudachiReadings ?? PhraseDictionary(DictType.jaVi, const {});
 
   /// Engine với thứ tự ưu tiên UserDict > Names > VietPhrase.
@@ -145,6 +148,7 @@ class DictionaryRepository {
           ? loadPath(DictType.vietPhrase, sudachiPath('SudachiVariants.txt'))
           : emptyResult(DictType.vietPhrase),
       loadPath(DictType.jaVi, sudachiPath('SudachiReadings.txt')),
+      load(DictType.mazii),
     ]);
 
     var names = results[1].dictionary;
@@ -183,6 +187,7 @@ class DictionaryRepository {
       names: names,
       vietPhrase: vietPhrase,
       lacViet: lacViet,
+      mazii: results[17].dictionary,
       chinesePhienAm: results[4].dictionary,
       pronouns: results[5].dictionary,
       babylon: results[6].dictionary,
@@ -195,6 +200,10 @@ class DictionaryRepository {
       stats: {
         for (final r in results.take(12))
           r.dictionary.type: (fromCache: r.fromCache, elapsedMs: r.elapsedMs),
+        DictType.mazii: (
+          fromCache: results[17].fromCache,
+          elapsedMs: results[17].elapsedMs,
+        ),
       },
     );
   }

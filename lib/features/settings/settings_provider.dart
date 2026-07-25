@@ -59,6 +59,7 @@ const modeDirNames = <TranslationMode, String>{
 const dictFileNames = <DictType, String>{
   DictType.vietPhrase: 'VietPhrase.txt',
   DictType.lacViet: 'LacViet.txt',
+  DictType.mazii: 'Mazii.txt',
   DictType.names: 'Names.txt',
   DictType.chinesePhienAm: 'ChinesePhienAmWords.txt',
   DictType.pronouns: 'Pronouns.txt',
@@ -71,6 +72,10 @@ const dictFileNames = <DictType, String>{
 };
 
 enum SudachiReadingsMode { sudachiFirst, jaViFirst, disabled }
+
+/// Hiển thị cụm chỉ có trong từ điển phụ (LacViet > Nhật Việt > Mazii)
+/// mà VietPhrase không có: tắt, sát khoảng cách, hoặc in nghiêng.
+enum SecondaryPhraseDisplay { off, tight, italic }
 
 /// Các ô có cỡ chữ + font chỉnh riêng biệt nhau.
 enum PaneId { source, hanViet, vietPhrase, meaning, viet }
@@ -123,11 +128,24 @@ class AppSettings {
   /// trong ô Nghĩa.
   final SudachiReadingsMode sudachiReadings;
 
+  /// Mode Nhật: cách hiển thị cụm chỉ có trong từ điển phụ mà VietPhrase
+  /// không có (kana sát khoảng cách hoặc in nghiêng).
+  final SecondaryPhraseDisplay secondaryPhraseDisplay;
+
   /// Chính sách repair Key thuần Hán (màn Sửa từ điển) — chỉnh ở Cài đặt.
   final RepairPolicy repairPolicy;
 
   /// Cỡ chữ + font riêng cho từng ô.
   final Map<PaneId, PaneFont> paneFonts;
+
+  /// Hệ số cỡ chữ giao diện (chrome: nhãn rail, nút, dialog, cài đặt, tab, menu…).
+  /// 1.0 = mặc định. KHÔNG đổi cỡ chữ nội dung các ô dịch (ô dùng cỡ riêng qua
+  /// [paneFonts]) — chỉ scale text lấy từ `theme.textTheme`.
+  final double uiFontScale;
+
+  /// Font chữ giao diện ('' = mặc định hệ thống — Segoe UI). Áp cho toàn UI;
+  /// các ô để "Mặc định hệ thống" cũng thừa hưởng font này.
+  final String uiFontFamily;
   final String syncServerUrl;
   final bool isSyncServerUrlOverridden;
 
@@ -174,8 +192,11 @@ class AppSettings {
     this.normalizeHalfwidthKana = true,
     this.sudachiVariants = true,
     this.sudachiReadings = SudachiReadingsMode.sudachiFirst,
+    this.secondaryPhraseDisplay = SecondaryPhraseDisplay.tight,
     this.repairPolicy = RepairPolicy.addVariant,
     this.paneFonts = const {},
+    this.uiFontScale = 1.0,
+    this.uiFontFamily = '',
     this.syncServerUrl = defaultSyncServerUrl,
     this.isSyncServerUrlOverridden = false,
     this.columnsRatio = 0.42,
@@ -187,7 +208,7 @@ class AppSettings {
     this.ttsVoiceJa = '',
     this.ttsVoiceZh = '',
     this.ttsSpeechRate = 0.5,
-    this.popupDictionaryTypes = const [LookupDictionaryType.lacViet],
+    this.popupDictionaryTypes = const [],
     this.autoCheckUpdates = true,
     this.autoSyncDictionary = false,
   });
@@ -213,8 +234,11 @@ class AppSettings {
     bool? normalizeHalfwidthKana,
     bool? sudachiVariants,
     SudachiReadingsMode? sudachiReadings,
+    SecondaryPhraseDisplay? secondaryPhraseDisplay,
     RepairPolicy? repairPolicy,
     Map<PaneId, PaneFont>? paneFonts,
+    double? uiFontScale,
+    String? uiFontFamily,
     String? syncServerUrl,
     bool? isSyncServerUrlOverridden,
     double? columnsRatio,
@@ -239,8 +263,12 @@ class AppSettings {
         normalizeHalfwidthKana ?? this.normalizeHalfwidthKana,
     sudachiVariants: sudachiVariants ?? this.sudachiVariants,
     sudachiReadings: sudachiReadings ?? this.sudachiReadings,
+    secondaryPhraseDisplay:
+        secondaryPhraseDisplay ?? this.secondaryPhraseDisplay,
     repairPolicy: repairPolicy ?? this.repairPolicy,
     paneFonts: paneFonts ?? this.paneFonts,
+    uiFontScale: uiFontScale ?? this.uiFontScale,
+    uiFontFamily: uiFontFamily ?? this.uiFontFamily,
     syncServerUrl: syncServerUrl ?? this.syncServerUrl,
     isSyncServerUrlOverridden:
         isSyncServerUrlOverridden ?? this.isSyncServerUrlOverridden,
@@ -285,6 +313,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
   static const _normalizeHalfwidthKanaKey = 'translate.normalizeHalfwidthKana';
   static const _sudachiVariantsKey = 'translate.sudachiVariants';
   static const _sudachiReadingsKey = 'translate.sudachiReadings';
+  static const _secondaryPhraseDisplayKey = 'translate.secondaryPhraseDisplay';
   static const _repairPolicyKey = 'repairPolicy';
   static const _syncServerUrlKey = 'syncServerUrl';
   static const _columnsRatioKey = 'layout.columnsRatio';
@@ -301,6 +330,8 @@ class SettingsNotifier extends Notifier<AppSettings> {
   static const _autoSyncDictionaryKey = 'dictionarySync.autoSync';
   static String _fontSizeKey(PaneId id) => 'paneFont.${id.name}.size';
   static String _fontFamilyKey(PaneId id) => 'paneFont.${id.name}.family';
+  static const _uiFontScaleKey = 'ui.fontScale';
+  static const _uiFontFamilyKey = 'ui.fontFamily';
 
   @override
   AppSettings build() {
@@ -342,6 +373,11 @@ class SettingsNotifier extends Notifier<AppSettings> {
         }
         return SudachiReadingsMode.sudachiFirst;
       }(),
+      secondaryPhraseDisplay:
+          SecondaryPhraseDisplay.values.asNameMap()[prefs.getString(
+            _secondaryPhraseDisplayKey,
+          )] ??
+          SecondaryPhraseDisplay.tight,
       repairPolicy:
           RepairPolicy.values.asNameMap()[prefs.getString(_repairPolicyKey)] ??
           RepairPolicy.addVariant,
@@ -352,6 +388,8 @@ class SettingsNotifier extends Notifier<AppSettings> {
             family: prefs.getString(_fontFamilyKey(id)) ?? '',
           ),
       },
+      uiFontScale: prefs.getDouble(_uiFontScaleKey) ?? 1.0,
+      uiFontFamily: prefs.getString(_uiFontFamilyKey) ?? '',
       syncServerUrl: isOverridden
           ? envUrl
           : (prefs.getString(_syncServerUrlKey) ?? defaultSyncServerUrl),
@@ -367,11 +405,11 @@ class SettingsNotifier extends Notifier<AppSettings> {
       ttsSpeechRate: prefs.getDouble(_ttsSpeechRateKey) ?? 0.5,
       popupDictionaryTypes: () {
         final saved = prefs.getStringList(_popupDictionaryTypesKey);
-        if (saved == null) return const [LookupDictionaryType.lacViet];
+        if (saved == null) return const <LookupDictionaryType>[];
         return saved
             .map((name) => LookupDictionaryType.values.asNameMap()[name])
             .whereType<LookupDictionaryType>()
-            .take(2)
+            .take(1)
             .toList(growable: false);
       }(),
       autoCheckUpdates: prefs.getBool(_autoCheckUpdatesKey) ?? true,
@@ -400,7 +438,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
   Future<void> setPopupDictionaryTypes(
     Iterable<LookupDictionaryType> values,
   ) async {
-    final normalized = values.toSet().take(2).toList(growable: false);
+    final normalized = values.toSet().take(1).toList(growable: false);
     final prefs = ref.read(sharedPreferencesProvider);
     await prefs.setStringList(
       _popupDictionaryTypesKey,
@@ -501,6 +539,12 @@ class SettingsNotifier extends Notifier<AppSettings> {
     state = state.copyWith(sudachiReadings: value);
   }
 
+  Future<void> setSecondaryPhraseDisplay(SecondaryPhraseDisplay value) async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    await prefs.setString(_secondaryPhraseDisplayKey, value.name);
+    state = state.copyWith(secondaryPhraseDisplay: value);
+  }
+
   Future<void> setRepairPolicy(RepairPolicy policy) async {
     final prefs = ref.read(sharedPreferencesProvider);
     await prefs.setString(_repairPolicyKey, policy.name);
@@ -517,6 +561,21 @@ class SettingsNotifier extends Notifier<AppSettings> {
         id: state.paneFontFor(id).copyWith(size: size, family: family),
       },
     );
+  }
+
+  /// Hệ số cỡ chữ giao diện (0.8–1.4). Áp ngay cho toàn UI qua theme.
+  Future<void> setUiFontScale(double value) async {
+    final v = value.clamp(0.8, 1.4);
+    final prefs = ref.read(sharedPreferencesProvider);
+    await prefs.setDouble(_uiFontScaleKey, v);
+    state = state.copyWith(uiFontScale: v);
+  }
+
+  /// Font chữ giao diện ('' = mặc định hệ thống).
+  Future<void> setUiFontFamily(String value) async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    await prefs.setString(_uiFontFamilyKey, value);
+    state = state.copyWith(uiFontFamily: value);
   }
 
   Future<void> setSyncServerUrl(String value) async {

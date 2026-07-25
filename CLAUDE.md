@@ -56,7 +56,6 @@ Specific files user mentioned  → Only if needed for implementation
 ### Update PROJECT_SUMMARY.md
 
 **Always update:**
-- Top: `Last Updated` timestamp + session number
 - `Active Features & Status`: update feature status (⏳→🚧→✅) if changed
 - `Known Issues & TODOs`: mark [x] completed TODOs, add new current TODOs/issues
 

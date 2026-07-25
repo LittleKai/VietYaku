@@ -9,6 +9,7 @@ import '../../settings/settings_provider.dart';
 import '../application/lookup_controller.dart';
 import '../application/token_selection.dart';
 import '../application/translation_controller.dart';
+import 'online_lookup_dialog.dart';
 
 /// Panel "Nghĩa": header (từ + reading + 🔊 + ✏️) + nội dung tra từ điển.
 class LacVietPanel extends ConsumerWidget {
@@ -146,6 +147,8 @@ Color meaningLabelColor(String label, ColorScheme scheme) {
       return const Color(0xFFC62828); // red
     case 'Mazii':
       return const Color(0xFF2E7D32); // green
+    case 'Mazii Trung-Việt':
+      return const Color(0xFFEF6C00); // orange
     case 'Google Dịch':
       return const Color(0xFF1565C0); // blue
     default:
@@ -196,48 +199,25 @@ class _MeaningSections extends ConsumerWidget {
   }
 }
 
-/// Nút tra thêm nghĩa online (Nhật: Mazii, Trung: Google Dịch).
-class _OnlineLookupButton extends ConsumerStatefulWidget {
+/// Nút tra online: mở dialog tra song song Mazii + Google Dịch.
+class _OnlineLookupButton extends ConsumerWidget {
   const _OnlineLookupButton();
 
   @override
-  ConsumerState<_OnlineLookupButton> createState() =>
-      _OnlineLookupButtonState();
-}
-
-class _OnlineLookupButtonState extends ConsumerState<_OnlineLookupButton> {
-  bool _loading = false;
-
-  Future<void> _fetch() async {
-    setState(() => _loading = true);
-    final ok = await ref
-        .read(lookupControllerProvider.notifier)
-        .fetchOnlineMeaning();
-    if (!mounted) return;
-    setState(() => _loading = false);
-    if (!ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Không lấy được nghĩa online (mạng hoặc không có).'),
-        ),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // Giữ nguyên IconButton (không đổi loại widget khi loading) để tránh
-    // teardown node semantics giữa chừng → lỗi accessibility_bridge AXTree 107.
+  Widget build(BuildContext context, WidgetRef ref) {
     return IconButton(
-      icon: _loading
-          ? const SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : const Icon(Icons.travel_explore),
-      tooltip: 'Tra thêm nghĩa online (Nhật: Mazii, Trung: Google Dịch)',
-      onPressed: _loading ? null : _fetch,
+      icon: const Icon(Icons.travel_explore),
+      tooltip: 'Tra online (Mazii + Google Dịch)',
+      onPressed: () {
+        final word = ref.read(lookupControllerProvider)?.word ?? '';
+        if (word.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Chưa chọn từ để tra.')),
+          );
+          return;
+        }
+        showOnlineLookupDialog(context, ref, word: word);
+      },
     );
   }
 }

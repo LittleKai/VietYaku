@@ -11,30 +11,44 @@ class AppTheme {
   /// Indigo tinh chỉnh — giữ bản sắc cũ nhưng sạch và hiện đại hơn.
   static const Color _seed = Color(0xFF4F46E5);
 
-  /// Font chrome (nhãn/tiêu đề/nút). Segoe UI hiển thị tốt dấu tiếng Việt và
-  /// tự fallback CJK trên Windows, không cần đóng gói font → giữ offline thuần.
-  /// (Font nội dung các ô do người dùng chọn, không đụng tới ở đây.)
+  /// Font chrome mặc định (nhãn/tiêu đề/nút). Segoe UI hiển thị tốt dấu tiếng
+  /// Việt và tự fallback CJK trên Windows, không cần đóng gói font → giữ offline
+  /// thuần. Người dùng có thể đổi font/cỡ chữ giao diện trong tab Giao diện.
   static const String _fontFamily = 'Segoe UI';
 
-  static ThemeData get light => _build(Brightness.light);
-  static ThemeData get dark => _build(Brightness.dark);
+  /// [fontFamily] rỗng → dùng [_fontFamily]. [fontScale] scale cỡ chữ chrome
+  /// (không đụng nội dung các ô dịch — ô dùng cỡ tuyệt đối riêng).
+  static ThemeData light({String fontFamily = '', double fontScale = 1.0}) =>
+      _build(Brightness.light, fontFamily, fontScale);
+  static ThemeData dark({String fontFamily = '', double fontScale = 1.0}) =>
+      _build(Brightness.dark, fontFamily, fontScale);
 
-  static ThemeData _build(Brightness brightness) {
+  static ThemeData _build(
+    Brightness brightness,
+    String fontFamily,
+    double fontScale,
+  ) {
     final bool isDark = brightness == Brightness.dark;
-    final ColorScheme scheme = ColorScheme.fromSeed(
-      seedColor: _seed,
-      brightness: brightness,
+    final String family = fontFamily.trim().isEmpty
+        ? _fontFamily
+        : fontFamily.trim();
+    final ColorScheme scheme = _refine(
+      ColorScheme.fromSeed(seedColor: _seed, brightness: brightness),
     );
 
     final ThemeData base = ThemeData(
       colorScheme: scheme,
       useMaterial3: true,
       brightness: brightness,
-      fontFamily: _fontFamily,
+      fontFamily: family,
       scaffoldBackgroundColor: scheme.surface,
     );
 
-    final TextTheme text = _textTheme(base.textTheme);
+    // Scale cỡ chữ giao diện: chỉ áp lên text lấy từ theme (chrome), không đụng
+    // các ô dịch (chúng đặt fontSize tuyệt đối, độc lập textTheme).
+    final TextTheme text = fontScale == 1.0
+        ? _textTheme(base.textTheme)
+        : _textTheme(base.textTheme).apply(fontSizeFactor: fontScale);
 
     // Bo góc thống nhất theo cấp: nút/ô nhập < menu/card < dialog.
     final OutlinedBorder buttonShape = RoundedRectangleBorder(
@@ -46,6 +60,16 @@ class AppTheme {
           borderSide: BorderSide(color: color, width: width),
         );
 
+    // Nền ô nhập / edittext: nhuộm nhẹ sắc thương hiệu (indigo-white) thay cho
+    // xám neutral đậm nhất của M3 (surfaceContainerHighest). Nhờ vậy các ô lớn
+    // (Nguồn, Bản dịch Việt, các ô trong dialog) đọc như vùng nhập mềm, không
+    // còn là khối xám phẳng nặng; viền outlineVariant lo phần phân định.
+    final Color inputFill = _mix(
+      scheme.surface,
+      scheme.primary,
+      isDark ? 0.11 : 0.07,
+    );
+
     return base.copyWith(
       textTheme: text,
       splashFactory: InkSparkle.splashFactory,
@@ -53,9 +77,7 @@ class AppTheme {
       // ── Ô nhập / edittext ────────────────────────────────────────────────
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: isDark
-            ? scheme.surfaceContainerHigh
-            : scheme.surfaceContainerHighest,
+        fillColor: inputFill,
         isDense: true,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 14,
@@ -76,9 +98,7 @@ class AppTheme {
       dropdownMenuTheme: DropdownMenuThemeData(
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
-          fillColor: isDark
-              ? scheme.surfaceContainerHigh
-              : scheme.surfaceContainerHighest,
+          fillColor: inputFill,
           isDense: true,
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 14,
@@ -291,6 +311,58 @@ class AppTheme {
                 nameToken: Color(0xFF00796B),
               ),
       ],
+    );
+  }
+
+  /// Kéo màu `base` về phía `target` theo tỉ lệ `t` (0..1).
+  static Color _mix(Color base, Color target, double t) =>
+      Color.lerp(base, target, t)!;
+
+  /// Tinh chỉnh bảng màu do `fromSeed` sinh ra để bớt "xám mặc định":
+  /// chữ phụ và viền rõ hơn (tăng tương phản), nền/bề mặt được nhuộm nhẹ sắc
+  /// thương hiệu thay vì xám phẳng. Không đụng các role văn bản chính hay màu
+  /// nhấn — chỉ nâng nhóm bị nhạt/khó nhìn. Áp cho cả bản sáng lẫn tối.
+  static ColorScheme _refine(ColorScheme s) {
+    final bool isDark = s.brightness == Brightness.dark;
+    return s.copyWith(
+      // Chữ phụ / hint / nhãn / icon phụ: kéo về phía chữ chính cho dễ đọc,
+      // thêm chút sắc thương hiệu để không còn xám chết.
+      onSurfaceVariant: _mix(
+        _mix(s.onSurfaceVariant, s.onSurface, isDark ? 0.16 : 0.24),
+        s.primary,
+        0.10,
+      ),
+      // Viền ô nhập / card / divider: rõ hơn hẳn, không còn gần như tàng hình.
+      outlineVariant: _mix(s.outlineVariant, s.outline, 0.45),
+      outline: _mix(s.outline, s.onSurface, isDark ? 0.06 : 0.12),
+      // Nền & các lớp bề mặt (scaffold, dialog, rail, menu, card): nhuộm nhẹ
+      // sắc thương hiệu để thoát khỏi xám phẳng, vẫn giữ tương phản chữ.
+      surface: _mix(s.surface, s.primary, isDark ? 0.030 : 0.018),
+      surfaceContainerLowest: _mix(
+        s.surfaceContainerLowest,
+        s.primary,
+        isDark ? 0.030 : 0.020,
+      ),
+      surfaceContainerLow: _mix(
+        s.surfaceContainerLow,
+        s.primary,
+        isDark ? 0.035 : 0.025,
+      ),
+      surfaceContainer: _mix(
+        s.surfaceContainer,
+        s.primary,
+        isDark ? 0.040 : 0.030,
+      ),
+      surfaceContainerHigh: _mix(
+        s.surfaceContainerHigh,
+        s.primary,
+        isDark ? 0.045 : 0.035,
+      ),
+      surfaceContainerHighest: _mix(
+        s.surfaceContainerHighest,
+        s.primary,
+        isDark ? 0.050 : 0.040,
+      ),
     );
   }
 

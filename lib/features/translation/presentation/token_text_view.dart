@@ -11,12 +11,26 @@ import '../../dictionary/domain/dict_type.dart';
 import '../../dictionary_sync/application/dictionary_sync_controller.dart';
 import '../../dictionary_sync/domain/shared_dictionary_entry.dart';
 import '../../settings/settings_provider.dart';
+import '../application/secondary_phrases_provider.dart';
 import '../application/token_selection.dart';
 import '../application/viet_draft.dart';
+import '../domain/secondary_phrase.dart';
 import '../domain/token.dart';
+import 'lacviet_panel.dart' show meaningLabelColor;
 
 /// Một token đã tính text hiển thị (đã chuẩn hoá + viết hoa).
 typedef _Piece = ({Token token, String text});
+
+/// Cụm từ điển phụ chứa vị trí nguồn của [token] (nếu có).
+SecondaryPhrase? _secondaryPhraseAt(
+  List<SecondaryPhrase> phrases,
+  Token token,
+) {
+  for (final p in phrases) {
+    if (p.contains(token.sourceStart)) return p;
+  }
+  return null;
+}
 
 /// Danh sách token dạng SelectableText: nháy chuột vào chữ (kiểu caret trong
 /// edittext) → chọn cụm tại vị trí đó, tô nổi đỏ đồng bộ mọi pane + tra Nghĩa.
@@ -252,6 +266,16 @@ class TokenTextView extends ConsumerStatefulWidget {
   }
 }
 
+/// Viết hoa chữ cái đầu của mỗi từ (tách theo khoảng trắng). Dùng để tạo
+/// nghĩa mặc định khi thêm tên riêng vào Names.
+String _capitalizeWords(String text) {
+  return text
+      .split(RegExp(r'\s+'))
+      .where((w) => w.isNotEmpty)
+      .map((w) => w[0].toUpperCase() + w.substring(1))
+      .join(' ');
+}
+
 class _TokenTextViewState extends ConsumerState<TokenTextView> {
   /// Vị trí global của lần nhấn chuột phải gần nhất. Trên Windows,
   /// SelectableText đã có focus thì chuột phải KHÔNG dời caret/selection
@@ -381,10 +405,11 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
 
     // Tô đen → key từ điển là source CJK của các token nằm trong vùng chọn
     // (text hiển thị là nghĩa tiếng Việt, không phải key tra được).
-    final key = [
+    final selectedTokens = [
       for (final (start, end, token) in ranges)
-        if (start < sel.end && sel.start < end) token.source,
-    ].join();
+        if (start < sel.end && sel.start < end) token,
+    ];
+    final key = selectedTokens.map((t) => t.source).join();
     final word = key.isNotEmpty ? key : sel.textInside(value.text).trim();
     if (word.isEmpty) {
       return AdaptiveTextSelectionToolbar.buttonItems(
@@ -398,14 +423,21 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
     final vpMeaning = dicts?.vietPhrase.entries[word];
     final lacVietMeaning = dicts?.lacViet.entries[word];
     final namesMeaning = dicts?.names.entries[word];
+    // Prefill nghĩa Names khi thêm mới: âm Hán-Việt từng token, viết hoa
+    // chữ đầu mỗi từ (VD 田中 → "Điền Trung").
+    final defaultNamesMeaning = _capitalizeWords(
+      selectedTokens.map((t) => t.display).join(' '),
+    );
     String verb(bool exists) => exists ? 'Sửa' : 'Thêm';
 
     final isAdmin = ref.read(dictionarySyncProvider).isAdmin;
+    final scheme = Theme.of(context).colorScheme;
     final custom = <IconContextMenuItem>[];
     if (isAdmin) {
       custom.addAll([
         IconContextMenuItem(
           icon: Icons.menu_book_outlined,
+          iconColor: meaningLabelColor('VietPhrase', scheme),
           label: '${verb(vpMeaning != null)} vào VietPhrase',
           onPressed: () {
             editableTextState.hideToolbar();
@@ -419,6 +451,7 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
         ),
         IconContextMenuItem(
           icon: Icons.local_library_outlined,
+          iconColor: meaningLabelColor('Lạc Việt', scheme),
           label: '${verb(lacVietMeaning != null)} vào Lạc Việt',
           onPressed: () {
             editableTextState.hideToolbar();
@@ -435,6 +468,7 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
       custom.add(
         IconContextMenuItem(
           icon: Icons.person_add_alt_1_outlined,
+          iconColor: meaningLabelColor('UserDict', scheme),
           label: '${verb(userMeaning != null)} vào UserDict',
           onPressed: () {
             editableTextState.hideToolbar();
@@ -453,6 +487,7 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
     custom.add(
       IconContextMenuItem(
         icon: Icons.badge_outlined,
+        iconColor: meaningLabelColor('Names', scheme),
         label: '${verb(namesMeaning != null)} vào Names',
         onPressed: () {
           editableTextState.hideToolbar();
@@ -462,7 +497,7 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
             word: word,
             toNames: true,
             title: '${verb(namesMeaning != null)} vào Names',
-            initialMeaning: namesMeaning,
+            initialMeaning: namesMeaning ?? defaultNamesMeaning,
           );
         },
       ),
@@ -490,6 +525,13 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
       settingsProvider.select((s) => s.keepSpecialQuotes),
     );
     final paras = TokenTextView.paragraphs(widget.tokens);
+    // Đánh dấu cụm từ điển phụ (chỉ ô VietPhrase): sát khoảng cách / in nghiêng.
+    final secondaryDisplay = widget.paneId == PaneId.vietPhrase
+        ? ref.watch(settingsProvider.select((s) => s.secondaryPhraseDisplay))
+        : SecondaryPhraseDisplay.off;
+    final secondaryPhrases = secondaryDisplay == SecondaryPhraseDisplay.off
+        ? const <SecondaryPhrase>[]
+        : ref.watch(secondaryPhrasesProvider);
 
     return Listener(
       // Ghi vị trí chuột phải TRƯỚC khi framework mở toolbar — _contextMenu
@@ -516,20 +558,31 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
           for (var i = 0; i < pieces.length; i++) {
             final token = pieces[i].token;
             final text = pieces[i].text;
-            spans.add(
-              TextSpan(
-                text: text,
-                style: _styleFor(token, scheme, sem, selection, katakanaColor),
-              ),
-            );
+            final phrase = _secondaryPhraseAt(secondaryPhrases, token);
+            var style = _styleFor(token, scheme, sem, selection, katakanaColor);
+            if (secondaryDisplay == SecondaryPhraseDisplay.italic &&
+                phrase != null) {
+              style = style.copyWith(fontStyle: FontStyle.italic);
+            }
+            spans.add(TextSpan(text: text, style: style));
             if (token.kind != TokenKind.passthrough) {
               ranges.add((offset, offset + text.length, token));
             }
             offset += text.length;
             if (i + 1 < pieces.length &&
                 TokenTextView._needSpaceBetween(text, pieces[i + 1].text)) {
-              spans.add(const TextSpan(text: ' '));
-              offset += 1;
+              // Sát khoảng cách: bỏ space giữa hai mảnh cùng một cụm phụ.
+              final tightSame =
+                  secondaryDisplay == SecondaryPhraseDisplay.tight &&
+                  phrase != null &&
+                  identical(
+                    phrase,
+                    _secondaryPhraseAt(secondaryPhrases, pieces[i + 1].token),
+                  );
+              if (!tightSame) {
+                spans.add(const TextSpan(text: ' '));
+                offset += 1;
+              }
             }
           }
           return Padding(

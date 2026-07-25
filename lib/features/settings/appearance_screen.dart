@@ -87,6 +87,23 @@ class AppearanceScreen extends ConsumerWidget {
           'Điều chỉnh cách văn bản được trình bày trong không gian dịch.',
       children: [
         SettingsSection(
+          icon: Icons.format_size,
+          accentColor: const Color(0xFF3949AB),
+          title: 'Chữ giao diện',
+          description:
+              'Cỡ chữ và font cho toàn bộ giao diện: nút, nhãn, dialog, cài đặt… '
+              'Không đổi cỡ chữ nội dung các ô dịch.',
+          children: [
+            _SystemFontRow(
+              scale: settings.uiFontScale,
+              family: settings.uiFontFamily,
+              fontFamilies: _fontFamilies,
+              onScaleChanged: notifier.setUiFontScale,
+              onFamilyChanged: notifier.setUiFontFamily,
+            ),
+          ],
+        ),
+        SettingsSection(
           icon: Icons.text_fields,
           accentColor: const Color(0xFF1565C0),
           title: 'Chữ trong các ô',
@@ -204,6 +221,105 @@ class _ColorSwatch extends StatelessWidget {
               ? const Icon(Icons.check, color: Colors.white, size: 20)
               : null,
         ),
+      ),
+    );
+  }
+}
+
+/// Cỡ chữ + font cho toàn giao diện (chrome). Áp ngay khi kéo/chọn.
+class _SystemFontRow extends StatelessWidget {
+  const _SystemFontRow({
+    required this.scale,
+    required this.family,
+    required this.fontFamilies,
+    required this.onScaleChanged,
+    required this.onFamilyChanged,
+  });
+
+  final double scale;
+  final String family;
+  final List<String> fontFamilies;
+  final ValueChanged<double> onScaleChanged;
+  final ValueChanged<String> onFamilyChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final selected = fontFamilies.contains(family) ? family : '';
+    final percent = (scale * 100).round();
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 610;
+          final slider = Row(
+            children: [
+              Expanded(
+                child: Slider(
+                  value: scale,
+                  min: 0.8,
+                  max: 1.4,
+                  divisions: 12,
+                  label: '$percent%',
+                  onChanged: onScaleChanged,
+                ),
+              ),
+              Container(
+                width: 56,
+                height: 32,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: scheme.secondaryContainer,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '$percent%',
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    color: scheme.onSecondaryContainer,
+                  ),
+                ),
+              ),
+            ],
+          );
+          final dropdown = DropdownMenu<String>(
+            key: ValueKey('ui:$selected'),
+            initialSelection: selected,
+            label: const Text('Font'),
+            expandedInsets: EdgeInsets.zero,
+            onSelected: (value) => onFamilyChanged(value ?? ''),
+            dropdownMenuEntries: [
+              for (final item in fontFamilies)
+                DropdownMenuEntry<String>(
+                  value: item,
+                  label: item.isEmpty ? 'Mặc định hệ thống' : item,
+                  style: MenuItemButton.styleFrom(
+                    textStyle: TextStyle(fontFamily: item.isEmpty ? null : item),
+                  ),
+                ),
+            ],
+          );
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Cỡ chữ', style: Theme.of(context).textTheme.titleSmall),
+              const SizedBox(height: 6),
+              if (compact) ...[
+                slider,
+                const SizedBox(height: 12),
+                dropdown,
+              ] else
+                Row(
+                  children: [
+                    Expanded(child: slider),
+                    const SizedBox(width: 24),
+                    SizedBox(width: 250, child: dropdown),
+                  ],
+                ),
+            ],
+          );
+        },
       ),
     );
   }

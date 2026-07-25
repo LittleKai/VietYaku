@@ -66,17 +66,6 @@ class LookupResult {
   });
 
   bool get found => body != null || sections.isNotEmpty;
-
-  LookupResult withExtraSection(LookupSection section) => LookupResult(
-    word: word,
-    matchedKey: matchedKey,
-    reading: reading,
-    readingKind: readingKind,
-    hanViet: hanViet,
-    body: body,
-    // Tra thêm online → chèn lên trên cùng ô Nghĩa.
-    sections: [section, ...sections],
-  );
 }
 
 class LookupController extends Notifier<LookupResult?> {
@@ -133,6 +122,13 @@ class LookupController extends Notifier<LookupResult?> {
       sections.add(
         LookupSection(matchedKey!, 'Lạc Việt', unescapeLacViet(lacVietValue)),
       );
+    }
+
+    // 1a. Mazii (offline) — ngay sau Lạc Việt: exact trước, miss thì chữ đầu.
+    final mazii = dicts.mazii.entries[word] ?? dicts.mazii.entries[firstChar];
+    if (mazii != null) {
+      final key = dicts.mazii.entries.containsKey(word) ? word : firstChar;
+      sections.add(LookupSection(key, 'Mazii', unescapeLacViet(mazii)));
     }
 
     // 1b. Nhật Việt ngay sau Lạc Việt (chỉ mode Nhật).
@@ -233,37 +229,6 @@ class LookupController extends Notifier<LookupResult?> {
   }
 
   void clearResult() => state = null;
-
-  /// Tra thêm nghĩa online cho từ đang hiển thị: Nhật → Mazii (miss thì
-  /// Google Dịch), Trung → Google Dịch. Trả false khi không lấy được.
-  Future<bool> fetchOnlineMeaning() async {
-    final r = state;
-    if (r == null || r.word.isEmpty) return false;
-    final mode = ref.read(currentModeProvider);
-
-    String label;
-    String? body;
-    if (mode == TranslationMode.japanese) {
-      label = 'Mazii';
-      body = await ref.read(maziiApiProvider).lookup(r.word);
-      if (body == null) {
-        label = 'Google Dịch';
-        body = await ref
-            .read(googleTranslateProvider)
-            .translate(r.word, sourceLang: 'ja');
-      }
-    } else {
-      label = 'Google Dịch';
-      body = await ref
-          .read(googleTranslateProvider)
-          .translate(r.word, sourceLang: 'zh-CN');
-    }
-    if (body == null) return false;
-    // Người dùng đã tra từ khác trong lúc chờ mạng → bỏ kết quả cũ.
-    if (state?.word != r.word) return false;
-    state = state!.withExtraSection(LookupSection(r.word, label, body));
-    return true;
-  }
 
   /// Value cụm trong UserDict > Names > VietPhrase kèm nhãn từ điển.
   static ({String label, String value})? _phraseValue(

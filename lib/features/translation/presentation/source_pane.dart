@@ -16,6 +16,8 @@ import '../application/token_selection.dart';
 import '../application/translation_controller.dart';
 
 import '../domain/token.dart';
+import 'lacviet_panel.dart' show meaningLabelColor;
+import 'online_lookup_dialog.dart';
 
 /// Nội dung ô Nguồn đang gõ (nút Dịch trên menu bar đọc giá trị này).
 final sourceDraftProvider = StateProvider<String>((ref) => '');
@@ -316,12 +318,14 @@ class _SourcePaneState extends ConsumerState<SourcePane> {
         final isAdmin = ref.read(dictionarySyncProvider).isAdmin;
         String verb(bool exists) => exists ? 'Sửa' : 'Thêm';
         void hide() => editableTextState.hideToolbar();
+        final scheme = Theme.of(context).colorScheme;
 
         final items = <IconContextMenuItem>[];
         if (isAdmin) {
           items.addAll([
             IconContextMenuItem(
               icon: Icons.menu_book_outlined,
+              iconColor: meaningLabelColor('VietPhrase', scheme),
               label: '${verb(vpMeaning != null)} vào VietPhrase',
               onPressed: () {
                 hide();
@@ -335,6 +339,7 @@ class _SourcePaneState extends ConsumerState<SourcePane> {
             ),
             IconContextMenuItem(
               icon: Icons.local_library_outlined,
+              iconColor: meaningLabelColor('Lạc Việt', scheme),
               label: '${verb(lacVietMeaning != null)} vào Lạc Việt',
               onPressed: () {
                 hide();
@@ -351,6 +356,7 @@ class _SourcePaneState extends ConsumerState<SourcePane> {
           items.add(
             IconContextMenuItem(
               icon: Icons.person_add_alt_1_outlined,
+              iconColor: meaningLabelColor('UserDict', scheme),
               label: '${verb(userMeaning != null)} vào UserDict',
               onPressed: () {
                 hide();
@@ -369,6 +375,7 @@ class _SourcePaneState extends ConsumerState<SourcePane> {
         items.addAll([
           IconContextMenuItem(
             icon: Icons.badge_outlined,
+            iconColor: meaningLabelColor('Names', scheme),
             label: '${verb(namesMeaning != null)} vào Names',
             onPressed: () {
               hide();
@@ -384,17 +391,12 @@ class _SourcePaneState extends ConsumerState<SourcePane> {
           ),
           IconContextMenuItem(
             icon: Icons.travel_explore,
-            label: 'Tra thêm nghĩa online',
-            onPressed: () async {
+            iconColor: meaningLabelColor('Google Dịch', scheme),
+            label: 'Tra online (Mazii + Google Dịch)',
+            onPressed: () {
               hide();
               ref.read(lookupControllerProvider.notifier).lookup(selection);
-              final ok = await ref
-                  .read(lookupControllerProvider.notifier)
-                  .fetchOnlineMeaning();
-              if (!mounted || ok) return;
-              ScaffoldMessenger.of(this.context).showSnackBar(
-                const SnackBar(content: Text('Không lấy được nghĩa online.')),
-              );
+              showOnlineLookupDialog(this.context, ref, word: selection);
             },
           ),
         ]);

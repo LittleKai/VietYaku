@@ -102,6 +102,135 @@ void main() {
     expect(XmlDocument.parse(utf8.decode(document)), isA<XmlDocument>());
     expect(utf8.decode(document), contains('Sách thử'));
   });
+
+  test('DOCX nhúng ảnh thật, các định dạng text vẫn hiển thị (img)', () {
+    final imageBook = parseEpub(_realImageEpub());
+    // Ảnh resolve được bytes → có trong book.images.
+    expect(imageBook.images, hasLength(1));
+    expect(imageBook.images.values.first.extension, 'png');
+
+    final files = _unzip(exportEpubBook(imageBook, EpubOutputFormat.docx));
+    // Media part chứa đúng bytes ảnh gốc.
+    expect(files.keys, contains('word/media/img1.png'));
+    expect(files['word/media/img1.png'], _onePixelPng());
+    // Document chèn drawing tham chiếu relationship ảnh.
+    final document = utf8.decode(files['word/document.xml']!);
+    expect(document, contains('<w:drawing>'));
+    expect(document, contains('r:embed="rId2"'));
+    expect(XmlDocument.parse(document), isA<XmlDocument>());
+    // Relationship + content type khai báo ảnh.
+    expect(
+      utf8.decode(files['word/_rels/document.xml.rels']!),
+      contains('media/img1.png'),
+    );
+    expect(
+      utf8.decode(files['[Content_Types].xml']!),
+      contains('Extension="png"'),
+    );
+
+    // Text formats không lộ token, vẫn là (img).
+    expect(imageBook.translationRows, contains('Trước(img)sau.'));
+    expect(imageBook.translationRows.join('\n'), isNot(contains('⟦img')));
+    final csv = utf8.decode(exportEpubBook(imageBook, EpubOutputFormat.csv));
+    expect(csv, contains('(img)'));
+    expect(csv, isNot(contains('⟦img')));
+  });
+
+  test('ảnh giữ vị trí bằng placeholder (img)', () {
+    final imageBook = parseEpub(_imageEpub());
+    final rows = imageBook.translationRows;
+    // Ảnh nằm riêng trong <p> → thành một dòng (img).
+    expect(rows, contains('(img)'));
+    // Ảnh inline giữa câu → chèn đúng chỗ trong đoạn.
+    expect(rows, contains('Trước(img)sau.'));
+    // Trang chỉ có ảnh trong <div> → vẫn giữ được (img).
+    expect(rows.where((row) => row == '(img)').length, greaterThanOrEqualTo(2));
+    // Chương không có <h1> KHÔNG được chèn tên file làm dòng (ch1/ch2).
+    expect(rows.any((row) => row.contains('ch1') || row.contains('ch2')), isFalse);
+  });
+}
+
+Uint8List _onePixelPng() => base64Decode(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+);
+
+Uint8List _realImageEpub() {
+  final png = _onePixelPng();
+  final archive = Archive()
+    ..addFile(ArchiveFile.string('mimetype', 'application/epub+zip'))
+    ..addFile(
+      ArchiveFile.string(
+        'META-INF/container.xml',
+        '<?xml version="1.0"?>'
+            '<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container">'
+            '<rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles>'
+            '</container>',
+      ),
+    )
+    ..addFile(
+      ArchiveFile.string(
+        'OEBPS/content.opf',
+        '<?xml version="1.0"?>'
+            '<package xmlns="http://www.idpf.org/2007/opf">'
+            '<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">'
+            '<dc:title>Sách ảnh thật</dc:title></metadata>'
+            '<manifest><item id="c1" href="Text/ch1.xhtml"/>'
+            '<item id="p" href="Text/p.png"/></manifest>'
+            '<spine><itemref idref="c1"/></spine>'
+            '</package>',
+      ),
+    )
+    ..addFile(
+      ArchiveFile.string(
+        'OEBPS/Text/ch1.xhtml',
+        '<html><body><h1>第一章</h1>'
+            '<p>Trước<img src="p.png"/>sau.</p></body></html>',
+      ),
+    )
+    ..addFile(ArchiveFile('OEBPS/Text/p.png', png.length, png));
+  return ZipEncoder().encodeBytes(archive);
+}
+
+Uint8List _imageEpub() {
+  final archive = Archive()
+    ..addFile(ArchiveFile.string('mimetype', 'application/epub+zip'))
+    ..addFile(
+      ArchiveFile.string(
+        'META-INF/container.xml',
+        '<?xml version="1.0"?>'
+            '<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container">'
+            '<rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles>'
+            '</container>',
+      ),
+    )
+    ..addFile(
+      ArchiveFile.string(
+        'OEBPS/content.opf',
+        '<?xml version="1.0"?>'
+            '<package xmlns="http://www.idpf.org/2007/opf">'
+            '<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">'
+            '<dc:title>Sách ảnh</dc:title></metadata>'
+            '<manifest><item id="c1" href="Text/ch1.xhtml"/>'
+            '<item id="c2" href="Text/ch2.xhtml"/></manifest>'
+            '<spine><itemref idref="c1"/><itemref idref="c2"/></spine>'
+            '</package>',
+      ),
+    )
+    ..addFile(
+      ArchiveFile.string(
+        'OEBPS/Text/ch1.xhtml',
+        '<html><body><h1>Chương ảnh</h1>'
+            '<p><img src="a.jpg" alt="x"/></p>'
+            '<p>Trước<img src="b.jpg"/>sau.</p></body></html>',
+      ),
+    )
+    ..addFile(
+      ArchiveFile.string(
+        'OEBPS/Text/ch2.xhtml',
+        '<html><body><div class="cover"><img src="c.jpg"/></div></body></html>',
+      ),
+    );
+  return ZipEncoder().encodeBytes(archive);
 }
 
 Uint8List _sampleEpub() {

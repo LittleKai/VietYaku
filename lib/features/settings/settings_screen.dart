@@ -123,6 +123,35 @@ class SettingsScreen extends ConsumerWidget {
                 ],
               ),
             ),
+            SettingsControlRow(
+              title: 'Đánh dấu cụm từ điển phụ',
+              description:
+                  'Mode Nhật: cụm kana chỉ có trong Lạc Việt / Nhật Việt / Mazii (không có trong VietPhrase) hiện thế nào trong ô VietPhrase.',
+              controlWidth: 430,
+              control: DropdownMenu<SecondaryPhraseDisplay>(
+                expandedInsets: EdgeInsets.zero,
+                initialSelection: settings.secondaryPhraseDisplay,
+                onSelected: (value) {
+                  if (value != null) {
+                    notifier.setSecondaryPhraseDisplay(value);
+                  }
+                },
+                dropdownMenuEntries: const [
+                  DropdownMenuEntry(
+                    value: SecondaryPhraseDisplay.off,
+                    label: 'Tắt',
+                  ),
+                  DropdownMenuEntry(
+                    value: SecondaryPhraseDisplay.tight,
+                    label: 'Sát khoảng cách',
+                  ),
+                  DropdownMenuEntry(
+                    value: SecondaryPhraseDisplay.italic,
+                    label: 'In nghiêng',
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
         const SettingsSection(
@@ -212,11 +241,10 @@ class _PopupDictionarySetting extends ConsumerWidget {
     final selected = ref.watch(
       settingsProvider.select((settings) => settings.popupDictionaryTypes),
     );
-    final atLimit = selected.length >= 2;
     return SettingsControlRow(
       title: 'Từ điển trong popup',
       description:
-          'Mặc định là Lạc Việt. Bỏ chọn tất cả để tắt popup hoàn toàn.',
+          'Chỉ chọn được 1 từ điển. Mặc định không chọn (tắt popup).',
       controlWidth: 540,
       control: Wrap(
         spacing: 8,
@@ -227,15 +255,12 @@ class _PopupDictionarySetting extends ConsumerWidget {
             FilterChip(
               label: Text(type.label),
               selected: selected.contains(type),
-              onSelected: !selected.contains(type) && atLimit
-                  ? null
-                  : (enabled) {
-                      final next = [...selected];
-                      enabled ? next.add(type) : next.remove(type);
-                      ref
-                          .read(settingsProvider.notifier)
-                          .setPopupDictionaryTypes(next);
-                    },
+              // Single-select: chọn cái mới thay cái cũ, bỏ chọn → tắt popup.
+              onSelected: (enabled) {
+                ref
+                    .read(settingsProvider.notifier)
+                    .setPopupDictionaryTypes(enabled ? [type] : const []);
+              },
             ),
         ],
       ),

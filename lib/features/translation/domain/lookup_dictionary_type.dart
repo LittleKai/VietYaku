@@ -3,6 +3,7 @@ enum LookupDictionaryType {
   names('Names'),
   vietPhrase('VietPhrase'),
   lacViet('Lạc Việt'),
+  mazii('Mazii'),
   jaVi('Nhật Việt'),
   cedictBabylon('Cedict / Babylon'),
   thieuChuu('Thiều Chửu'),

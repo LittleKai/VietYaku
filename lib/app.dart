@@ -14,16 +14,20 @@ import 'features/translation/presentation/translate_screen.dart';
 import 'features/update/application/update_controller.dart';
 import 'features/update/presentation/update_dialog.dart';
 
-class VietYakuApp extends StatelessWidget {
+class VietYakuApp extends ConsumerWidget {
   const VietYakuApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final fontFamily = ref.watch(
+      settingsProvider.select((s) => s.uiFontFamily),
+    );
+    final fontScale = ref.watch(settingsProvider.select((s) => s.uiFontScale));
     return MaterialApp(
       title: 'VietYaku',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.light,
-      darkTheme: AppTheme.dark,
+      theme: AppTheme.light(fontFamily: fontFamily, fontScale: fontScale),
+      darkTheme: AppTheme.dark(fontFamily: fontFamily, fontScale: fontScale),
       themeMode: ThemeMode.system,
       // Tắt cây semantics app-wide: né bug engine Flutter Windows
       // (accessibility_bridge.cc "Failed to update ui::AXTree" → app crash khi

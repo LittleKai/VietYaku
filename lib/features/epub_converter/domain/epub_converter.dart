@@ -43,10 +43,26 @@ enum EpubRubyHandling {
   final String label;
 }
 
+/// Ảnh trích từ EPUB, giữ nguyên bytes để nhúng thật vào DOCX.
+class EpubImage {
+  const EpubImage({
+    required this.id,
+    required this.extension,
+    required this.bytes,
+  });
+
+  final String id; // duy nhất trong sách, vd 'img1'
+  final String extension; // 'png' | 'jpeg' | 'gif' | 'bmp'
+  final Uint8List bytes;
+}
+
 class EpubChapter {
   const EpubChapter({required this.title, required this.paragraphs});
 
   final String title;
+
+  /// Văn bản đoạn; vị trí ảnh giữ bằng token `⟦img:ID⟧` (resolve được) hoặc
+  /// literal `(img)` (không resolve được). Text exporter hiển thị qua `_toDisplay`.
   final List<String> paragraphs;
 }
 
@@ -55,19 +71,26 @@ class EpubBook {
     required this.title,
     required this.language,
     required this.chapters,
+    this.images = const {},
   });
 
   final String title;
   final EpubLanguage language;
   final List<EpubChapter> chapters;
+  final Map<String, EpubImage> images; // id → ảnh
 
   List<String> get translationRows => [
     for (final chapter in chapters) ...[
-      if (chapter.title.isNotEmpty) chapter.title,
-      ...chapter.paragraphs,
+      if (chapter.title.isNotEmpty) _toDisplay(chapter.title),
+      for (final paragraph in chapter.paragraphs) _toDisplay(paragraph),
     ],
   ];
 }
+
+final RegExp _imgTokenRe = RegExp(r'⟦img:([^⟧]+)⟧');
+
+/// Chuyển token ảnh về placeholder `(img)` cho các định dạng text.
+String _toDisplay(String text) => text.replaceAll(_imgTokenRe, '(img)');
 
 class EpubParseRequest {
   const EpubParseRequest({
@@ -144,15 +167,22 @@ EpubBook parseEpub(
   for (final path in spine) {
     final file = files[path] ?? _findByBasename(files, path);
     if (file == null) continue;
-    chapterSources.add((html: _decode(file.content), path: path));
+    chapterSources.add((
+      html: _decode(file.content),
+      path: _normalizePath(file.name),
+    ));
   }
-  final language = detectEpubLanguage(_sampleChapterText(chapterSources));
+  final language = detectEpubLanguage(
+    _sampleChapterText([for (final source in chapterSources) source.html]),
+  );
+  final images = _ImageCollector(files);
   final chapters = <EpubChapter>[];
   for (final source in chapterSources) {
     final chapter = _extractChapter(
       source.html,
       source.path,
       language == EpubLanguage.japanese ? rubyHandling : null,
+      images,
     );
     if (chapter.title.isNotEmpty || chapter.paragraphs.isNotEmpty) {
       chapters.add(chapter);
@@ -161,7 +191,12 @@ EpubBook parseEpub(
   if (chapters.isEmpty) {
     throw const FormatException('EPUB không có nội dung văn bản có thể xuất.');
   }
-  return EpubBook(title: title, language: language, chapters: chapters);
+  return EpubBook(
+    title: title,
+    language: language,
+    chapters: chapters,
+    images: images.images,
+  );
 }
 
 Uint8List exportEpubBook(EpubBook book, EpubOutputFormat format) =>
@@ -204,16 +239,136 @@ ArchiveFile? _findByBasename(Map<String, ArchiveFile> files, String path) {
   return null;
 }
 
-String _sampleChapterText(
-  List<({String html, String path})> chapters, {
-  int maxChars = 500,
-}) {
+/// Thu thập ảnh trong lúc parse: resolve `<img src>` → bytes trong zip, đánh id
+/// duy nhất `imgN`, dedupe theo đường dẫn (một ảnh dùng nhiều lần → một part).
+class _ImageCollector {
+  _ImageCollector(this.files);
+
+  final Map<String, ArchiveFile> files;
+  final Map<String, EpubImage> _byKey = {}; // đường dẫn zip → ảnh (dedupe)
+  final Map<String, EpubImage> images = {}; // id → ảnh (giữ thứ tự chèn)
+  int _counter = 0;
+
+  /// Trả id ảnh, hoặc null nếu không resolve được ra ảnh raster hỗ trợ.
+  String? register(String chapterPath, String src) {
+    final resolved = _resolveArchivePath(chapterPath, src);
+    final file = files[resolved] ?? _findByBasename(files, resolved);
+    if (file == null) return null;
+    final key = _normalizePath(file.name);
+    final existing = _byKey[key];
+    if (existing != null) return existing.id;
+    final content = file.content as List<int>;
+    final ext = _imageExtension(file.name, content);
+    if (ext == null) return null;
+    final image = EpubImage(
+      id: 'img${++_counter}',
+      extension: ext,
+      bytes: Uint8List.fromList(content),
+    );
+    _byKey[key] = image;
+    images[image.id] = image;
+    return image.id;
+  }
+}
+
+/// Xác định phần mở rộng chuẩn hóa cho ảnh raster; null nếu không hỗ trợ.
+String? _imageExtension(String name, List<int> bytes) {
+  final lower = name.toLowerCase();
+  if (lower.endsWith('.png')) return 'png';
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'jpeg';
+  if (lower.endsWith('.gif')) return 'gif';
+  if (lower.endsWith('.bmp')) return 'bmp';
+  if (bytes.length >= 4) {
+    if (bytes[0] == 0x89 && bytes[1] == 0x50) return 'png';
+    if (bytes[0] == 0xFF && bytes[1] == 0xD8) return 'jpeg';
+    if (bytes[0] == 0x47 && bytes[1] == 0x49) return 'gif';
+    if (bytes[0] == 0x42 && bytes[1] == 0x4D) return 'bmp';
+  }
+  return null;
+}
+
+String _imageContentType(String extension) => switch (extension) {
+  'png' => 'image/png',
+  'jpeg' => 'image/jpeg',
+  'gif' => 'image/gif',
+  'bmp' => 'image/bmp',
+  _ => 'application/octet-stream',
+};
+
+/// Kích thước pixel đọc từ header ảnh; null nếu không đọc được.
+({int width, int height})? _imageSizePx(List<int> b, String extension) {
+  try {
+    switch (extension) {
+      case 'png':
+        if (b.length < 24) return null;
+        return (width: _be32(b, 16), height: _be32(b, 20));
+      case 'gif':
+        if (b.length < 10) return null;
+        return (width: b[6] | b[7] << 8, height: b[8] | b[9] << 8);
+      case 'bmp':
+        if (b.length < 26) return null;
+        return (width: _le32(b, 18), height: _le32(b, 22).abs());
+      case 'jpeg':
+        return _jpegSizePx(b);
+    }
+  } catch (_) {}
+  return null;
+}
+
+({int width, int height})? _jpegSizePx(List<int> b) {
+  var i = 2;
+  while (i + 9 < b.length) {
+    if (b[i] != 0xFF) {
+      i++;
+      continue;
+    }
+    final marker = b[i + 1];
+    final isSof =
+        marker >= 0xC0 &&
+        marker <= 0xCF &&
+        marker != 0xC4 &&
+        marker != 0xC8 &&
+        marker != 0xCC;
+    if (isSof) {
+      return (width: b[i + 7] << 8 | b[i + 8], height: b[i + 5] << 8 | b[i + 6]);
+    }
+    final length = b[i + 2] << 8 | b[i + 3];
+    if (length < 2) return null;
+    i += 2 + length;
+  }
+  return null;
+}
+
+int _be32(List<int> b, int o) =>
+    b[o] << 24 | b[o + 1] << 16 | b[o + 2] << 8 | b[o + 3];
+
+int _le32(List<int> b, int o) =>
+    b[o] | b[o + 1] << 8 | b[o + 2] << 16 | b[o + 3] << 24;
+
+const int _emuPerPx = 9525; // 96 dpi
+const int _maxWidthEmu = 5486400; // 6 inch — vừa lề trang A4
+
+/// EMU (cx, cy) cho ảnh, co theo tỉ lệ nếu rộng quá khổ trang.
+({int cx, int cy}) _imageExtentEmu(({int width, int height})? size) {
+  if (size == null || size.width <= 0 || size.height <= 0) {
+    return (cx: _maxWidthEmu, cy: (_maxWidthEmu * 0.75).round());
+  }
+  var cx = size.width * _emuPerPx;
+  var cy = size.height * _emuPerPx;
+  if (cx > _maxWidthEmu) {
+    cy = (cy * _maxWidthEmu / cx).round();
+    cx = _maxWidthEmu;
+  }
+  return (cx: cx, cy: cy);
+}
+
+String _sampleChapterText(List<String> chapters, {int maxChars = 500}) {
   if (chapters.isEmpty) return '';
   final buffer = StringBuffer();
   final start = chapters.length ~/ 3;
   for (final chapter in chapters.skip(start).take(5)) {
     final text = html_parser
-        .parse(chapter.html, generateSpans: false)
+        .parse(chapter, generateSpans: false)
         .body
         ?.text;
     if (text != null) buffer.write(text);
@@ -252,13 +407,21 @@ EpubLanguage detectEpubLanguage(String text) {
 
 EpubChapter _extractChapter(
   String html,
-  String path,
+  String chapterPath,
   EpubRubyHandling? rubyHandling,
+  _ImageCollector images,
 ) {
   final document = html_parser.parse(html, generateSpans: false);
   document.querySelectorAll('script,style,svg,noscript').forEach((node) {
     node.remove();
   });
+  // Giữ vị trí ảnh: token `⟦img:ID⟧` nếu resolve được bytes (để nhúng thật vào
+  // DOCX), ngược lại literal `(img)` như AI Translation Bridge (svg đã xóa ở trên).
+  for (final img in document.querySelectorAll('img')) {
+    final src = img.attributes['src'] ?? img.attributes['xlink:href'] ?? '';
+    final id = src.isEmpty ? null : images.register(chapterPath, src);
+    img.replaceWith(dom.Text(id == null ? '(img)' : '⟦img:$id⟧'));
+  }
   if (rubyHandling != null) {
     _processRubyTags(document, rubyHandling);
   }
@@ -287,7 +450,7 @@ EpubChapter _extractChapter(
     );
   }
   return EpubChapter(
-    title: heading ?? p.posix.basenameWithoutExtension(path),
+    title: heading ?? '',
     paragraphs: List.unmodifiable(lines),
   );
 }
@@ -356,9 +519,12 @@ String _csvCell(String value) => '"${value.replaceAll('"', '""')}"';
 String _toMarkdown(EpubBook book) {
   final buffer = StringBuffer('# ${book.title}\n');
   for (final chapter in book.chapters) {
-    buffer.write('\n## ${chapter.title}\n\n');
+    if (chapter.title.isNotEmpty) {
+      buffer.write('\n## ${_toDisplay(chapter.title)}\n');
+    }
+    buffer.write('\n');
     for (final paragraph in chapter.paragraphs) {
-      buffer.write('$paragraph\n\n');
+      buffer.write('${_toDisplay(paragraph)}\n\n');
     }
   }
   return '${buffer.toString().trimRight()}\n';
@@ -367,8 +533,9 @@ String _toMarkdown(EpubBook book) {
 String _toText(EpubBook book) {
   final buffer = StringBuffer('${book.title}\n');
   for (final chapter in book.chapters) {
-    buffer.write('\n${chapter.title}\n\n');
-    buffer.write(chapter.paragraphs.join('\n\n'));
+    if (chapter.title.isNotEmpty) buffer.write('\n${_toDisplay(chapter.title)}\n');
+    buffer.write('\n');
+    buffer.write(chapter.paragraphs.map(_toDisplay).join('\n\n'));
     buffer.write('\n');
   }
   return '${buffer.toString().trimRight()}\n';
@@ -446,28 +613,115 @@ Uint8List _toXlsx(EpubBook book) {
   });
 }
 
+class _DocxImage {
+  const _DocxImage({
+    required this.image,
+    required this.rId,
+    required this.cx,
+    required this.cy,
+  });
+
+  final EpubImage image;
+  final String rId;
+  final int cx;
+  final int cy;
+}
+
 Uint8List _toDocx(EpubBook book) {
+  // Gán rId (rId1 = styles) + kích thước hiển thị cho từng ảnh, giữ thứ tự id.
+  final docxImages = <String, _DocxImage>{};
+  final orderedImages = book.images.values.toList()
+    ..sort((a, b) => _imageOrder(a.id).compareTo(_imageOrder(b.id)));
+  var rid = 2;
+  for (final image in orderedImages) {
+    final extent = _imageExtentEmu(_imageSizePx(image.bytes, image.extension));
+    docxImages[image.id] = _DocxImage(
+      image: image,
+      rId: 'rId$rid',
+      cx: extent.cx,
+      cy: extent.cy,
+    );
+    rid++;
+  }
+
   final body = StringBuffer();
+  var docPrId = 1; // wp:docPr @id phải duy nhất trên toàn document
+  String run(String text) =>
+      '<w:r><w:t xml:space="preserve">${_xml(text)}</w:t></w:r>';
+  String drawing(_DocxImage image) {
+    final id = docPrId++;
+    return '<w:r><w:drawing>'
+        '<wp:inline distT="0" distB="0" distL="0" distR="0">'
+        '<wp:extent cx="${image.cx}" cy="${image.cy}"/>'
+        '<wp:docPr id="$id" name="${image.image.id}"/>'
+        '<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">'
+        '<pic:pic>'
+        '<pic:nvPicPr><pic:cNvPr id="$id" name="${image.image.id}"/><pic:cNvPicPr/></pic:nvPicPr>'
+        '<pic:blipFill><a:blip r:embed="${image.rId}"/>'
+        '<a:stretch><a:fillRect/></a:stretch></pic:blipFill>'
+        '<pic:spPr><a:xfrm><a:off x="0" y="0"/>'
+        '<a:ext cx="${image.cx}" cy="${image.cy}"/></a:xfrm>'
+        '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>'
+        '</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>';
+  }
+
   void paragraph(String text, {String? style}) {
     body
       ..write('<w:p>')
-      ..write(style == null ? '' : '<w:pPr><w:pStyle w:val="$style"/></w:pPr>')
-      ..write('<w:r><w:t xml:space="preserve">${_xml(text)}</w:t></w:r></w:p>');
+      ..write(style == null ? '' : '<w:pPr><w:pStyle w:val="$style"/></w:pPr>');
+    var last = 0;
+    var wrote = false;
+    for (final match in _imgTokenRe.allMatches(text)) {
+      final pre = text.substring(last, match.start);
+      if (pre.isNotEmpty) {
+        body.write(run(pre));
+        wrote = true;
+      }
+      final image = docxImages[match.group(1)];
+      body.write(image == null ? run('(img)') : drawing(image));
+      wrote = true;
+      last = match.end;
+    }
+    final tail = text.substring(last);
+    if (tail.isNotEmpty || !wrote) body.write(run(tail));
+    body.write('</w:p>');
   }
 
   paragraph(book.title, style: 'Title');
   for (final chapter in book.chapters) {
-    paragraph(chapter.title, style: 'Heading1');
+    if (chapter.title.isNotEmpty) paragraph(chapter.title, style: 'Heading1');
     for (final text in chapter.paragraphs) {
       paragraph(text);
     }
   }
+
+  final usedExtensions = {for (final image in orderedImages) image.extension};
+  final imageDefaults = StringBuffer();
+  for (final extension in usedExtensions) {
+    imageDefaults.write(
+      '<Default Extension="$extension" ContentType="${_imageContentType(extension)}"/>',
+    );
+  }
+  final imageRels = StringBuffer();
+  final mediaParts = <String, Object>{};
+  for (final image in orderedImages) {
+    final docx = docxImages[image.id]!;
+    imageRels.write(
+      '<Relationship Id="${docx.rId}" '
+      'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" '
+      'Target="media/${image.id}.${image.extension}"/>',
+    );
+    mediaParts['word/media/${image.id}.${image.extension}'] = image.bytes;
+  }
+
   return _zip({
+    ...mediaParts,
     '[Content_Types].xml':
         '<?xml version="1.0" encoding="UTF-8"?>'
         '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
         '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
         '<Default Extension="xml" ContentType="application/xml"/>'
+        '$imageDefaults'
         '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
         '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>'
         '</Types>',
@@ -478,7 +732,11 @@ Uint8List _toDocx(EpubBook book) {
         '</Relationships>',
     'word/document.xml':
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
+        'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" '
+        'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
+        'xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">'
         '<w:body>$body<w:sectPr><w:pgSz w:w="11906" w:h="16838"/>'
         '<w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134"/></w:sectPr>'
         '</w:body></w:document>',
@@ -486,6 +744,7 @@ Uint8List _toDocx(EpubBook book) {
         '<?xml version="1.0" encoding="UTF-8"?>'
         '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
         '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
+        '$imageRels'
         '</Relationships>',
     'word/styles.xml':
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
@@ -502,10 +761,15 @@ Uint8List _toDocx(EpubBook book) {
   });
 }
 
-Uint8List _zip(Map<String, String> files) {
+/// Thứ tự numeric của id `imgN` (tránh sort chuỗi img1 < img10 < img2).
+int _imageOrder(String id) => int.tryParse(id.replaceAll('img', '')) ?? 0;
+
+Uint8List _zip(Map<String, Object> files) {
   final archive = Archive();
   for (final entry in files.entries) {
-    archive.addFile(ArchiveFile.string(entry.key, entry.value));
+    final value = entry.value;
+    final bytes = value is String ? utf8.encode(value) : value as List<int>;
+    archive.addFile(ArchiveFile(entry.key, bytes.length, bytes));
   }
   return ZipEncoder().encodeBytes(archive);
 }

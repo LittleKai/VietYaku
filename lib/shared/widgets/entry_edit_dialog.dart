@@ -27,8 +27,7 @@ Future<void> showEntryEditDialog(
                 dicts.names.entries[word] ??
                 dicts.vietPhrase.entries[word]));
 
-  final keyController = TextEditingController(text: word);
-  final meaningController = TextEditingController(text: existing ?? '');
+  final holder = _EntryFieldControllers();
 
   final saved = await showAppDialog<bool>(
     context: context,
@@ -39,26 +38,11 @@ Future<void> showEntryEditDialog(
         ? 'Tên riêng được ưu tiên khi dịch và chỉ lưu trên máy này.'
         : 'Mục UserDict được ưu tiên cao nhất khi dịch.',
     width: 540,
-    content: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        TextField(
-          controller: keyController,
-          decoration: const InputDecoration(labelText: 'Từ nguồn'),
-        ),
-        const SizedBox(height: 14),
-        TextField(
-          controller: meaningController,
-          minLines: 6,
-          maxLines: 10,
-          textAlignVertical: TextAlignVertical.top,
-          decoration: const InputDecoration(
-            labelText: 'Nghĩa',
-            helperText: 'Dùng dấu / để ngăn cách nhiều nghĩa.',
-          ),
-          autofocus: true,
-        ),
-      ],
+    content: _EntryFields(
+      holder: holder,
+      initialKey: word,
+      initialMeaning: existing ?? '',
+      meaningHelper: 'Dùng dấu / để ngăn cách nhiều nghĩa.',
     ),
     actionsBuilder: (dialogContext) => [
       TextButton(
@@ -73,10 +57,10 @@ Future<void> showEntryEditDialog(
     ],
   );
 
-  final key = saved == true ? keyController.text.trim() : '';
-  final meaning = saved == true ? meaningController.text.trim() : '';
-  keyController.dispose();
-  meaningController.dispose();
+  // Đọc giá trị ngay khi dialog vừa đóng — controller vẫn sống trong lúc
+  // animation thoát; _EntryFields tự dispose khi widget unmount.
+  final key = saved == true ? holder.keyText.trim() : '';
+  final meaning = saved == true ? holder.meaningText.trim() : '';
   if (saved != true) return;
   if (key.isEmpty || meaning.isEmpty) return;
 
@@ -114,8 +98,7 @@ Future<void> showSharedEntryEditDialog(
       : (isVietPhrase
             ? dicts.vietPhrase.entries[word]
             : dicts.lacViet.entries[word]);
-  final keyController = TextEditingController(text: word);
-  final meaningController = TextEditingController(text: existing ?? '');
+  final holder = _EntryFieldControllers();
 
   final saved = await showAppDialog<bool>(
     context: context,
@@ -125,23 +108,10 @@ Future<void> showSharedEntryEditDialog(
     description:
         'Lưu cục bộ trước; bấm Update trong Cài đặt để gửi lên server.',
     width: 540,
-    content: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        TextField(
-          controller: keyController,
-          decoration: const InputDecoration(labelText: 'Từ nguồn'),
-        ),
-        const SizedBox(height: 14),
-        TextField(
-          controller: meaningController,
-          minLines: 6,
-          maxLines: 10,
-          textAlignVertical: TextAlignVertical.top,
-          decoration: const InputDecoration(labelText: 'Nghĩa'),
-          autofocus: true,
-        ),
-      ],
+    content: _EntryFields(
+      holder: holder,
+      initialKey: word,
+      initialMeaning: existing ?? '',
     ),
     actionsBuilder: (dialogContext) => [
       TextButton(
@@ -156,10 +126,8 @@ Future<void> showSharedEntryEditDialog(
     ],
   );
 
-  final key = saved == true ? keyController.text.trim() : '';
-  final meaning = saved == true ? meaningController.text.trim() : '';
-  keyController.dispose();
-  meaningController.dispose();
+  final key = saved == true ? holder.keyText.trim() : '';
+  final meaning = saved == true ? holder.meaningText.trim() : '';
   if (saved != true) return;
   if (key.isEmpty || meaning.isEmpty) return;
 
@@ -177,5 +145,86 @@ Future<void> showSharedEntryEditDialog(
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
+  }
+}
+
+/// Cầu nối đọc text sau khi dialog đóng mà không cần giữ tham chiếu controller.
+/// `_EntryFields` cập nhật liên tục để giá trị còn đúng cả sau khi controller
+/// đã bị dispose theo vòng đời widget.
+class _EntryFieldControllers {
+  String keyText = '';
+  String meaningText = '';
+}
+
+/// Nội dung dialog sửa entry: sở hữu và dispose controller theo vòng đời widget
+/// (dispose chạy khi element unmount — SAU khi animation thoát kết thúc), tránh
+/// crash "used after being disposed" khi TextField rebuild trong lúc dialog
+/// đang animate đóng.
+class _EntryFields extends StatefulWidget {
+  const _EntryFields({
+    required this.holder,
+    required this.initialKey,
+    required this.initialMeaning,
+    this.meaningHelper,
+  });
+
+  final _EntryFieldControllers holder;
+  final String initialKey;
+  final String initialMeaning;
+  final String? meaningHelper;
+
+  @override
+  State<_EntryFields> createState() => _EntryFieldsState();
+}
+
+class _EntryFieldsState extends State<_EntryFields> {
+  late final TextEditingController _keyController;
+  late final TextEditingController _meaningController;
+
+  @override
+  void initState() {
+    super.initState();
+    _keyController = TextEditingController(text: widget.initialKey)
+      ..addListener(_sync);
+    _meaningController = TextEditingController(text: widget.initialMeaning)
+      ..addListener(_sync);
+    _sync();
+  }
+
+  void _sync() {
+    widget.holder.keyText = _keyController.text;
+    widget.holder.meaningText = _meaningController.text;
+  }
+
+  @override
+  void dispose() {
+    _keyController.dispose();
+    _meaningController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        TextField(
+          controller: _keyController,
+          decoration: const InputDecoration(labelText: 'Từ nguồn'),
+        ),
+        const SizedBox(height: 14),
+        TextField(
+          controller: _meaningController,
+          minLines: 6,
+          maxLines: 10,
+          textAlignVertical: TextAlignVertical.top,
+          decoration: InputDecoration(
+            labelText: 'Nghĩa',
+            helperText: widget.meaningHelper,
+          ),
+          autofocus: true,
+        ),
+      ],
+    );
   }
 }

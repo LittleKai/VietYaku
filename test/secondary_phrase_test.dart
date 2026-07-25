@@ -1,0 +1,123 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:vietyaku/features/dictionary/domain/dict_type.dart';
+import 'package:vietyaku/features/dictionary/domain/phrase_dictionary.dart';
+import 'package:vietyaku/features/translation/domain/secondary_phrase.dart';
+import 'package:vietyaku/features/translation/domain/token.dart';
+
+PhraseDictionary _dict(DictType type, Map<String, String> entries) =>
+    PhraseDictionary(type, entries);
+
+/// Mỗi rune kana → 1 token unmatched (như engine sinh ra khi không match).
+List<Token> _unmatchedRunes(String text, {int start = 0}) {
+  final tokens = <Token>[];
+  var i = start;
+  for (final rune in text.runes) {
+    final s = String.fromCharCode(rune);
+    tokens.add(Token(source: s, sourceStart: i, kind: TokenKind.unmatched));
+    i += s.length;
+  }
+  return tokens;
+}
+
+void main() {
+  final empty = _dict(DictType.mazii, const {});
+
+  test('nhận cụm kana chỉ có trong Lạc Việt (≥2 rune)', () {
+    const text = 'たりしていた';
+    final lacViet = _dict(DictType.lacViet, {
+      'たりしていた': 'nào là...; chẳng hạn như',
+    });
+    final phrases = findSecondaryPhrases(
+      text: text,
+      tokens: _unmatchedRunes(text),
+      lacViet: lacViet,
+      jaVi: empty,
+      mazii: empty,
+    );
+    expect(phrases, hasLength(1));
+    expect(phrases.first.source, 'たりしていた');
+    expect(phrases.first.start, 0);
+    expect(phrases.first.end, text.length);
+    expect(phrases.first.label, 'Lạc Việt');
+  });
+
+  test('greedy longest-match: cụm dài thắng cụm ngắn', () {
+    const text = 'たりしていた';
+    final lacViet = _dict(DictType.lacViet, {
+      'たり': 'ngắn',
+      'たりしていた': 'dài',
+    });
+    final phrases = findSecondaryPhrases(
+      text: text,
+      tokens: _unmatchedRunes(text),
+      lacViet: lacViet,
+      jaVi: empty,
+      mazii: empty,
+    );
+    expect(phrases, hasLength(1));
+    expect(phrases.first.source, 'たりしていた');
+  });
+
+  test('ưu tiên Lạc Việt > Nhật Việt > Mazii khi cùng độ dài', () {
+    const text = 'なので';
+    final phrases = findSecondaryPhrases(
+      text: text,
+      tokens: _unmatchedRunes(text),
+      lacViet: _dict(DictType.lacViet, {'なので': 'lv'}),
+      jaVi: _dict(DictType.jaVi, {'なので': 'nv'}),
+      mazii: _dict(DictType.mazii, {'なので': 'mz'}),
+    );
+    expect(phrases, hasLength(1));
+    expect(phrases.first.label, 'Lạc Việt');
+  });
+
+  test('bỏ qua cụm chỉ 1 rune', () {
+    const text = 'は';
+    final phrases = findSecondaryPhrases(
+      text: text,
+      tokens: _unmatchedRunes(text),
+      lacViet: _dict(DictType.lacViet, {'は': 'là'}),
+      jaVi: empty,
+      mazii: empty,
+    );
+    expect(phrases, isEmpty);
+  });
+
+  test('không quét qua token matched (không thuộc run unmatched)', () {
+    // 私 matched, りして unmatched. Cụm りして có trong Nhật Việt.
+    const text = '私りして';
+    final tokens = <Token>[
+      Token(
+        source: '私',
+        sourceStart: 0,
+        kind: TokenKind.matched,
+        dictType: DictType.vietPhrase,
+        rawValue: 'tôi',
+      ),
+      ..._unmatchedRunes('りして', start: 1),
+    ];
+    final phrases = findSecondaryPhrases(
+      text: text,
+      tokens: tokens,
+      lacViet: empty,
+      jaVi: _dict(DictType.jaVi, {'りして': 'nv'}),
+      mazii: empty,
+    );
+    expect(phrases, hasLength(1));
+    expect(phrases.first.source, 'りして');
+    expect(phrases.first.start, 1);
+    expect(phrases.first.label, 'Nhật Việt');
+  });
+
+  test('không có cụm phụ → rỗng', () {
+    const text = 'あいうえお';
+    final phrases = findSecondaryPhrases(
+      text: text,
+      tokens: _unmatchedRunes(text),
+      lacViet: empty,
+      jaVi: empty,
+      mazii: empty,
+    );
+    expect(phrases, isEmpty);
+  });
+}
