@@ -97,52 +97,86 @@ class SettingsSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final accent = _resolvedAccent(context, accentColor ?? scheme.primary);
+    // Card sáng nổi trên canvas: nền sáng nhất + viền sắc nét + bóng nhuộm
+    // theo màu nhấn của section (không dùng bóng đen thuần → không bị đục).
+    final surface = scheme.surfaceContainerLowest;
+    final headerFill = Color.alphaBlend(
+      accent.withValues(alpha: 0.10),
+      surface,
+    );
+    final rowDivider = scheme.outlineVariant.withValues(alpha: 0.55);
+
     return _SettingsAccent(
       color: accent,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: ColoredBox(
-          color: scheme.surfaceContainerLow,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: Color.alphaBlend(accent.withValues(alpha: 0.28), surface),
+            width: 1.3,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: accent.withValues(alpha: 0.16),
+              blurRadius: 18,
+              offset: const Offset(0, 6),
+              spreadRadius: -6,
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(13),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _SettingsIcon(icon: icon, prominent: true),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            title,
-                            style: Theme.of(context).textTheme.titleMedium
-                                ?.copyWith(
-                                  color: accent,
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
-                            description,
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(color: scheme.onSurfaceVariant),
-                          ),
-                        ],
+              // Header nhuộm màu nhấn + dải màu bên trái: mỗi nhóm cài đặt có
+              // bản sắc riêng, không còn là dãy hộp xám giống hệt nhau.
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  color: headerFill,
+                  border: Border(
+                    left: BorderSide(color: accent, width: 4),
+                    bottom: BorderSide(color: rowDivider),
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 16, 16, 16),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _SettingsIcon(icon: icon, prominent: true),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              title,
+                              style: Theme.of(context).textTheme.titleMedium
+                                  ?.copyWith(
+                                    color: accent,
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              description,
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(color: scheme.onSurfaceVariant),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-              Divider(height: 1, color: scheme.outlineVariant),
               for (var index = 0; index < children.length; index++) ...[
                 children[index],
                 if (index != children.length - 1)
-                  Divider(height: 1, indent: 16, color: scheme.outlineVariant),
+                  Divider(height: 1, indent: 16, color: rowDivider),
               ],
             ],
           ),
@@ -272,18 +306,27 @@ class _SettingsIcon extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final accent = _SettingsAccent.of(context) ?? scheme.primary;
     final size = prominent ? 40.0 : 36.0;
+    // Ô icon tô đặc màu nhấn: điểm màu mạnh nhất của mỗi nhóm cài đặt.
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: Color.alphaBlend(
-          accent.withValues(alpha: prominent ? 0.18 : 0.12),
-          scheme.surfaceContainerLow,
-        ),
-        borderRadius: BorderRadius.circular(10),
+        color: accent,
+        borderRadius: BorderRadius.circular(11),
+        boxShadow: [
+          BoxShadow(
+            color: accent.withValues(alpha: 0.34),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
       alignment: Alignment.center,
-      child: Icon(icon, size: prominent ? 22 : 20, color: accent),
+      child: Icon(
+        icon,
+        size: prominent ? 22 : 20,
+        color: _onAccent(accent),
+      ),
     );
   }
 }
@@ -291,6 +334,48 @@ class _SettingsIcon extends StatelessWidget {
 Color _resolvedAccent(BuildContext context, Color color) {
   if (Theme.of(context).brightness == Brightness.light) return color;
   return Color.lerp(color, Colors.white, 0.34)!;
+}
+
+/// Chữ/icon đặt trên nền tô đặc màu nhấn — chọn theo độ sáng của nền.
+Color _onAccent(Color accent) =>
+    ThemeData.estimateBrightnessForColor(accent) == Brightness.dark
+    ? Colors.white
+    : const Color(0xFF16121F);
+
+/// Badge hiển thị giá trị số (%, cỡ chữ…) cạnh slider. Nền và viền mang màu
+/// nhấn của nhóm cài đặt nên con số luôn đọc rõ, không chìm vào nền.
+class SettingsValueBadge extends StatelessWidget {
+  const SettingsValueBadge({super.key, required this.label, this.width = 58});
+
+  final String label;
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final accent = _SettingsAccent.of(context) ?? scheme.primary;
+    return Container(
+      width: width,
+      height: 32,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: Color.alphaBlend(
+          accent.withValues(alpha: 0.16),
+          scheme.surfaceContainerLowest,
+        ),
+        borderRadius: BorderRadius.circular(9),
+        border: Border.all(color: accent.withValues(alpha: 0.55), width: 1.3),
+      ),
+      child: Text(
+        label,
+        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+          color: accent,
+          fontWeight: FontWeight.w700,
+          fontFeatures: const [FontFeature.tabularFigures()],
+        ),
+      ),
+    );
+  }
 }
 
 class _SettingsAccent extends InheritedWidget {

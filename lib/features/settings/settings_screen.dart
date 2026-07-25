@@ -295,10 +295,7 @@ class _TtsSpeedSetting extends ConsumerWidget {
               onChanged: notifier.setTtsSpeechRate,
             ),
           ),
-          SizedBox(
-            width: 54,
-            child: Text('$ratePct%', textAlign: TextAlign.end),
-          ),
+          SettingsValueBadge(label: '$ratePct%', width: 56),
         ],
       ),
     );

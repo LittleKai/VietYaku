@@ -8,11 +8,11 @@
 - **Package Manager:** pub (flutter pub)
 - **i18n:** None (UI tiếng Việt cố định)
 - **State Management:** Riverpod 2 — manual providers (Notifier/AsyncNotifier), KHÔNG codegen
-- **Styling:** Material 3, hệ thiết kế tập trung `lib/core/theme/app_theme.dart` (`AppTheme.light`/`.dark`, seed indigo `0xFF4F46E5`, font chrome Segoe UI, ~15 component theme cho dialog/ô nhập/dropdown/tab/nút/rail/card/tooltip/snackbar/slider/menu). Theme tối tự theo hệ điều hành (`ThemeMode.system`). Màu tô nổi + token Names qua `ThemeExtension AppSemanticColors` (sáng/tối riêng).
+- **Styling:** Material 3, hệ thiết kế tập trung `lib/core/theme/app_theme.dart` (`AppTheme.light`/`.dark`, seed indigo `0xFF4F46E5`, font chrome Segoe UI, ~15 component theme cho dialog/ô nhập/dropdown/tab/nút/rail/card/tooltip/snackbar/slider/chip/menu). Hướng thị giác: sáng — rực — viền sắc, lớp nổi sáng hơn canvas, màu nền sáng tím nhạt thanh thoát (`0.025` indigo tint), nền tối đen/than trung tính thuần (`#121214`), trạng thái active luôn mang màu nhấn. Chọn được chế độ giao diện: Sáng, Tối, hoặc Tự động theo hệ thống (lưu `ui.themeMode` trong settings). Tự động nâng sáng màu Katakana ở chế độ Tối (Xanh lục tươi `#66BB6A`, Trắng `#FFFFFF`). Màu tô nổi + token Names qua `ThemeExtension AppSemanticColors` (sáng/tối riêng).
 - **Deployment:** Windows: `flutter build windows --release` → exe độc lập tại `build\windows\x64\runner\Release\vietyaku.exe`. Android: `flutter build apk --release` (org `com.littlekai.vietyaku`) — từ điển đi kèm dạng assets nên APK/exe lớn thêm ~130MB.
 
 Dữ liệu từ điển bundle trong dự án (commit git), mỗi ngôn ngữ một bộ tại `data/jp/` và `data/cn/` — đường dẫn hardcode (`defaultDataDir` trong settings_provider), không còn UI chọn file trong Cài đặt:
-- `data/jp/` (nguồn Drive QuickTranslator_Jap, đã repair simp→JP): VietPhrase.txt (187.419 — bản `_JP` repair), LacViet.txt (103.632 — bản `_JP`), Names.txt, JaViDict.txt (172.321), + ThieuChuu/Babylon/cedict_ts.u8/ChinesePhienAm*/Pronouns, SudachiVariants.txt (13.677 — biến thể→value VietPhrase, sinh bởi tool/build_sudachi_assets.dart), SudachiReadings.txt (43.996 — từ=kana đọc), Mazii.txt (từ điển Mazii offline Nhật→Việt, format LacViet — value `\n\t` escaped; HIỆN chỉ sample 500 entry convert từ MaziiDict.db qua `.claude/code/mazii_db_to_txt.py`, chưa convert đủ 22.177).
+- `data/jp/` (nguồn Drive QuickTranslator_Jap, đã repair simp→JP): VietPhrase.txt (187.419 — bản `_JP` repair), LacViet.txt (103.632 — bản `_JP`), Names.txt, JaViDict.txt (172.321), + ThieuChuu/Babylon/cedict_ts.u8/ChinesePhienAm*/Pronouns, SudachiVariants.txt (13.677 — biến thể→value VietPhrase, sinh bởi tool/build_sudachi_assets.dart), SudachiReadings.txt (43.996 — từ=kana đọc), Mazii.txt (từ điển Mazii offline Nhật→Việt, format LacViet — value `\n\t` escaped; đã convert đầy đủ 171.299 entry từ MaziiDict.db sau khi loại bỏ các kana đơn).
 - `data/cn/` (nguồn `D:\Software\QuickTranslator\Quick Translator Chinese\Data`): VietPhrase.txt (690.007), LacViet.txt (66.450), Names.txt, ZhViDict.txt (161.194), + bộ chung như trên.
 - JaViDict/ZhViDict generate từ SQLite của VocabFlip bằng `tool/export_vocabflip_dicts.py` (chạy 1 lần, conda py312), value escape `\n\t` như LacViet.
 - Nguồn gốc (KHÔNG ghi đè): Drive `JP CN Tool\QuickTranslator_Jap` và `D:\Software\QuickTranslator\`.
@@ -41,8 +41,8 @@ VietYaku/
 │   │   ├── translation/            # domain (translation_engine, token, reading_extractor) · data (mazii_api) · application (translation_controller + currentModeProvider, lookup_controller, token_selection, viet_draft — controller dùng chung ô Bản dịch) · presentation (translate_screen: 2 cột kéo được + lưu tỷ lệ, menu bar, source_pane + hover tô đỏ, result_pane chỉ VietPhrase + tab Google Dịch, viet_pane — ô Bản dịch Việt luôn trống, han_viet_pane, token_text_view — chuẩn hoá dấu câu/toàn-hình + menu chèn nghĩa, lacviet_panel + nhãn từ điển có màu + nút tra online)
 │   │   ├── repair/                 # domain (jp_repair_pipeline, simp2jp_table, repair_report) · application (repair_controller) · presentation (repair_screen, repair_preview)
 │   │   └── settings/               # settings_provider, settings_screen (thuật toán/TTS/repair/sync/dict), appearance_screen (cỡ chữ+font/màu kana/hiển thị)
-│   └── shared/widgets/             # tts_button, entry_edit_dialog
-└── test/                           # 139 tests (21 file; integration dữ liệu thật tự skip nếu thiếu path)
+│   └── shared/widgets/             # tts_button, entry_edit_dialog, app_dialog, icon_context_menu, settings_layout (SettingsPage/SettingsSection/SettingsSwitchRow/SettingsControlRow/SettingsValueBadge)
+└── test/                           # 179 tests (22 file; integration dữ liệu thật tự skip nếu thiếu path)
 ```
 
 ### Critical Files
@@ -51,7 +51,7 @@ VietYaku/
 | `lib/features/translation/domain/translation_engine.dart` | Engine greedy longest-match | Chữ ký `translate()` chừa sẵn cho AiTranslationEngine v2 |
 | `lib/features/translation/domain/jp_input_normalizer.dart` | Halfwidth katakana → fullwidth trước khi tra (mode Nhật) | BẮT BUỘC remap token về offset gốc bằng `toOriginal` |
 | `lib/features/translation/domain/kanji_numeral.dart` | Gộp run số kanji không match → số Ả Rập | Chỉ run ≥2 token hanViet/unmatched liền kề; parse fail giữ nguyên |
-| `lib/features/translation/domain/secondary_phrase.dart` + `application/secondary_phrases_provider.dart` | Cụm kana chỉ có trong Lạc Việt/Nhật Việt/Mazii, KHÔNG có trong VietPhrase | Greedy longest-match trên run token unmatched, ≥2 rune; provider chỉ mode Nhật |
+| `lib/features/translation/domain/secondary_phrase.dart` + `application/secondary_phrases_provider.dart` | Cụm kana chỉ có trong Lạc Việt/Nhật Việt/Mazii, KHÔNG có trong VietPhrase | Greedy longest-match trên run token unmatched, ≥2 rune; provider chỉ mode Nhật; `secondaryPhraseStartingAt` tra lại cụm bắt đầu đúng offset khi click giữa cụm |
 | `lib/features/dictionary/data/binary_cache.dart` | Format cache `.vydc` | Header: magic/version/FNV-1a/size/mtime/count |
 | `lib/features/dictionary/data/dictionary_loader.dart` | Load qua `Isolate.run` | Invalidation: so size trước, lệch mtime mới hash |
 | `lib/features/repair/domain/jp_repair_pipeline.dart` | Sửa key: space + simp→JP, dedupe | VALUE KHÔNG ĐỔI 1 BYTE |
@@ -111,17 +111,17 @@ RepairScreen → pick file → preview per-line (Isolate.run, 50 dòng đổi đ
 | Layout tabs kiểu QT + VietPhrase đa nghĩa | ✅ Done | translate_screen, result_pane, token_text_view | Đổi tab không re-translate; hàng chọn Nhật/Trung nằm TRÊN tabs Nguồn/Hán Việt |
 | Tab Hán Việt toàn văn | ✅ Done | han_viet_pane, translation_controller | Tính cùng lượt dịch |
 | Thuật toán dịch (Trái→phải / Cụm dài / Cụm dài ≥4) + Ưu tiên Name | ✅ Done | translation_engine, settings_provider, settings_screen | Áp dụng lần Dịch kế |
-| Chọn kiểu caret + tô nổi đỏ đồng bộ 3 pane | ✅ Done | token_selection, source_pane (_HighlightTextEditingController), token_text_view (SelectableText.rich) | Nháy chuột ô Nguồn/kết quả → chọn cụm, highlight 2 chiều; click kana thuộc cụm từ điển phụ → chọn CẢ cụm (mở rộng qua `secondaryPhrasesProvider`) để hiện nghĩa trong ô Nghĩa |
+| Chọn kiểu caret + tô nổi đỏ đồng bộ 3 pane | ✅ Done | token_selection, source_pane (_HighlightTextEditingController), token_text_view (SelectableText.rich) | Nháy chuột ô Nguồn/kết quả → chọn cụm, highlight 2 chiều; click ĐẦU cụm từ điển phụ → chọn CẢ cụm (`secondaryPhrasesProvider`), click GIỮA cụm → tra lại từ đúng ký tự bị click (`secondaryPhraseStartingAt`), không có cụm nào bắt đầu ở đó → chọn riêng ký tự đó. Quy tắc này áp cho CẢ 3 ô: Nguồn (`selectAtSourceOffset`) và VietPhrase/Hán Việt (`selectToken`). Đánh dấu hiển thị (tight/italic) vẫn theo cụm greedy, chỉ vùng chọn đổi |
 | Nhận diện cụm từ điển phụ (kana không có trong VietPhrase) | ✅ Done | secondary_phrase (domain), secondary_phrases_provider, token_selection, token_text_view, settings_provider/screen | Mode Nhật: greedy longest-match run token unmatched vào Lạc Việt > Nhật Việt > Mazii (≥2 rune). Click → hiện nghĩa (luôn bật). Đánh dấu ô VietPhrase theo setting `secondaryPhraseDisplay`: Tắt / Sát khoảng cách (mặc định, bỏ space giữa các mảnh cùng cụm) / In nghiêng |
 | Ô Nghĩa đa từ điển + popup tra nhanh | ✅ Done | lookup_controller (LookupSection), lacviet_panel, source_pane, settings_provider | Thứ tự: VietPhrase → Lạc Việt → Mazii → Nhật Việt → Cedict/Babylon → … Popup ở Nguồn CHỈ 1 loại, mặc định KHÔNG chọn (tắt); tự đặt trên/dưới dòng active để không che nội dung; mục popup không lặp trong ô Nghĩa |
-| Từ điển Mazii offline (Nhật→Việt) | 🚧 Partial | dict_type (DictType.mazii), dictionary_repository (LoadedDictionaries.mazii), lookup_controller, dictFileNames | Nạp `data/jp/Mazii.txt` như Lạc Việt (miss file → dict rỗng), hiện ngay sau Lạc Việt trong ô Nghĩa. Dữ liệu: sample 500/22.177 convert từ MaziiDict.db qua `.claude/code/mazii_db_to_txt.py`; nút tra Mazii online (mazii_api) vẫn còn |
+| Từ điển Mazii offline (Nhật→Việt) | ✅ Done | dict_type (DictType.mazii), dictionary_repository (LoadedDictionaries.mazii), lookup_controller, dictFileNames | Nạp `data/jp/Mazii.txt` như Lạc Việt (miss file → dict rỗng), hiện ngay sau Lạc Việt trong ô Nghĩa. Đã convert đầy đủ 171.299 entry từ MaziiDict.db, loại bỏ các kana 1 ký tự |
 | Sửa từ điển từ toolbar chuột phải | ✅ Done | source_pane, token_text_view, icon_context_menu, entry_edit_dialog, lacviet_panel | Menu có icon (mỗi mục 1 màu riêng qua `IconContextMenuItem.iconColor` = `meaningLabelColor`); admin sửa VietPhrase/Lạc Việt, non-admin UserDict, Names local; ô Nguồn có thêm tra online; secondary-tap chèn nghĩa không active |
 | Chuyển đổi EPUB | ✅ Done | epub_converter/*, app.dart | Đọc OPF/spine qua `compute` top-level; nhận diện JP/CN/KR/VI/EN; sách Nhật có giữ hết/bỏ hết/chỉ bỏ Hiragana; ảnh raster (png/jpeg/gif/bmp) resolve được bytes → nhúng thật vào DOCX qua `<w:drawing>` inline + `word/media/*` (co theo khổ trang, dedupe theo path); vị trí ảnh giữ bằng token `⟦img:ID⟧`, các định dạng CSV/XLSX/Markdown/TXT + preview hiển thị `(img)`; ảnh không resolve được → `(img)`. Xuất CSV/XLSX `id,text`, Markdown, DOCX, TXT |
 | Scrollbar settings có controller | ✅ Done | settings_layout.dart, settings_scrollbar_test.dart | Scrollbar/ListView dùng chung controller, không còn lỗi thiếu ScrollPosition |
-| Hệ thiết kế tập trung (theme sáng/tối) | ✅ Done | core/theme/app_theme.dart, app.dart, token_text_view, source_pane, settings_screen (DropdownMenu) | Component theme cho dialog/ô nhập/dropdown/tab/nút/rail/card/tooltip/snackbar/slider; dark tự theo OS; font dropdown nâng lên DropdownMenu M3 |
+| Hệ thiết kế tập trung (theme sáng/tối) | ✅ Done | core/theme/app_theme.dart, shared/widgets/settings_layout.dart, app.dart, token_text_view, source_pane, settings_screen/appearance_screen | Component theme cho dialog/ô nhập/dropdown/tab/nút/rail/card/tooltip/snackbar/slider/chip; dark tự theo OS; font dropdown dùng DropdownMenu M3. `_refine()` đảo quy ước M3: các lớp nổi (`surfaceContainerLowest…Highest`) SÁNG HƠN `surface` ở cả hai chế độ để card nổi khỏi canvas; mọi trạng thái active nhuộm màu nhấn (SegmentedButton tô primary, FilterChip nhuộm nền/viền/nhãn, slider track, rail indicator). Mỗi `SettingsSection` có màu nhấn riêng: header nhuộm màu, dải màu trái 4px, ô icon tô đặc, bóng nhuộm theo màu nhấn; số liệu cạnh slider dùng `SettingsValueBadge` (viền + chữ màu nhấn, tabular figures). Invariant được khoá bằng `test/app_theme_test.dart` |
 | Tự động kiểm tra cập nhật (GitHub Releases) | ✅ Done | features/update/* (app_version, github_release_api, download_file, update_controller, update_dialog), app.dart, settings_provider, settings_screen | Windows: tải ZIP → giải nén → `.bat` tự thay thư mục cài đặt + khởi động lại; Android: tải `.apk` → open_filex, fallback mở trang GitHub Release nếu chưa có asset `.apk` (thực trạng hiện tại); silent check lúc khởi động (cache 24h) + nút "Kiểm tra ngay" + toggle + bỏ qua bản này |
 
-**Verify end-to-end:** `dart run tool/export_jp.dart` → VietPhrase_JP.txt (187.419 entries) + LacViet_JP.txt (103.632) cạnh file gốc; hết key `覚 悟`/`军`, value nguyên vẹn từng byte; dịch Nhật match dài, dịch Trung có fallback phiên âm. `flutter test` 139 pass + `flutter analyze --no-pub` sạch; Windows release build gần nhất thành công.
+**Verify end-to-end:** `dart run tool/export_jp.dart` → VietPhrase_JP.txt (187.419 entries) + LacViet_JP.txt (103.632) cạnh file gốc; hết key `覚 悟`/`军`, value nguyên vẹn từng byte; dịch Nhật match dài, dịch Trung có fallback phiên âm. `flutter test` 179 pass + `flutter analyze --no-pub` sạch; Windows release build gần nhất thành công.
 
 ---
 
@@ -146,7 +146,7 @@ RepairScreen → pick file → preview per-line (Isolate.run, 50 dòng đổi đ
 ### Giới hạn đã biết (by design)
 - Quy tắc vàng: ký tự đã hợp lệ JP không convert → không sửa được `后→後`, `干→幹` theo ngữ cảnh; ghi vào RepairReport.ambiguous.
 - Ambiguous cố ý không resolve: 复(復/複/覆), 舍(舎/捨), 获(獲/穫), 泛(氾/汎) + ~30 chữ hiếm.
-- Screenshot GDI CopyFromScreen không chụp được surface DirectX của Flutter (trắng) — không phải bug app.
+- Screenshot GDI `CopyFromScreen` chụp được cửa sổ Flutter bình thường, NHƯNG chỉ khi cửa sổ thật sự đang foreground. Windows khoá `SetForegroundWindow` với tiến trình nền → phải `AttachThreadInput` vào thread của cửa sổ foreground rồi `SwitchToThisWindow`, và kiểm lại `GetForegroundWindow()` ngay trước khi chụp (đừng gõ ALT để "gỡ khoá" — nó mở Task View). Click tự động cũng cần chuỗi move → hover → down → up, nhảy thẳng vào rồi click ngay thì Flutter chưa kịp hit-test.
 
 ---
 
@@ -180,7 +180,7 @@ RepairScreen → pick file → preview per-line (Isolate.run, 50 dòng đổi đ
 
 ### Testing checklist:
 - [ ] `flutter analyze` sạch
-- [ ] `flutter test` pass (139 tests; integration tự skip nếu thiếu dữ liệu thật)
+- [ ] `flutter test` pass (179 tests; integration tự skip nếu thiếu dữ liệu thật)
 - [ ] Nếu đụng repair/parser: `dart run tool/export_jp.dart` verify OK
 
 ### Don't forget to:
@@ -200,7 +200,7 @@ flutter analyze                    # lint — phải sạch
 flutter build windows --release    # exe tại build\windows\x64\runner\Release\
 
 # Test
-flutter test                       # toàn bộ 139 tests
+flutter test                       # toàn bộ 179 tests
 
 # Tools (dev)
 dart run tool/build_simp2jp.dart   # sinh lại assets mapping (cần mạng)

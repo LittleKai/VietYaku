@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -23,12 +25,13 @@ class VietYakuApp extends ConsumerWidget {
       settingsProvider.select((s) => s.uiFontFamily),
     );
     final fontScale = ref.watch(settingsProvider.select((s) => s.uiFontScale));
+    final themeMode = ref.watch(settingsProvider.select((s) => s.themeMode));
     return MaterialApp(
       title: 'VietYaku',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(fontFamily: fontFamily, fontScale: fontScale),
       darkTheme: AppTheme.dark(fontFamily: fontFamily, fontScale: fontScale),
-      themeMode: ThemeMode.system,
+      themeMode: themeMode,
       // Tắt cây semantics app-wide: né bug engine Flutter Windows
       // (accessibility_bridge.cc "Failed to update ui::AXTree" → app crash khi
       // Windows AT poll semantics). Đánh đổi: không hỗ trợ screen-reader —
@@ -56,6 +59,13 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+        windowManager.isMaximized().then((maximized) {
+          if (!maximized) {
+            windowManager.maximize();
+          }
+        });
+      }
       final settings = ref.read(settingsProvider);
       if (settings.autoCheckUpdates) {
         ref
@@ -96,96 +106,111 @@ class _HomeShellState extends ConsumerState<HomeShell> {
         final disableAnimations = MediaQuery.disableAnimationsOf(context);
 
         return Scaffold(
-          body: Row(
+          body: Stack(
             children: [
-              AnimatedContainer(
-                duration: disableAnimations
-                    ? Duration.zero
-                    : const Duration(milliseconds: 200),
-                curve: Curves.easeOutCubic,
-                color: Theme.of(context).colorScheme.surfaceContainer,
-                child: NavigationRail(
-                  extended: extended,
-                  minWidth: 76,
-                  minExtendedWidth: 224,
-                  groupAlignment: -1,
-                  selectedIndex: _selectedIndex,
-                  onDestinationSelected: (index) =>
-                      setState(() => _selectedIndex = index),
-                  labelType: extended ? null : NavigationRailLabelType.none,
-                  leading: _SidebarHeader(
-                    extended: extended,
-                    canExtend: canExtend,
-                    onToggle: () => setState(() => _isExtended = !_isExtended),
+              Row(
+                children: [
+                  AnimatedContainer(
+                    duration: disableAnimations
+                        ? Duration.zero
+                        : const Duration(milliseconds: 200),
+                    curve: Curves.easeOutCubic,
+                    color: Theme.of(context).colorScheme.surfaceContainerLowest,
+                    child: NavigationRail(
+                      extended: extended,
+                      minWidth: 76,
+                      minExtendedWidth: 224,
+                      groupAlignment: -1,
+                      selectedIndex: _selectedIndex,
+                      onDestinationSelected: (index) =>
+                          setState(() => _selectedIndex = index),
+                      labelType: extended ? null : NavigationRailLabelType.none,
+                      leading: _SidebarHeader(
+                        extended: extended,
+                      ),
+                      destinations: const [
+                        NavigationRailDestination(
+                          icon: _NavIcon(
+                            icon: Icons.translate_outlined,
+                            color: Color(0xFF1565C0),
+                          ),
+                          selectedIcon: _NavIcon(
+                            icon: Icons.translate,
+                            color: Color(0xFF1565C0),
+                            selected: true,
+                          ),
+                          label: Text('Dịch'),
+                          padding: EdgeInsets.symmetric(vertical: 4),
+                        ),
+                        NavigationRailDestination(
+                          icon: _NavIcon(
+                            icon: Icons.palette_outlined,
+                            color: Color(0xFF7B1FA2),
+                          ),
+                          selectedIcon: _NavIcon(
+                            icon: Icons.palette,
+                            color: Color(0xFF7B1FA2),
+                            selected: true,
+                          ),
+                          label: Text('Giao diện'),
+                          padding: EdgeInsets.symmetric(vertical: 4),
+                        ),
+                        NavigationRailDestination(
+                          icon: _NavIcon(
+                            icon: Icons.settings_outlined,
+                            color: Color(0xFFEF6C00),
+                          ),
+                          selectedIcon: _NavIcon(
+                            icon: Icons.settings,
+                            color: Color(0xFFEF6C00),
+                            selected: true,
+                          ),
+                          label: Text('Cài đặt'),
+                          padding: EdgeInsets.symmetric(vertical: 4),
+                        ),
+                        NavigationRailDestination(
+                          icon: _NavIcon(
+                            icon: Icons.auto_stories_outlined,
+                            color: Color(0xFF00897B),
+                          ),
+                          selectedIcon: _NavIcon(
+                            icon: Icons.auto_stories,
+                            color: Color(0xFF00897B),
+                            selected: true,
+                          ),
+                          label: Text('EPUB'),
+                          padding: EdgeInsets.symmetric(vertical: 4),
+                        ),
+                      ],
+                    ),
                   ),
-                  destinations: const [
-                    NavigationRailDestination(
-                      icon: _NavIcon(
-                        icon: Icons.translate_outlined,
-                        color: Color(0xFF1565C0),
-                      ),
-                      selectedIcon: _NavIcon(
-                        icon: Icons.translate,
-                        color: Color(0xFF1565C0),
-                        selected: true,
-                      ),
-                      label: Text('Dịch'),
-                      padding: EdgeInsets.symmetric(vertical: 4),
+                  const VerticalDivider(thickness: 1, width: 1),
+                  Expanded(
+                    child: IndexedStack(
+                      index: _selectedIndex,
+                      children: const [
+                        TranslateScreen(),
+                        AppearanceScreen(),
+                        SettingsScreen(),
+                        EpubConverterScreen(),
+                      ],
                     ),
-                    NavigationRailDestination(
-                      icon: _NavIcon(
-                        icon: Icons.palette_outlined,
-                        color: Color(0xFF7B1FA2),
-                      ),
-                      selectedIcon: _NavIcon(
-                        icon: Icons.palette,
-                        color: Color(0xFF7B1FA2),
-                        selected: true,
-                      ),
-                      label: Text('Giao diện'),
-                      padding: EdgeInsets.symmetric(vertical: 4),
-                    ),
-                    NavigationRailDestination(
-                      icon: _NavIcon(
-                        icon: Icons.settings_outlined,
-                        color: Color(0xFFEF6C00),
-                      ),
-                      selectedIcon: _NavIcon(
-                        icon: Icons.settings,
-                        color: Color(0xFFEF6C00),
-                        selected: true,
-                      ),
-                      label: Text('Cài đặt'),
-                      padding: EdgeInsets.symmetric(vertical: 4),
-                    ),
-                    NavigationRailDestination(
-                      icon: _NavIcon(
-                        icon: Icons.auto_stories_outlined,
-                        color: Color(0xFF00897B),
-                      ),
-                      selectedIcon: _NavIcon(
-                        icon: Icons.auto_stories,
-                        color: Color(0xFF00897B),
-                        selected: true,
-                      ),
-                      label: Text('EPUB'),
-                      padding: EdgeInsets.symmetric(vertical: 4),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              const VerticalDivider(thickness: 1, width: 1),
-              Expanded(
-                child: IndexedStack(
-                  index: _selectedIndex,
-                  children: const [
-                    TranslateScreen(),
-                    AppearanceScreen(),
-                    SettingsScreen(),
-                    EpubConverterScreen(),
-                  ],
+              if (canExtend)
+                AnimatedPositioned(
+                  duration: disableAnimations
+                      ? Duration.zero
+                      : const Duration(milliseconds: 200),
+                  curve: Curves.easeOutCubic,
+                  left: (extended ? 224 : 76) - 12,
+                  top: 56,
+                  child: _SidebarToggleButton(
+                    extended: extended,
+                    onPressed: () => setState(() => _isExtended = !_isExtended),
+                  ),
                 ),
-              ),
             ],
           ),
         );
@@ -221,13 +246,9 @@ class _NavIcon extends StatelessWidget {
 class _SidebarHeader extends StatelessWidget {
   const _SidebarHeader({
     required this.extended,
-    required this.canExtend,
-    required this.onToggle,
   });
 
   final bool extended;
-  final bool canExtend;
-  final VoidCallback onToggle;
 
   @override
   Widget build(BuildContext context) {
@@ -243,20 +264,8 @@ class _SidebarHeader extends StatelessWidget {
 
     if (!extended) {
       return Padding(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 20),
-        child: Column(
-          children: [
-            brand,
-            if (canExtend) ...[
-              const SizedBox(height: 10),
-              IconButton(
-                icon: const Icon(Icons.menu),
-                tooltip: 'Mở rộng thanh bên',
-                onPressed: onToggle,
-              ),
-            ],
-          ],
-        ),
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
+        child: brand,
       );
     }
 
@@ -271,7 +280,7 @@ class _SidebarHeader extends StatelessWidget {
         return SizedBox(
           width: 224,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 8, 20),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
             child: Row(
               children: [
                 brand,
@@ -294,16 +303,70 @@ class _SidebarHeader extends StatelessWidget {
                     ],
                   ),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.menu_open),
-                  tooltip: 'Thu gọn thanh bên',
-                  onPressed: onToggle,
-                ),
               ],
             ),
           ),
         );
       },
+    );
+  }
+}
+
+class _SidebarToggleButton extends StatefulWidget {
+  const _SidebarToggleButton({
+    required this.extended,
+    required this.onPressed,
+  });
+
+  final bool extended;
+  final VoidCallback onPressed;
+
+  @override
+  State<_SidebarToggleButton> createState() => _SidebarToggleButtonState();
+}
+
+class _SidebarToggleButtonState extends State<_SidebarToggleButton> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: widget.onPressed,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          width: 24,
+          height: 24,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: _isHovered
+                ? colorScheme.primaryContainer
+                : colorScheme.surface,
+            border: Border.all(
+              color: _isHovered ? colorScheme.primary : colorScheme.outlineVariant,
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: _isHovered ? 0.12 : 0.06),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Icon(
+            widget.extended ? Icons.chevron_left : Icons.chevron_right,
+            size: 16,
+            color: _isHovered ? colorScheme.onPrimaryContainer : colorScheme.onSurface,
+          ),
+        ),
+      ),
     );
   }
 }

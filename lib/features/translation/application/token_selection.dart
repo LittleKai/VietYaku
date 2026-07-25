@@ -35,19 +35,31 @@ class TokenSelectionNotifier extends Notifier<TokenSelection?> {
     return null;
   }
 
-  /// Chọn 1 token (từ ô kết quả / Hán Việt).
+  /// Chọn 1 token (từ ô VietPhrase / Hán Việt).
   void selectToken(Token token) {
     if (token.kind == TokenKind.passthrough) return;
-    // Kana không match nằm trong cụm từ điển phụ → chọn cả cụm để hiện nghĩa.
+    // Kana không match nằm trong cụm từ điển phụ: token đầu cụm → chọn cả cụm;
+    // token GIỮA cụm → tra lại cụm bắt đầu từ chính token đó (cùng quy tắc với
+    // click ở ô Nguồn). Không có cụm nào bắt đầu ở đó → chọn riêng token.
     final phrase = _secondaryPhraseAt(token.sourceStart);
     if (phrase != null) {
-      _apply(
-        phrase.start,
-        phrase.end,
-        phrase.source,
-        TokenSelectionOrigin.result,
-      );
-      return;
+      final state = ref.read(translationControllerProvider);
+      final target = phrase.start == token.sourceStart
+          ? phrase
+          : _secondaryPhraseStartingAt(
+              state.sourceText,
+              state.tokens,
+              token.sourceStart,
+            );
+      if (target != null) {
+        _apply(
+          target.start,
+          target.end,
+          target.source,
+          TokenSelectionOrigin.result,
+        );
+        return;
+      }
     }
     _apply(
       token.sourceStart,
@@ -64,16 +76,24 @@ class TokenSelectionNotifier extends Notifier<TokenSelection?> {
   /// click, bỏ qua phần đứng trước trong cụm gốc.
   void selectAtSourceOffset(int offset) {
     final state = ref.read(translationControllerProvider);
-    // Ưu tiên cụm từ điển phụ chứa vị trí click (kana không match VietPhrase).
+    // Cụm từ điển phụ (kana không match VietPhrase): click đúng đầu cụm →
+    // dùng cả cụm; click GIỮA cụm → tra lại cụm bắt đầu từ ký tự bị click
+    // (VD はやめて ghép はや, click や → やめ). Không có cụm nào bắt đầu tại
+    // đó thì rơi xuống vòng token bên dưới (chọn đúng ký tự bị click).
     final phrase = _secondaryPhraseAt(offset);
     if (phrase != null) {
-      _apply(
-        phrase.start,
-        phrase.end,
-        phrase.source,
-        TokenSelectionOrigin.source,
-      );
-      return;
+      final target = phrase.start == offset
+          ? phrase
+          : _secondaryPhraseStartingAt(state.sourceText, state.tokens, offset);
+      if (target != null) {
+        _apply(
+          target.start,
+          target.end,
+          target.source,
+          TokenSelectionOrigin.source,
+        );
+        return;
+      }
     }
     for (final t in state.tokens) {
       if (t.kind == TokenKind.passthrough) continue;
@@ -121,6 +141,24 @@ class TokenSelectionNotifier extends Notifier<TokenSelection?> {
       if (p.contains(offset)) return p;
     }
     return null;
+  }
+
+  /// Cụm từ điển phụ bắt đầu đúng tại [offset] (tra lại khi click giữa cụm).
+  SecondaryPhrase? _secondaryPhraseStartingAt(
+    String text,
+    List<Token> tokens,
+    int offset,
+  ) {
+    final dicts = ref.read(dictionariesProvider).valueOrNull;
+    if (dicts == null) return null;
+    return secondaryPhraseStartingAt(
+      text: text,
+      tokens: tokens,
+      offset: offset,
+      lacViet: dicts.lacViet,
+      jaVi: dicts.jaVi,
+      mazii: dicts.mazii,
+    );
   }
 
   /// Bỏ active/highlight hiện tại mà không thay đổi nội dung tra cứu đã tải.

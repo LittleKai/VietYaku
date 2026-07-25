@@ -75,6 +75,26 @@ def escape(value):
     return value.replace("\t", "\\t").replace("\r", "").replace("\n", "\\n")
 
 
+def is_single_kana(word):
+    """Kiểm tra xem từ gốc có phải là 1 ký tự Hiragana hoặc Katakana không."""
+    if len(word) != 1:
+        return False
+    cp = ord(word[0])
+    # Hiragana
+    if 0x3040 <= cp <= 0x309F:
+        return True
+    # Katakana (gồm cả U+30FC ー)
+    if 0x30A0 <= cp <= 0x30FF:
+        return True
+    # Katakana Phonetic Extensions
+    if 0x31F0 <= cp <= 0x31FF:
+        return True
+    # Halfwidth Katakana
+    if 0xFF65 <= cp <= 0xFF9F:
+        return True
+    return False
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=500)
@@ -95,7 +115,7 @@ def main():
     seen = set()
     with open(OUT, "w", encoding="utf-8-sig", newline="") as f:  # BOM + CRLF
         for word, payload in cur.execute(q):
-            if not word or word in seen:
+            if not word or word in seen or is_single_kana(word):
                 continue
             try:
                 item = json.loads(payload)
@@ -118,3 +138,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

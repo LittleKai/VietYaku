@@ -57,6 +57,35 @@ List<SecondaryPhrase> findSecondaryPhrases({
   return result;
 }
 
+/// Cụm từ điển phụ bắt đầu ĐÚNG tại [offset] (greedy longest-match, giới hạn
+/// trong run token unmatched chứa [offset]). Dùng khi click vào GIỮA một cụm
+/// đã ghép: phải tra lại từ đúng ký tự bị click, không lấy cụm bắt đầu trước
+/// đó (VD はやめて ghép はや, click や → やめ).
+SecondaryPhrase? secondaryPhraseStartingAt({
+  required String text,
+  required List<Token> tokens,
+  required int offset,
+  required PhraseDictionary lacViet,
+  required PhraseDictionary jaVi,
+  required PhraseDictionary mazii,
+}) {
+  var i = 0;
+  while (i < tokens.length &&
+      !(offset >= tokens[i].sourceStart &&
+          offset < tokens[i].sourceStart + tokens[i].source.length)) {
+    i++;
+  }
+  if (i == tokens.length || tokens[i].kind != TokenKind.unmatched) return null;
+  var runEnd = tokens[i].sourceStart + tokens[i].source.length;
+  while (i + 1 < tokens.length &&
+      tokens[i + 1].kind == TokenKind.unmatched &&
+      tokens[i + 1].sourceStart == runEnd) {
+    i++;
+    runEnd = tokens[i].sourceStart + tokens[i].source.length;
+  }
+  return _matchAt(text, offset, runEnd, lacViet, jaVi, mazii);
+}
+
 void _matchRun(
   String text,
   int runStart,
@@ -68,39 +97,51 @@ void _matchRun(
 ) {
   var pos = runStart;
   while (pos < runEnd) {
-    final firstUnit = text.codeUnitAt(pos);
-    var maxLen = lacViet.maxLenFor(firstUnit);
-    final jl = jaVi.maxLenFor(firstUnit);
-    if (jl > maxLen) maxLen = jl;
-    final ml = mazii.maxLenFor(firstUnit);
-    if (ml > maxLen) maxLen = ml;
-    if (maxLen > runEnd - pos) maxLen = runEnd - pos;
-
-    var matched = false;
-    for (var len = maxLen; len >= 2; len--) {
-      final endPos = pos + len;
-      // Không cắt đôi surrogate pair (lead surrogate ở cuối candidate).
-      final lastUnit = text.codeUnitAt(endPos - 1);
-      if (lastUnit >= 0xD800 && lastUnit <= 0xDBFF) continue;
-      final candidate = text.substring(pos, endPos);
-      if (_runeCount(candidate) < 2) continue;
-      final label = _priorityLabel(candidate, lacViet, jaVi, mazii);
-      if (label != null) {
-        out.add(
-          SecondaryPhrase(
-            start: pos,
-            end: endPos,
-            source: candidate,
-            label: label,
-          ),
-        );
-        pos = endPos;
-        matched = true;
-        break;
-      }
+    final phrase = _matchAt(text, pos, runEnd, lacViet, jaVi, mazii);
+    if (phrase == null) {
+      pos += runeLengthAt(text, pos);
+      continue;
     }
-    if (!matched) pos += runeLengthAt(text, pos);
+    out.add(phrase);
+    pos = phrase.end;
   }
+}
+
+/// Cụm dài nhất bắt đầu tại [pos], không vượt quá [runEnd]; null nếu không có.
+SecondaryPhrase? _matchAt(
+  String text,
+  int pos,
+  int runEnd,
+  PhraseDictionary lacViet,
+  PhraseDictionary jaVi,
+  PhraseDictionary mazii,
+) {
+  final firstUnit = text.codeUnitAt(pos);
+  var maxLen = lacViet.maxLenFor(firstUnit);
+  final jl = jaVi.maxLenFor(firstUnit);
+  if (jl > maxLen) maxLen = jl;
+  final ml = mazii.maxLenFor(firstUnit);
+  if (ml > maxLen) maxLen = ml;
+  if (maxLen > runEnd - pos) maxLen = runEnd - pos;
+
+  for (var len = maxLen; len >= 2; len--) {
+    final endPos = pos + len;
+    // Không cắt đôi surrogate pair (lead surrogate ở cuối candidate).
+    final lastUnit = text.codeUnitAt(endPos - 1);
+    if (lastUnit >= 0xD800 && lastUnit <= 0xDBFF) continue;
+    final candidate = text.substring(pos, endPos);
+    if (_runeCount(candidate) < 2) continue;
+    final label = _priorityLabel(candidate, lacViet, jaVi, mazii);
+    if (label != null) {
+      return SecondaryPhrase(
+        start: pos,
+        end: endPos,
+        source: candidate,
+        label: label,
+      );
+    }
+  }
+  return null;
 }
 
 String? _priorityLabel(

@@ -19,15 +19,15 @@ class AppearanceScreen extends ConsumerWidget {
     'Times New Roman',
   ];
 
-  static const _katakanaColors = <({Color color, String label})>[
-    (color: Color(0xFF2E7D32), label: 'Xanh lục'),
-    (color: Color(0xFF202124), label: 'Đen'),
-    (color: Color(0xFFC62828), label: 'Đỏ'),
-    (color: Color(0xFF1565C0), label: 'Xanh dương'),
-    (color: Color(0xFFE65100), label: 'Cam'),
-    (color: Color(0xFF6A1B9A), label: 'Tím'),
-    (color: Color(0xFF00838F), label: 'Xanh ngọc'),
-    (color: Color(0xFF616161), label: 'Xám'),
+  static List<({Color color, String label})> _katakanaOptions(bool isDark) => [
+    (color: isDark ? const Color(0xFF66BB6A) : const Color(0xFF2E7D32), label: 'Xanh lục'),
+    (color: isDark ? const Color(0xFFFFFFFF) : const Color(0xFF202124), label: isDark ? 'Trắng' : 'Đen'),
+    (color: isDark ? const Color(0xFFFF8A80) : const Color(0xFFC62828), label: 'Đỏ'),
+    (color: isDark ? const Color(0xFF64B5F6) : const Color(0xFF1565C0), label: 'Xanh dương'),
+    (color: isDark ? const Color(0xFFFFB74D) : const Color(0xFFE65100), label: 'Cam'),
+    (color: isDark ? const Color(0xFFCE93D8) : const Color(0xFF6A1B9A), label: 'Tím'),
+    (color: isDark ? const Color(0xFF4DD0E1) : const Color(0xFF00838F), label: 'Xanh ngọc'),
+    (color: isDark ? const Color(0xFFB0BEC5) : const Color(0xFF616161), label: 'Xám'),
   ];
 
   void _openPaneFontDialog(BuildContext context) {
@@ -81,11 +81,53 @@ class AppearanceScreen extends ConsumerWidget {
     final settings = ref.watch(settingsProvider);
     final notifier = ref.read(settingsProvider.notifier);
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final katakanaOptions = _katakanaOptions(isDark);
+
     return SettingsPage(
       title: 'Giao diện',
       description:
-          'Điều chỉnh cách văn bản được trình bày trong không gian dịch.',
+          'Điều chỉnh cách văn bản và màu sắc được trình bày trong ứng dụng.',
       children: [
+        SettingsSection(
+          icon: Icons.contrast,
+          accentColor: const Color(0xFF6A1B9A),
+          title: 'Chủ đề giao diện',
+          description:
+              'Chuyển đổi giữa chế độ nền sáng, nền tối hoặc tự động theo hệ thống.',
+          children: [
+            SettingsControlRow(
+              title: 'Chế độ hiển thị',
+              description: 'Tùy chỉnh màu nền sáng/tối cho toàn bộ giao diện VietYaku.',
+              controlWidth: 320,
+              control: SegmentedButton<ThemeMode>(
+                segments: const [
+                  ButtonSegment<ThemeMode>(
+                    value: ThemeMode.light,
+                    icon: Icon(Icons.light_mode_outlined),
+                    label: Text('Sáng'),
+                  ),
+                  ButtonSegment<ThemeMode>(
+                    value: ThemeMode.dark,
+                    icon: Icon(Icons.dark_mode_outlined),
+                    label: Text('Tối'),
+                  ),
+                  ButtonSegment<ThemeMode>(
+                    value: ThemeMode.system,
+                    icon: Icon(Icons.brightness_auto),
+                    label: Text('Hệ thống'),
+                  ),
+                ],
+                selected: {settings.themeMode},
+                onSelectionChanged: (selection) {
+                  if (selection.isNotEmpty) {
+                    notifier.setThemeMode(selection.first);
+                  }
+                },
+              ),
+            ),
+          ],
+        ),
         SettingsSection(
           icon: Icons.format_size,
           accentColor: const Color(0xFF3949AB),
@@ -142,12 +184,20 @@ class AppearanceScreen extends ConsumerWidget {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  for (final option in _katakanaColors)
+                  for (final option in katakanaOptions)
                     _ColorSwatch(
                       color: option.color,
                       label: option.label,
-                      selected:
-                          settings.katakanaColor == option.color.toARGB32(),
+                      selected: settings.katakanaColor ==
+                              option.color.toARGB32() ||
+                          (isDark &&
+                              settings.katakanaColor ==
+                                  const Color(0xFF2E7D32).toARGB32() &&
+                              option.color == const Color(0xFF66BB6A)) ||
+                          (isDark &&
+                              settings.katakanaColor ==
+                                  const Color(0xFF202124).toARGB32() &&
+                              option.color == const Color(0xFFFFFFFF)),
                       onTap: () =>
                           notifier.setKatakanaColor(option.color.toARGB32()),
                     ),
@@ -199,6 +249,9 @@ class _ColorSwatch extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final checkColor =
+        color.computeLuminance() > 0.5 ? Colors.black : Colors.white;
+
     return Tooltip(
       message: label,
       child: InkWell(
@@ -218,7 +271,7 @@ class _ColorSwatch extends StatelessWidget {
             ),
           ),
           child: selected
-              ? const Icon(Icons.check, color: Colors.white, size: 20)
+              ? Icon(Icons.check, color: checkColor, size: 20)
               : null,
         ),
       ),
@@ -244,12 +297,11 @@ class _SystemFontRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final selected = fontFamilies.contains(family) ? family : '';
     final percent = (scale * 100).round();
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final compact = constraints.maxWidth < 610;
@@ -265,21 +317,7 @@ class _SystemFontRow extends StatelessWidget {
                   onChanged: onScaleChanged,
                 ),
               ),
-              Container(
-                width: 56,
-                height: 32,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: scheme.secondaryContainer,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  '$percent%',
-                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    color: scheme.onSecondaryContainer,
-                  ),
-                ),
-              ),
+              SettingsValueBadge(label: '$percent%', width: 56),
             ],
           );
           final dropdown = DropdownMenu<String>(
@@ -342,7 +380,6 @@ class _PaneFontRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     final family = fontFamilies.contains(font.family) ? font.family : '';
 
     return Padding(
@@ -362,21 +399,7 @@ class _PaneFontRow extends StatelessWidget {
                   onChanged: onSizeChanged,
                 ),
               ),
-              Container(
-                width: 52,
-                height: 32,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: scheme.secondaryContainer,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  '${font.size.round()}',
-                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    color: scheme.onSecondaryContainer,
-                  ),
-                ),
-              ),
+              SettingsValueBadge(label: '${font.size.round()}', width: 52),
             ],
           );
           final dropdown = DropdownMenu<String>(

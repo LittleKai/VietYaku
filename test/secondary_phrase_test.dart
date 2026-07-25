@@ -109,6 +109,90 @@ void main() {
     expect(phrases.first.label, 'Nhật Việt');
   });
 
+  group('secondaryPhraseStartingAt (click giữa cụm)', () {
+    // はやめて: はや có trong Nhật Việt (cụm greedy chiếm 0..2),
+    // やめ có trong Lạc Việt nhưng bị cụm はや che mất.
+    const text = 'はやめて';
+    final lacViet = _dict(DictType.lacViet, {'やめ': 'thôi, ngừng'});
+    final jaVi = _dict(DictType.jaVi, {'はや': 'nhanh'});
+
+    test('click や (giữa cụm はや) → cụm やめ bắt đầu tại vị trí click', () {
+      final phrase = secondaryPhraseStartingAt(
+        text: text,
+        tokens: _unmatchedRunes(text),
+        offset: 1,
+        lacViet: lacViet,
+        jaVi: jaVi,
+        mazii: empty,
+      );
+      expect(phrase, isNotNull);
+      expect(phrase!.source, 'やめ');
+      expect(phrase.start, 1);
+      expect(phrase.end, 3);
+      expect(phrase.label, 'Lạc Việt');
+    });
+
+    test('không có cụm nào bắt đầu tại vị trí click → null', () {
+      final phrase = secondaryPhraseStartingAt(
+        text: text,
+        tokens: _unmatchedRunes(text),
+        offset: 1,
+        lacViet: empty,
+        jaVi: jaVi,
+        mazii: empty,
+      );
+      expect(phrase, isNull);
+    });
+
+    test('vị trí thuộc token matched → null', () {
+      const src = '私やめ';
+      final tokens = <Token>[
+        Token(
+          source: '私',
+          sourceStart: 0,
+          kind: TokenKind.matched,
+          dictType: DictType.vietPhrase,
+          rawValue: 'tôi',
+        ),
+        ..._unmatchedRunes('やめ', start: 1),
+      ];
+      final phrase = secondaryPhraseStartingAt(
+        text: src,
+        tokens: tokens,
+        offset: 0,
+        lacViet: lacViet,
+        jaVi: empty,
+        mazii: empty,
+      );
+      expect(phrase, isNull);
+    });
+
+    test('không vượt ra ngoài run unmatched', () {
+      // 私 matched ở giữa: cụm やめ (1..3) không được nối sang sau 私.
+      const src = 'はや私め';
+      final tokens = <Token>[
+        ..._unmatchedRunes('はや'),
+        Token(
+          source: '私',
+          sourceStart: 2,
+          kind: TokenKind.matched,
+          dictType: DictType.vietPhrase,
+          rawValue: 'tôi',
+        ),
+        ..._unmatchedRunes('め', start: 3),
+      ];
+      final phrase = secondaryPhraseStartingAt(
+        text: src,
+        tokens: tokens,
+        offset: 1,
+        lacViet: lacViet,
+        jaVi: jaVi,
+        mazii: empty,
+      );
+      expect(phrase, isNull);
+    });
+  });
+
   test('không có cụm phụ → rỗng', () {
     const text = 'あいうえお';
     final phrases = findSecondaryPhrases(

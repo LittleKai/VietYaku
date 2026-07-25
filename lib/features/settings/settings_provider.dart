@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:flutter/painting.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -146,6 +146,10 @@ class AppSettings {
   /// Font chữ giao diện ('' = mặc định hệ thống — Segoe UI). Áp cho toàn UI;
   /// các ô để "Mặc định hệ thống" cũng thừa hưởng font này.
   final String uiFontFamily;
+
+  /// Chế độ giao diện sáng/tối/theo hệ thống.
+  final ThemeMode themeMode;
+
   final String syncServerUrl;
   final bool isSyncServerUrlOverridden;
 
@@ -197,6 +201,7 @@ class AppSettings {
     this.paneFonts = const {},
     this.uiFontScale = 1.0,
     this.uiFontFamily = '',
+    this.themeMode = ThemeMode.system,
     this.syncServerUrl = defaultSyncServerUrl,
     this.isSyncServerUrlOverridden = false,
     this.columnsRatio = 0.42,
@@ -239,6 +244,7 @@ class AppSettings {
     Map<PaneId, PaneFont>? paneFonts,
     double? uiFontScale,
     String? uiFontFamily,
+    ThemeMode? themeMode,
     String? syncServerUrl,
     bool? isSyncServerUrlOverridden,
     double? columnsRatio,
@@ -269,6 +275,7 @@ class AppSettings {
     paneFonts: paneFonts ?? this.paneFonts,
     uiFontScale: uiFontScale ?? this.uiFontScale,
     uiFontFamily: uiFontFamily ?? this.uiFontFamily,
+    themeMode: themeMode ?? this.themeMode,
     syncServerUrl: syncServerUrl ?? this.syncServerUrl,
     isSyncServerUrlOverridden:
         isSyncServerUrlOverridden ?? this.isSyncServerUrlOverridden,
@@ -332,6 +339,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
   static String _fontFamilyKey(PaneId id) => 'paneFont.${id.name}.family';
   static const _uiFontScaleKey = 'ui.fontScale';
   static const _uiFontFamilyKey = 'ui.fontFamily';
+  static const _themeModeKey = 'ui.themeMode';
 
   @override
   AppSettings build() {
@@ -390,6 +398,9 @@ class SettingsNotifier extends Notifier<AppSettings> {
       },
       uiFontScale: prefs.getDouble(_uiFontScaleKey) ?? 1.0,
       uiFontFamily: prefs.getString(_uiFontFamilyKey) ?? '',
+      themeMode:
+          ThemeMode.values.asNameMap()[prefs.getString(_themeModeKey)] ??
+          ThemeMode.system,
       syncServerUrl: isOverridden
           ? envUrl
           : (prefs.getString(_syncServerUrlKey) ?? defaultSyncServerUrl),
@@ -576,6 +587,13 @@ class SettingsNotifier extends Notifier<AppSettings> {
     final prefs = ref.read(sharedPreferencesProvider);
     await prefs.setString(_uiFontFamilyKey, value);
     state = state.copyWith(uiFontFamily: value);
+  }
+
+  /// Chế độ giao diện (ThemeMode.light / dark / system).
+  Future<void> setThemeMode(ThemeMode mode) async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    await prefs.setString(_themeModeKey, mode.name);
+    state = state.copyWith(themeMode: mode);
   }
 
   Future<void> setSyncServerUrl(String value) async {

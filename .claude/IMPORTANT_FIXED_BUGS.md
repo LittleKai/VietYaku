@@ -14,6 +14,13 @@ Record only high-impact, hard-to-detect, or likely-to-recur bugs. Do not record 
 
 ## Fixed Bugs
 
+### 2026-07-25 - `WidgetStateTextStyle` trong `ChipThemeData.labelStyle` làm nhãn chip tàng hình
+- **Symptom:** Toàn bộ FilterChip ("Từ điển trong popup") mất chữ — nhãn render gần trắng trên nền trắng. `flutter analyze` sạch, `flutter test` pass; chỉ thấy được khi chụp màn hình app đang chạy.
+- **Root Cause:** `Chip` resolve nhãn bằng `resolveAs<Color?>(effectiveLabelStyle.color, states)` rồi `effectiveLabelStyle.copyWith(color: resolved)`. Một `WidgetStateTextStyle` có `.color == null`, nên style rút gọn thành `TextStyle` trống và nhãn kế thừa màu ambient. Chip chỉ resolve theo trạng thái ở thuộc tính `color`, KHÔNG ở bản thân TextStyle.
+- **Fix:** Dùng `TextStyle` thường với `color: WidgetStateColor.resolveWith(...)`. Hệ quả: chỉ đổi được MÀU theo trạng thái, không đổi được `fontWeight`.
+- **Do Not Repeat:** Không đặt `WidgetStateTextStyle` vào `ChipThemeData.labelStyle`. Tổng quát hơn: thay đổi thuần theme không được analyzer/unit test bắt lỗi — phải xác minh bằng ảnh chụp app chạy thật hoặc test invariant về màu (xem `test/app_theme_test.dart`).
+- **Related Files:** `lib/core/theme/app_theme.dart`, `lib/features/settings/settings_screen.dart`, `test/app_theme_test.dart`
+
 ### 2026-07-20 - `Isolate.run` trong State capture cả cây widget khi chuyển EPUB
 - **Symptom:** Chọn EPUB ném `Illegal argument in isolate message`, thông báo lần theo `_EpubConverterScreenState`, `SettingsPage` và `ScrollController` dù dữ liệu đầu vào chỉ là bytes.
 - **Root Cause:** Closure khai báo trong phương thức của `State` có thể capture ngầm `this`; isolate cố gửi toàn bộ object graph của widget, trong đó có các object native không sendable.
@@ -83,3 +90,10 @@ Record only high-impact, hard-to-detect, or likely-to-recur bugs. Do not record 
 - **Fix:** Bỏ `TextPainter` tự dựng; gắn `GlobalKey` vào `TextField`, duyệt render tree tìm `RenderEditable` thật (`_findRenderEditable`), rồi gọi `renderEditable.getPositionForPoint(event.position)` (toạ độ global từ `MouseRegion.onHover`) để suy offset — chính xác tuyệt đối vì dùng đúng render object đang hiển thị.
 - **Do Not Repeat:** KHÔNG tự dựng `TextPainter`/layout riêng để suy vị trí con trỏ trong `TextField`/`SelectableText` đang hiển thị — luôn lấy `RenderEditable` thật (qua `EditableTextState` nếu callback có sẵn, hoặc duyệt render tree qua `GlobalKey` nếu không) và gọi `getPositionForPoint`.
 - **Related Files:** `lib/features/translation/presentation/source_pane.dart`
+
+### 2026-07-25 - Cụm từ điển phụ TÁI PHẠM bug "click giữa cụm tra từ đầu cụm" (2026-07-20)
+- **Symptom:** `はやめて` — `はや` có trong Nhật Việt (cụm phụ greedy chiếm 0..2), `やめ` có trong Lạc Việt. Click vào `や` vẫn tra `はや`, không tra `やめ`; nếu không có cụm nào bắt đầu tại `や` thì cũng không chọn riêng `や`.
+- **Root Cause:** Nhánh cụm từ điển phụ thêm sau bản fix 2026-07-20 lại chặn TRƯỚC vòng token: `selectAtSourceOffset` lấy `_secondaryPhraseAt(offset)` (chỉ cần CHỨA offset) rồi return ngay — lặp đúng lỗi cũ trên `secondaryPhrasesProvider` (danh sách cụm greedy tính sẵn cho cả đoạn).
+- **Fix:** `secondary_phrase.dart` tách `_matchAt` khỏi `_matchRun` + hàm public `secondaryPhraseStartingAt(...)` (greedy longest-match bắt đầu ĐÚNG tại offset, giới hạn trong run token unmatched chứa offset). Áp cho CẢ 2 lối vào: `selectAtSourceOffset` (ô Nguồn) và `selectToken` (ô VietPhrase + Hán Việt, cùng đi qua `TokenTextView`) — click đúng đầu cụm → dùng cả cụm; click giữa cụm → `secondaryPhraseStartingAt`; không có → chọn đúng ký tự/token bị click.
+- **Do Not Repeat:** Mọi danh sách cụm tính sẵn cho CẢ đoạn (tokens, secondaryPhrases, và các lớp ghép thêm sau này) chỉ được dùng khi click đúng ĐẦU cụm; click giữa cụm phải tra lại tại đúng offset. Thêm lớp ghép mới thì phải áp lại quy tắc này ở CẢ `selectAtSourceOffset` lẫn `selectToken`, đừng chèn nhánh return sớm lên trước.
+- **Related Files:** `lib/features/translation/domain/secondary_phrase.dart`, `lib/features/translation/application/token_selection.dart`, `test/secondary_phrase_test.dart`
