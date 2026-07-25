@@ -133,7 +133,7 @@ RepairScreen → pick file → preview per-line (Isolate.run, 50 dòng đổi đ
 ### 🟡 Medium Priority
 - [ ] Chuột phải token (chèn nghĩa không active + menu edit theo quyền) chưa có widget test (hit-test TextSpan với kSecondaryButton phức tạp) — verify tay.
 - [ ] Từ điển bundle dạng assets (`data/jp`, `data/cn`) áp cho MỌI nền tảng → APK Android + build Windows đều +~130MB; mobile copy sang app storage lần đầu tốn thêm ~130MB đĩa. pubspec không cho khai báo assets theo nền tảng nên chấp nhận (đổi lại Windows portable hơn). Nếu cần giảm: seed data cho Android bằng cơ chế riêng (asset pack / tải server).
-- [ ] Luồng tải + tự cài đặt bản cập nhật (Windows `.bat` self-update, Android `open_filex`) mới chỉ verify qua unit test (`app_version_test.dart`, `github_release_api_test.dart`) + `flutter analyze`/`flutter test` sạch — CHƯA test được với release thật vì repo chưa có release nào (`GET .../releases/latest` trả 404). Cần verify tay lần release đầu tiên.
+- [x] Đã tạo thành công GitHub Release `v1.0.4` (upload `VietYaku-windows-x64.zip`). Luồng check update API (`GET .../releases/latest`) hiện đã trả về phiên bản mới nhất.
 
 ### 🟢 Low Priority / Nice to Have (Backlog v2 — KHÔNG làm v1)
 - [ ] EPUB nhúng ảnh thật vào Markdown (`![](media/…)` + xuất kèm thư mục media): DOCX đã nhúng thật; Markdown/CSV/XLSX/TXT hiện vẫn `(img)`.

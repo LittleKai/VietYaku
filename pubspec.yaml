@@ -1,8 +1,8 @@
-name: vietyaku
-description: "VietYaku â€” Japanese/Chinese to Vietnamese offline translator with dictionary repair tools."
+﻿name: vietyaku
+description: "VietYaku Ă¢â‚¬â€ Japanese/Chinese to Vietnamese offline translator with dictionary repair tools."
 publish_to: 'none'
 
-version: 1.0.3+4
+version: 1.0.4+6
 
 environment:
   sdk: ^3.12.2
@@ -40,7 +40,7 @@ flutter:
   assets:
     - assets/mappings/
     - assets/branding/
-    # Tá»« Ä‘iá»ƒn bundle: cáº§n cho Android (offline). TrĂªn desktop váº«n náº¡p qua
-    # Ä‘Æ°á»ng dáº«n tuyá»‡t Ä‘á»‘i; assets nĂ y khiáº¿n build desktop cÅ©ng lá»›n thĂªm (~130MB).
+    # TĂ¡Â»Â« Ă„â€˜iĂ¡Â»Æ’n bundle: cĂ¡ÂºÂ§n cho Android (offline). TrÄ‚Âªn desktop vĂ¡ÂºÂ«n nĂ¡ÂºÂ¡p qua
+    # Ă„â€˜Ă†Â°Ă¡Â»Âng dĂ¡ÂºÂ«n tuyĂ¡Â»â€¡t Ă„â€˜Ă¡Â»â€˜i; assets nÄ‚Â y khiĂ¡ÂºÂ¿n build desktop cĂ…Â©ng lĂ¡Â»â€ºn thÄ‚Âªm (~130MB).
     - data/jp/
     - data/cn/
