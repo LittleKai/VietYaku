@@ -42,7 +42,14 @@ Specific files user mentioned  → Only if needed for implementation
 - Repair: VALUE KHÔNG ĐỔI 1 BYTE, chỉ sửa key; xuất `*_JP.txt` UTF-8 BOM CRLF cạnh file gốc + copy vào appdata. KHÔNG ghi đè file gốc.
 - Xóa space trong key: khi CẢ HAI ký tự liền kề đều KHÔNG phải ASCII alphanumeric `[A-Za-z0-9]` (không phải quy tắc "hai phía là CJK").
 - Bộ dict theo ngôn ngữ: mode Nhật → `data/jp`, mode Trung → `data/cn`; đổi mode reload qua `currentModeProvider` (KHÔNG watch translationController từ dictionariesProvider — vòng phụ thuộc). Override `*_JP.txt` appdata chỉ áp dụng mode Nhật.
-- Online: không key/API trả phí — Mazii (Nhật), Google gtx + fallback crawl `translate.google.com/m`. Hanzii v2 mã hóa response → không dùng.
+- Online: không key/API trả phí — Mazii (Nhật/Trung), Jisho (Nhật→Anh, JMdict), Weblio 日中中日辞典 (Nhật→Trung, crawl thẻ `<meta name="description">` của `cjjc.weblio.jp/content/<từ>` — thân trang đầy quảng cáo và đổi layout liên tục), Google gtx + fallback crawl `translate.google.com/m`. Hanzii v2 mã hóa response → không dùng. Từ điển Nhật–Trung khác đều loại: MOJi辞書 (Parse API nội bộ, `search_v3` đã bỏ, không auth thì trả rỗng), 沪江小D (chặn request), Baidu/Youdao/Tencent (bắt đăng ký key, mà vẫn là máy dịch).
+- **Chỗ ghi dữ liệu (`AppPaths`) — KHÔNG dùng AppData/Application Support trên desktop:**
+  - release → `<thư mục chứa .exe>/userdata/` (`cache/` + `dictionaries/`), app chạy kiểu portable
+  - debug/profile → `<repo>/data/userdata/` (đã nằm trong `.gitignore` vì `data/` bị ignore)
+  - Android/iOS là ngoại lệ duy nhất: không có thư mục cạnh exe ghi được → vẫn `getApplicationSupportDirectory()`
+  - `AppPaths.init()` tự chép `dictionaries/` từ AppData cũ sang chỗ mới một lần, chỉ khi thư mục mới còn trống
+  - Bộ từ điển nguồn (`data/jp`, `data/cn`) vẫn chỉ đọc, không ghi đè
+- OnlineDict CHỈ lưu nghĩa từ từ điển thật (Mazii, Jisho, Weblio) — cờ `saved` trong `OnlineLookupTask`. Kết quả máy dịch (Google Việt/Anh) chỉ hiện trên dialog + ô Nghĩa của lần tra đó, không ghi vào file — nghĩa máy dịch theo ngữ cảnh, lưu lại sẽ làm bẩn từ điển.
 
 ## Giới hạn đã biết
 

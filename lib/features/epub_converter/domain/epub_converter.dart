@@ -330,7 +330,10 @@ String _imageContentType(String extension) => switch (extension) {
         marker != 0xC8 &&
         marker != 0xCC;
     if (isSof) {
-      return (width: b[i + 7] << 8 | b[i + 8], height: b[i + 5] << 8 | b[i + 6]);
+      return (
+        width: b[i + 7] << 8 | b[i + 8],
+        height: b[i + 5] << 8 | b[i + 6],
+      );
     }
     final length = b[i + 2] << 8 | b[i + 3];
     if (length < 2) return null;
@@ -367,10 +370,7 @@ String _sampleChapterText(List<String> chapters, {int maxChars = 500}) {
   final buffer = StringBuffer();
   final start = chapters.length ~/ 3;
   for (final chapter in chapters.skip(start).take(5)) {
-    final text = html_parser
-        .parse(chapter, generateSpans: false)
-        .body
-        ?.text;
+    final text = html_parser.parse(chapter, generateSpans: false).body?.text;
     if (text != null) buffer.write(text);
     if (buffer.length >= maxChars) break;
   }
@@ -533,7 +533,9 @@ String _toMarkdown(EpubBook book) {
 String _toText(EpubBook book) {
   final buffer = StringBuffer('${book.title}\n');
   for (final chapter in book.chapters) {
-    if (chapter.title.isNotEmpty) buffer.write('\n${_toDisplay(chapter.title)}\n');
+    if (chapter.title.isNotEmpty) {
+      buffer.write('\n${_toDisplay(chapter.title)}\n');
+    }
     buffer.write('\n');
     buffer.write(chapter.paragraphs.map(_toDisplay).join('\n\n'));
     buffer.write('\n');

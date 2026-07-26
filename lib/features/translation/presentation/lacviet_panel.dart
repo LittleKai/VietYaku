@@ -149,8 +149,16 @@ Color meaningLabelColor(String label, ColorScheme scheme) {
       return const Color(0xFF2E7D32); // green
     case 'Mazii Trung-Việt':
       return const Color(0xFFEF6C00); // orange
+    case 'Mazii Online':
+      return const Color(0xFF43A047); // light green
     case 'Google Dịch':
       return const Color(0xFF1565C0); // blue
+    case 'Google Anh':
+      return const Color(0xFF5E35B1); // deep purple
+    case 'Jisho':
+      return const Color(0xFF00695C); // dark teal
+    case 'Weblio 日中':
+      return const Color(0xFFAD1457); // dark pink
     default:
       return scheme.primary;
   }
@@ -207,13 +215,13 @@ class _OnlineLookupButton extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return IconButton(
       icon: const Icon(Icons.travel_explore),
-      tooltip: 'Tra online (Mazii + Google Dịch)',
+      tooltip: 'Tra online (theo nguồn đã bật trong Cài đặt)',
       onPressed: () {
         final word = ref.read(lookupControllerProvider)?.word ?? '';
         if (word.isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Chưa chọn từ để tra.')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Chưa chọn từ để tra.')));
           return;
         }
         showOnlineLookupDialog(context, ref, word: word);

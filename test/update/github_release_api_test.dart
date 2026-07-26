@@ -5,7 +5,11 @@ void main() {
   group('findWindowsAsset', () {
     test('tìm đúng file .zip có tên chứa windows', () {
       final assets = [
-        const ReleaseAsset(name: 'VietYaku-1.0.0.apk', downloadUrl: 'a', size: 1),
+        const ReleaseAsset(
+          name: 'VietYaku-1.0.0.apk',
+          downloadUrl: 'a',
+          size: 1,
+        ),
         const ReleaseAsset(
           name: 'VietYaku-1.0.0-windows-x64.zip',
           downloadUrl: 'b',
@@ -18,7 +22,11 @@ void main() {
 
     test('trả về null nếu không có asset windows', () {
       final assets = [
-        const ReleaseAsset(name: 'VietYaku-1.0.0.apk', downloadUrl: 'a', size: 1),
+        const ReleaseAsset(
+          name: 'VietYaku-1.0.0.apk',
+          downloadUrl: 'a',
+          size: 1,
+        ),
       ];
       expect(findWindowsAsset(assets), isNull);
     });
@@ -39,7 +47,11 @@ void main() {
           downloadUrl: 'a',
           size: 1,
         ),
-        const ReleaseAsset(name: 'VietYaku-1.0.0.apk', downloadUrl: 'b', size: 2),
+        const ReleaseAsset(
+          name: 'VietYaku-1.0.0.apk',
+          downloadUrl: 'b',
+          size: 2,
+        ),
       ];
       final result = findAndroidApkAsset(assets);
       expect(result?.name, 'VietYaku-1.0.0.apk');

@@ -10,7 +10,7 @@ class PhraseDictionary {
   final Map<int, int> maxLenByFirstUnit;
 
   PhraseDictionary(this.type, this.entries)
-      : maxLenByFirstUnit = _buildIndex(entries);
+    : maxLenByFirstUnit = _buildIndex(entries);
 
   PhraseDictionary.raw(this.type, this.entries, this.maxLenByFirstUnit);
 

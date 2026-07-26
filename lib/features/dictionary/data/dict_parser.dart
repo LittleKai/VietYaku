@@ -29,8 +29,7 @@ Map<String, String> parseCedictEntries(String content) {
     final secondSpace = line.indexOf(' ', firstSpace + 1);
     if (secondSpace < 0) continue;
     final bracketOpen = line.indexOf('[', secondSpace);
-    final bracketClose =
-        bracketOpen < 0 ? -1 : line.indexOf(']', bracketOpen);
+    final bracketClose = bracketOpen < 0 ? -1 : line.indexOf(']', bracketOpen);
     if (bracketClose < 0) continue;
     final slashStart = line.indexOf('/', bracketClose);
     if (slashStart < 0) continue;

@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../features/translation/domain/translation_engine.dart';
 import '../translation/domain/lookup_dictionary_type.dart';
+import '../translation/domain/online_lookup_source.dart';
 import '../dictionary/domain/dict_type.dart';
 import '../repair/domain/jp_repair_pipeline.dart';
 
@@ -181,6 +182,9 @@ class AppSettings {
   /// Các từ điển hiện trong popup khi active từ ở ô Nguồn (tối đa 2).
   final List<LookupDictionaryType> popupDictionaryTypes;
 
+  /// Các nguồn chạy khi bấm "Tra online" (rỗng = tắt hẳn tra online).
+  final List<OnlineLookupSource> onlineLookupSources;
+
   /// Tự động kiểm tra bản cập nhật mới lúc khởi động.
   final bool autoCheckUpdates;
 
@@ -214,6 +218,7 @@ class AppSettings {
     this.ttsVoiceZh = '',
     this.ttsSpeechRate = 0.5,
     this.popupDictionaryTypes = const [],
+    this.onlineLookupSources = OnlineLookupSource.values,
     this.autoCheckUpdates = true,
     this.autoSyncDictionary = false,
   });
@@ -257,6 +262,7 @@ class AppSettings {
     String? ttsVoiceZh,
     double? ttsSpeechRate,
     List<LookupDictionaryType>? popupDictionaryTypes,
+    List<OnlineLookupSource>? onlineLookupSources,
     bool? autoCheckUpdates,
     bool? autoSyncDictionary,
   }) => AppSettings(
@@ -289,6 +295,7 @@ class AppSettings {
     ttsVoiceZh: ttsVoiceZh ?? this.ttsVoiceZh,
     ttsSpeechRate: ttsSpeechRate ?? this.ttsSpeechRate,
     popupDictionaryTypes: popupDictionaryTypes ?? this.popupDictionaryTypes,
+    onlineLookupSources: onlineLookupSources ?? this.onlineLookupSources,
     autoCheckUpdates: autoCheckUpdates ?? this.autoCheckUpdates,
     autoSyncDictionary: autoSyncDictionary ?? this.autoSyncDictionary,
   );
@@ -333,6 +340,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
   static const _ttsVoiceZhKey = 'tts.voice.zh';
   static const _ttsSpeechRateKey = 'tts.speechRate';
   static const _popupDictionaryTypesKey = 'lookup.popupDictionaries';
+  static const _onlineLookupSourcesKey = 'lookup.onlineSources';
   static const _autoCheckUpdatesKey = 'update.autoCheckUpdates';
   static const _autoSyncDictionaryKey = 'dictionarySync.autoSync';
   static String _fontSizeKey(PaneId id) => 'paneFont.${id.name}.size';
@@ -423,6 +431,14 @@ class SettingsNotifier extends Notifier<AppSettings> {
             .take(1)
             .toList(growable: false);
       }(),
+      onlineLookupSources: () {
+        final saved = prefs.getStringList(_onlineLookupSourcesKey);
+        if (saved == null) return OnlineLookupSource.values;
+        return saved
+            .map((name) => OnlineLookupSource.values.asNameMap()[name])
+            .whereType<OnlineLookupSource>()
+            .toList(growable: false);
+      }(),
       autoCheckUpdates: prefs.getBool(_autoCheckUpdatesKey) ?? true,
       autoSyncDictionary: prefs.getBool(_autoSyncDictionaryKey) ?? false,
     );
@@ -456,6 +472,22 @@ class SettingsNotifier extends Notifier<AppSettings> {
       normalized.map((value) => value.name).toList(growable: false),
     );
     state = state.copyWith(popupDictionaryTypes: normalized);
+  }
+
+  /// Bật/tắt từng nguồn tra online; giữ đúng thứ tự khai báo của enum.
+  Future<void> setOnlineLookupSources(
+    Iterable<OnlineLookupSource> values,
+  ) async {
+    final selected = values.toSet();
+    final normalized = OnlineLookupSource.values
+        .where(selected.contains)
+        .toList(growable: false);
+    final prefs = ref.read(sharedPreferencesProvider);
+    await prefs.setStringList(
+      _onlineLookupSourcesKey,
+      normalized.map((value) => value.name).toList(growable: false),
+    );
+    state = state.copyWith(onlineLookupSources: normalized);
   }
 
   Future<void> setKatakanaColor(int color) async {

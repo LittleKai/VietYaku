@@ -15,7 +15,15 @@ import '../data/github_release_api.dart';
 import '../data/windows_installer.dart';
 import '../domain/app_version.dart';
 
-enum UpdatePhase { idle, checking, upToDate, available, downloading, installing, error }
+enum UpdatePhase {
+  idle,
+  checking,
+  upToDate,
+  available,
+  downloading,
+  installing,
+  error,
+}
 
 class UpdateState {
   const UpdateState({
@@ -73,7 +81,10 @@ class UpdateController extends Notifier<UpdateState> {
     }
     try {
       final release = await const GitHubReleaseApi().fetchLatestRelease();
-      await prefs.setInt(_lastCheckedMsKey, DateTime.now().millisecondsSinceEpoch);
+      await prefs.setInt(
+        _lastCheckedMsKey,
+        DateTime.now().millisecondsSinceEpoch,
+      );
 
       if (release == null) {
         state = UpdateState(
@@ -104,8 +115,8 @@ class UpdateController extends Notifier<UpdateState> {
       final matchedAsset = Platform.isWindows
           ? findWindowsAsset(release.assets)
           : Platform.isAndroid
-              ? findAndroidApkAsset(release.assets)
-              : null;
+          ? findAndroidApkAsset(release.assets)
+          : null;
 
       state = UpdateState(
         phase: UpdatePhase.available,
@@ -136,7 +147,11 @@ class UpdateController extends Notifier<UpdateState> {
       await openReleasePage();
       return;
     }
-    state = state.copyWith(phase: UpdatePhase.downloading, downloadProgress: 0, clearMessage: true);
+    state = state.copyWith(
+      phase: UpdatePhase.downloading,
+      downloadProgress: 0,
+      clearMessage: true,
+    );
     try {
       final tempDir = Directory.systemTemp;
       final stamp = DateTime.now().millisecondsSinceEpoch;
@@ -166,7 +181,10 @@ class UpdateController extends Notifier<UpdateState> {
       await spawnSelfUpdateScript(scriptPath);
       exit(0);
     } catch (error) {
-      state = state.copyWith(phase: UpdatePhase.error, message: _messageFor(error));
+      state = state.copyWith(
+        phase: UpdatePhase.error,
+        message: _messageFor(error),
+      );
     }
   }
 
@@ -176,7 +194,11 @@ class UpdateController extends Notifier<UpdateState> {
       await openReleasePage();
       return;
     }
-    state = state.copyWith(phase: UpdatePhase.downloading, downloadProgress: 0, clearMessage: true);
+    state = state.copyWith(
+      phase: UpdatePhase.downloading,
+      downloadProgress: 0,
+      clearMessage: true,
+    );
     try {
       final tempDir = await getTemporaryDirectory();
       final apkPath = p.join(tempDir.path, 'vietyaku_update.apk');
@@ -194,13 +216,18 @@ class UpdateController extends Notifier<UpdateState> {
       if (result.type != ResultType.done) {
         state = state.copyWith(
           phase: UpdatePhase.error,
-          message: result.message.isNotEmpty ? result.message : 'Không thể mở trình cài đặt.',
+          message: result.message.isNotEmpty
+              ? result.message
+              : 'Không thể mở trình cài đặt.',
         );
         return;
       }
       state = state.copyWith(phase: UpdatePhase.idle);
     } catch (error) {
-      state = state.copyWith(phase: UpdatePhase.error, message: _messageFor(error));
+      state = state.copyWith(
+        phase: UpdatePhase.error,
+        message: _messageFor(error),
+      );
     }
   }
 
@@ -226,4 +253,5 @@ class UpdateController extends Notifier<UpdateState> {
   }
 }
 
-final updateControllerProvider = NotifierProvider<UpdateController, UpdateState>(UpdateController.new);
+final updateControllerProvider =
+    NotifierProvider<UpdateController, UpdateState>(UpdateController.new);

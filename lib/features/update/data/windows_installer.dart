@@ -54,9 +54,11 @@ start "" "$exePath"
 /// Chạy script `.bat` ở tiến trình tách biệt (detached) để nó tiếp tục sống
 /// sau khi app thoát.
 Future<void> spawnSelfUpdateScript(String scriptPath) {
-  return Process.start(
-    'cmd',
-    ['/c', 'start', '', '/min', scriptPath],
-    mode: ProcessStartMode.detached,
-  );
+  return Process.start('cmd', [
+    '/c',
+    'start',
+    '',
+    '/min',
+    scriptPath,
+  ], mode: ProcessStartMode.detached);
 }

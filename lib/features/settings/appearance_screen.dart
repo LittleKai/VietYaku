@@ -20,14 +20,38 @@ class AppearanceScreen extends ConsumerWidget {
   ];
 
   static List<({Color color, String label})> _katakanaOptions(bool isDark) => [
-    (color: isDark ? const Color(0xFF66BB6A) : const Color(0xFF2E7D32), label: 'Xanh lục'),
-    (color: isDark ? const Color(0xFFFFFFFF) : const Color(0xFF202124), label: isDark ? 'Trắng' : 'Đen'),
-    (color: isDark ? const Color(0xFFFF8A80) : const Color(0xFFC62828), label: 'Đỏ'),
-    (color: isDark ? const Color(0xFF64B5F6) : const Color(0xFF1565C0), label: 'Xanh dương'),
-    (color: isDark ? const Color(0xFFFFB74D) : const Color(0xFFE65100), label: 'Cam'),
-    (color: isDark ? const Color(0xFFCE93D8) : const Color(0xFF6A1B9A), label: 'Tím'),
-    (color: isDark ? const Color(0xFF4DD0E1) : const Color(0xFF00838F), label: 'Xanh ngọc'),
-    (color: isDark ? const Color(0xFFB0BEC5) : const Color(0xFF616161), label: 'Xám'),
+    (
+      color: isDark ? const Color(0xFF66BB6A) : const Color(0xFF2E7D32),
+      label: 'Xanh lục',
+    ),
+    (
+      color: isDark ? const Color(0xFFFFFFFF) : const Color(0xFF202124),
+      label: isDark ? 'Trắng' : 'Đen',
+    ),
+    (
+      color: isDark ? const Color(0xFFFF8A80) : const Color(0xFFC62828),
+      label: 'Đỏ',
+    ),
+    (
+      color: isDark ? const Color(0xFF64B5F6) : const Color(0xFF1565C0),
+      label: 'Xanh dương',
+    ),
+    (
+      color: isDark ? const Color(0xFFFFB74D) : const Color(0xFFE65100),
+      label: 'Cam',
+    ),
+    (
+      color: isDark ? const Color(0xFFCE93D8) : const Color(0xFF6A1B9A),
+      label: 'Tím',
+    ),
+    (
+      color: isDark ? const Color(0xFF4DD0E1) : const Color(0xFF00838F),
+      label: 'Xanh ngọc',
+    ),
+    (
+      color: isDark ? const Color(0xFFB0BEC5) : const Color(0xFF616161),
+      label: 'Xám',
+    ),
   ];
 
   void _openPaneFontDialog(BuildContext context) {
@@ -98,7 +122,8 @@ class AppearanceScreen extends ConsumerWidget {
           children: [
             SettingsControlRow(
               title: 'Chế độ hiển thị',
-              description: 'Tùy chỉnh màu nền sáng/tối cho toàn bộ giao diện VietYaku.',
+              description:
+                  'Tùy chỉnh màu nền sáng/tối cho toàn bộ giao diện VietYaku.',
               controlWidth: 320,
               control: SegmentedButton<ThemeMode>(
                 segments: const [
@@ -188,8 +213,8 @@ class AppearanceScreen extends ConsumerWidget {
                     _ColorSwatch(
                       color: option.color,
                       label: option.label,
-                      selected: settings.katakanaColor ==
-                              option.color.toARGB32() ||
+                      selected:
+                          settings.katakanaColor == option.color.toARGB32() ||
                           (isDark &&
                               settings.katakanaColor ==
                                   const Color(0xFF2E7D32).toARGB32() &&
@@ -249,8 +274,9 @@ class _ColorSwatch extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final checkColor =
-        color.computeLuminance() > 0.5 ? Colors.black : Colors.white;
+    final checkColor = color.computeLuminance() > 0.5
+        ? Colors.black
+        : Colors.white;
 
     return Tooltip(
       message: label,
@@ -332,7 +358,9 @@ class _SystemFontRow extends StatelessWidget {
                   value: item,
                   label: item.isEmpty ? 'Mặc định hệ thống' : item,
                   style: MenuItemButton.styleFrom(
-                    textStyle: TextStyle(fontFamily: item.isEmpty ? null : item),
+                    textStyle: TextStyle(
+                      fontFamily: item.isEmpty ? null : item,
+                    ),
                   ),
                 ),
             ],

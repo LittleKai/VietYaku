@@ -75,7 +75,11 @@ class AppTheme {
 
     // Bóng nhuộm sắc thương hiệu thay vì đen thuần — bóng đen trên nền đã
     // nhuộm indigo trông bẩn và "đục".
-    final Color shadow = _mix(scheme.primary, Colors.black, isDark ? 0.72 : 0.3);
+    final Color shadow = _mix(
+      scheme.primary,
+      Colors.black,
+      isDark ? 0.72 : 0.3,
+    );
 
     return base.copyWith(
       textTheme: text,
@@ -141,7 +145,10 @@ class AppTheme {
           shape: WidgetStatePropertyAll(
             RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
-              side: BorderSide(color: scheme.outlineVariant, width: borderWidth),
+              side: BorderSide(
+                color: scheme.outlineVariant,
+                width: borderWidth,
+              ),
             ),
           ),
         ),
@@ -174,22 +181,23 @@ class AppTheme {
 
       // ── Nút ──────────────────────────────────────────────────────────────
       filledButtonTheme: FilledButtonThemeData(
-        style: FilledButton.styleFrom(
-          shape: buttonShape,
-          textStyle: text.labelLarge,
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-          elevation: 2,
-          shadowColor: shadow,
-        ).copyWith(
-          // Bóng nhấn theo trạng thái: nghỉ nổi nhẹ, hover nổi rõ, bấm thì
-          // dán xuống — nút có cảm giác vật lý thay vì phẳng bệt.
-          elevation: WidgetStateProperty.resolveWith((states) {
-            if (states.contains(WidgetState.disabled)) return 0.0;
-            if (states.contains(WidgetState.pressed)) return 0.0;
-            if (states.contains(WidgetState.hovered)) return 5.0;
-            return 2.0;
-          }),
-        ),
+        style:
+            FilledButton.styleFrom(
+              shape: buttonShape,
+              textStyle: text.labelLarge,
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+              elevation: 2,
+              shadowColor: shadow,
+            ).copyWith(
+              // Bóng nhấn theo trạng thái: nghỉ nổi nhẹ, hover nổi rõ, bấm thì
+              // dán xuống — nút có cảm giác vật lý thay vì phẳng bệt.
+              elevation: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.disabled)) return 0.0;
+                if (states.contains(WidgetState.pressed)) return 0.0;
+                if (states.contains(WidgetState.hovered)) return 5.0;
+                return 2.0;
+              }),
+            ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(

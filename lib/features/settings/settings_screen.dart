@@ -12,6 +12,7 @@ import '../repair/presentation/repair_screen.dart';
 import '../translation/application/translation_controller.dart';
 import '../translation/domain/translation_engine.dart';
 import '../translation/domain/lookup_dictionary_type.dart';
+import '../translation/domain/online_lookup_source.dart';
 import '../update/application/update_controller.dart';
 import '../update/presentation/update_dialog.dart';
 import 'settings_provider.dart';
@@ -163,6 +164,14 @@ class SettingsScreen extends ConsumerWidget {
           children: [_PopupDictionarySetting()],
         ),
         const SettingsSection(
+          icon: Icons.travel_explore_outlined,
+          accentColor: Color(0xFF1565C0),
+          title: 'Tra online',
+          description:
+              'Nguồn chạy khi bấm "Tra online" ở tab Dịch. Kết quả hiện trong ô Nghĩa; chỉ nghĩa từ điển thật (Mazii, Jisho, Weblio) mới lưu vào OnlineDict.',
+          children: [_OnlineLookupSourcesSetting()],
+        ),
+        const SettingsSection(
           icon: Icons.volume_up_outlined,
           accentColor: Color(0xFF00897B),
           title: 'Phát âm',
@@ -243,8 +252,7 @@ class _PopupDictionarySetting extends ConsumerWidget {
     );
     return SettingsControlRow(
       title: 'Từ điển trong popup',
-      description:
-          'Chỉ chọn được 1 từ điển. Mặc định không chọn (tắt popup).',
+      description: 'Chỉ chọn được 1 từ điển. Mặc định không chọn (tắt popup).',
       controlWidth: 540,
       control: Wrap(
         spacing: 8,
@@ -260,6 +268,48 @@ class _PopupDictionarySetting extends ConsumerWidget {
                 ref
                     .read(settingsProvider.notifier)
                     .setPopupDictionaryTypes(enabled ? [type] : const []);
+              },
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OnlineLookupSourcesSetting extends ConsumerWidget {
+  const _OnlineLookupSourcesSetting();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final selected = ref.watch(
+      settingsProvider.select((settings) => settings.onlineLookupSources),
+    );
+    return SettingsControlRow(
+      title: 'Nguồn tra online',
+      description:
+          'Bỏ chọn hết = tắt tra online. Nguồn nào không hợp với ngôn ngữ đang '
+          'dịch sẽ tự bỏ qua.',
+      controlWidth: 540,
+      control: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        alignment: WrapAlignment.end,
+        children: [
+          for (final source in OnlineLookupSource.values)
+            FilterChip(
+              label: Text(source.label),
+              tooltip: source.hint,
+              selected: selected.contains(source),
+              onSelected: (enabled) {
+                final next = selected.toSet();
+                if (enabled) {
+                  next.add(source);
+                } else {
+                  next.remove(source);
+                }
+                ref
+                    .read(settingsProvider.notifier)
+                    .setOnlineLookupSources(next);
               },
             ),
         ],
@@ -635,8 +685,7 @@ class _UpdateSettingsState extends ConsumerState<_UpdateSettings> {
       children: [
         SettingsSwitchRow(
           title: 'Tự động kiểm tra cập nhật',
-          description:
-              'Kiểm tra bản mới mỗi khi khởi động ứng dụng.',
+          description: 'Kiểm tra bản mới mỗi khi khởi động ứng dụng.',
           value: settings.autoCheckUpdates,
           onChanged: (value) =>
               ref.read(settingsProvider.notifier).setAutoCheckUpdates(value),

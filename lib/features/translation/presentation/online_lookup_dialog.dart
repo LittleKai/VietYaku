@@ -2,27 +2,31 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/widgets/app_dialog.dart';
-import '../application/lookup_controller.dart';
-import '../application/translation_controller.dart';
-import '../domain/translation_engine.dart';
+import '../../settings/settings_provider.dart';
+import '../application/online_lookup_controller.dart';
 import 'lacviet_panel.dart' show meaningLabelColor;
 
-/// Dialog tra online: Mazii và Google Dịch chạy SONG SONG, mỗi nguồn hiện
-/// kết quả riêng ngay khi xong (không chờ nguồn kia).
+/// Dialog tra online: các nguồn đang bật trong Cài đặt chạy SONG SONG, mỗi
+/// nguồn hiện kết quả riêng ngay khi xong (không chờ nguồn kia). Kết quả cũng
+/// được chèn vào ô Nghĩa; riêng nguồn từ điển thật (Mazii, Jisho, Weblio) lưu vào
+/// `OnlineDict_<mode>.txt`, kết quả máy dịch thì không.
 Future<void> showOnlineLookupDialog(
   BuildContext context,
   WidgetRef ref, {
   required String word,
 }) {
-  final maziiName =
-      ref.read(currentModeProvider) == TranslationMode.japanese
-      ? 'Mazii'
-      : 'Mazii Trung-Việt';
+  final names = ref
+      .read(settingsProvider)
+      .onlineLookupSources
+      .map((source) => source.label)
+      .join(', ');
   return showAppDialog<void>(
     context: context,
     icon: Icons.travel_explore,
     title: 'Tra online: $word',
-    description: '$maziiName và Google Dịch tra song song.',
+    description: names.isEmpty
+        ? 'Chưa bật nguồn tra online nào trong Cài đặt.'
+        : '$names tra song song; nghĩa từ điển thật được lưu vào OnlineDict.',
     accentColor: const Color(0xFF1565C0),
     width: 560,
     content: _OnlineLookupContent(word: word),
@@ -46,34 +50,33 @@ class _OnlineLookupContent extends ConsumerStatefulWidget {
 }
 
 class _OnlineLookupContentState extends ConsumerState<_OnlineLookupContent> {
-  late final Future<String?> _mazii;
-  late final Future<String?> _google;
-  late final String _maziiLabel;
+  late final List<OnlineLookupTask> _tasks;
 
   @override
   void initState() {
     super.initState();
-    final word = widget.word;
-    final isJa = ref.read(currentModeProvider) == TranslationMode.japanese;
-    // Nhật → Mazii Nhật-Việt (javi); Trung → Mazii Trung-Việt (cnvi).
-    _maziiLabel = isJa ? 'Mazii' : 'Mazii Trung-Việt';
-    // Kích hoạt hai request cùng lúc.
-    _mazii = ref
-        .read(maziiApiProvider)
-        .lookup(word, dict: isJa ? 'javi' : 'cnvi');
-    _google = ref
-        .read(googleTranslateProvider)
-        .translate(word, sourceLang: isJa ? 'ja' : 'zh-CN');
+    // Kích hoạt mọi request cùng lúc; phần lưu file chạy độc lập với dialog.
+    _tasks = startOnlineLookup(ref, widget.word);
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_tasks.isEmpty) {
+      return Text(
+        'Bật ít nhất một nguồn trong Cài đặt → Tra online.',
+        style: TextStyle(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+          fontStyle: FontStyle.italic,
+        ),
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _Section(label: _maziiLabel, future: _mazii),
-        const SizedBox(height: 20),
-        _Section(label: 'Google Dịch', future: _google),
+        for (var i = 0; i < _tasks.length; i++) ...[
+          if (i > 0) const SizedBox(height: 20),
+          _Section(label: _tasks[i].label, future: _tasks[i].body),
+        ],
       ],
     );
   }

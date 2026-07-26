@@ -5,13 +5,17 @@ import '../../../core/google_translate.dart';
 import '../../dictionary/application/dictionaries_provider.dart';
 import '../../dictionary/data/dictionary_repository.dart';
 import '../../settings/settings_provider.dart';
+import '../data/jisho_api.dart';
 import '../data/mazii_api.dart';
+import '../data/weblio_api.dart';
 import '../domain/reading_extractor.dart';
 import '../domain/lookup_dictionary_type.dart';
 import '../domain/translation_engine.dart';
 import 'translation_controller.dart';
 
 final maziiApiProvider = Provider<MaziiApi>((ref) => MaziiApi());
+final jishoApiProvider = Provider<JishoApi>((ref) => JishoApi());
+final weblioApiProvider = Provider<WeblioApi>((ref) => WeblioApi());
 final googleTranslateProvider = Provider<GoogleTranslateClient>(
   (ref) => GoogleTranslateClient(),
 );
@@ -35,6 +39,43 @@ class LookupSection {
   String get displayText => body.contains('\n')
       ? '$word <<$label>>\n$body'
       : '$word <<$label>> $body';
+}
+
+final _onlineLabelPattern = RegExp(r'^<<(.+)>>$');
+
+/// Ghép các mục tra online thành 1 dòng value dict: mỗi mục mở đầu bằng
+/// `<<Nguồn>>`, xuống dòng escape `\n` như LacViet.
+String encodeOnlineSections(List<LookupSection> sections) => sections
+    .map((s) => '<<${s.label}>>\n${s.body.trim()}')
+    .join('\n')
+    .replaceAll('\r\n', '\n')
+    .replaceAll('\n', r'\n')
+    .replaceAll('\t', r'\t');
+
+/// Tách value OnlineDict ngược lại thành các mục theo nhãn `<<Nguồn>>`.
+List<LookupSection> decodeOnlineSections(String word, String value) {
+  final sections = <LookupSection>[];
+  final body = StringBuffer();
+  String? label;
+
+  void flush() {
+    if (label == null) return;
+    final text = body.toString().trim();
+    if (text.isNotEmpty) sections.add(LookupSection(word, label, text));
+    body.clear();
+  }
+
+  for (final line in unescapeLacViet(value).split('\n')) {
+    final match = _onlineLabelPattern.firstMatch(line.trim());
+    if (match != null) {
+      flush();
+      label = match.group(1);
+    } else if (label != null) {
+      body.writeln(line);
+    }
+  }
+  flush();
+  return sections;
 }
 
 class LookupResult {
@@ -172,6 +213,12 @@ class LookupController extends Notifier<LookupResult?> {
       sections.add(LookupSection(key, 'Trung Việt', unescapeLacViet(zhVi)));
     }
 
+    // 5a. Kết quả tra online đã lưu (OnlineDict_<mode>.txt) — chỉ khớp đúng cụm.
+    final online = dicts.onlineDict.entries[word];
+    if (online != null) {
+      sections.addAll(decodeOnlineSections(word, online));
+    }
+
     // 6. Phiên âm Hán Việt đoạn nguồn quanh vị trí chọn.
     if (sentence.isNotEmpty) {
       final phienAm = _phienAm(dicts, sentence);
@@ -229,6 +276,26 @@ class LookupController extends Notifier<LookupResult?> {
   }
 
   void clearResult() => state = null;
+
+  /// Chèn kết quả tra online vào cuối ô Nghĩa (bỏ mục cũ cùng nhãn khi tra lại).
+  /// Bỏ qua nếu người dùng đã chọn từ khác trong lúc chờ mạng.
+  void addOnlineSections(String word, List<LookupSection> online) {
+    final current = state;
+    if (current == null || current.word != word || online.isEmpty) return;
+    final labels = online.map((s) => s.label).toSet();
+    state = LookupResult(
+      word: current.word,
+      matchedKey: current.matchedKey,
+      reading: current.reading,
+      readingKind: current.readingKind,
+      hanViet: current.hanViet,
+      body: current.body,
+      sections: [
+        ...current.sections.where((s) => !labels.contains(s.label)),
+        ...online,
+      ],
+    );
+  }
 
   /// Value cụm trong UserDict > Names > VietPhrase kèm nhãn từ điển.
   static ({String label, String value})? _phraseValue(

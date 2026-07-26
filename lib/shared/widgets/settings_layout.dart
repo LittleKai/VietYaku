@@ -322,11 +322,7 @@ class _SettingsIcon extends StatelessWidget {
         ],
       ),
       alignment: Alignment.center,
-      child: Icon(
-        icon,
-        size: prominent ? 22 : 20,
-        color: _onAccent(accent),
-      ),
+      child: Icon(icon, size: prominent ? 22 : 20, color: _onAccent(accent)),
     );
   }
 }

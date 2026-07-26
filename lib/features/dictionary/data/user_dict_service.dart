@@ -3,9 +3,11 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import '../../../core/app_paths.dart';
+import '../../translation/domain/translation_engine.dart';
 
-/// Ghi overlay UserDict.txt / UserNames.txt trong appdata
-/// (không bao giờ đụng file từ điển gốc). Format `key=value` UTF-8 BOM CRLF.
+/// Ghi overlay UserDict.txt / UserNames.txt / `OnlineDict_<mode>.txt` trong
+/// appdata (không bao giờ đụng file từ điển gốc).
+/// Format `key=value` UTF-8 BOM CRLF.
 class UserDictService {
   final AppPaths paths;
 
@@ -23,6 +25,16 @@ class UserDictService {
   Future<void> upsertUserName(String key, String value) =>
       _upsert(userNamesFile, key, value);
 
+  /// Từ điển tích lũy từ các lần tra online, mỗi ngôn ngữ một file.
+  File onlineDictFile(TranslationMode mode) =>
+      File(p.join(paths.dictionariesDir.path, 'OnlineDict_${mode.name}.txt'));
+
+  Future<void> upsertOnlineDict(
+    TranslationMode mode,
+    String key,
+    String value,
+  ) => _upsert(onlineDictFile(mode), key, value);
+
   static Future<void> _upsert(File file, String key, String value) async {
     final lines = <String>[];
     if (file.existsSync()) {
@@ -31,8 +43,9 @@ class UserDictService {
         text = text.substring(1);
       }
       for (final raw in text.split('\n')) {
-        final line =
-            raw.endsWith('\r') ? raw.substring(0, raw.length - 1) : raw;
+        final line = raw.endsWith('\r')
+            ? raw.substring(0, raw.length - 1)
+            : raw;
         if (line.isNotEmpty) lines.add(line);
       }
     }

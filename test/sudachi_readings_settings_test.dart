@@ -54,28 +54,25 @@ void main() {
 
     test('Japanese mode lookup - prioritization options', () async {
       final mockData1 = _createMock(
-        jaVi: PhraseDictionary(DictType.jaVi, {
-          '覇権': '{はけん} bá quyền',
-        }),
-        lacViet: PhraseDictionary(DictType.lacViet, {
-          '覇権': '(haken) bá quyền',
-        }),
-        sudachiReadings: PhraseDictionary(DictType.jaVi, {
-          '覇権': 'ハケン',
-        }),
+        jaVi: PhraseDictionary(DictType.jaVi, {'覇権': '{はけん} bá quyền'}),
+        lacViet: PhraseDictionary(DictType.lacViet, {'覇権': '(haken) bá quyền'}),
+        sudachiReadings: PhraseDictionary(DictType.jaVi, {'覇権': 'ハケン'}),
       );
 
       final container = ProviderContainer(
         overrides: [
           sharedPreferencesProvider.overrideWithValue(prefs),
-          dictionariesProvider.overrideWith(() => MockDictionariesNotifier(mockData1)),
+          dictionariesProvider.overrideWith(
+            () => MockDictionariesNotifier(mockData1),
+          ),
         ],
       );
 
       addTearDown(container.dispose);
 
       // Force initialize currentModeProvider to japanese
-      container.read(currentModeProvider.notifier).state = TranslationMode.japanese;
+      container.read(currentModeProvider.notifier).state =
+          TranslationMode.japanese;
 
       // Await future to ensure provider state is AsyncData
       await container.read(dictionariesProvider.future);
@@ -83,14 +80,18 @@ void main() {
       // 1. Test sudachiFirst (Default)
       // SudachiReadings should win over jaVi and lacViet
       container.read(lookupControllerProvider.notifier).lookup('覇権');
-      LookupResult? result = container.read<LookupResult?>(lookupControllerProvider);
+      LookupResult? result = container.read<LookupResult?>(
+        lookupControllerProvider,
+      );
       expect(result, isNotNull);
       expect(result!.reading, 'ハケン');
       expect(result.readingKind, ReadingKind.kana);
 
       // 2. Test jaViFirst (like current)
       // jaVi's kana {はけん} should win over Sudachi's ハケン
-      await container.read(settingsProvider.notifier).setSudachiReadings(SudachiReadingsMode.jaViFirst);
+      await container
+          .read(settingsProvider.notifier)
+          .setSudachiReadings(SudachiReadingsMode.jaViFirst);
       container.read(lookupControllerProvider.notifier).lookup('覇権');
       result = container.read<LookupResult?>(lookupControllerProvider);
       expect(result, isNotNull);
@@ -103,28 +104,29 @@ void main() {
         jaVi: PhraseDictionary(DictType.jaVi, {
           '覇権': 'bá quyền', // no reading in jaVi
         }),
-        lacViet: PhraseDictionary(DictType.lacViet, {
-          '覇権': '(haken) bá quyền',
-        }),
-        sudachiReadings: PhraseDictionary(DictType.jaVi, {
-          '覇権': 'ハケン',
-        }),
+        lacViet: PhraseDictionary(DictType.lacViet, {'覇権': '(haken) bá quyền'}),
+        sudachiReadings: PhraseDictionary(DictType.jaVi, {'覇権': 'ハケン'}),
       );
 
       final container2 = ProviderContainer(
         overrides: [
           sharedPreferencesProvider.overrideWithValue(prefs),
-          dictionariesProvider.overrideWith(() => MockDictionariesNotifier(mockData2)),
+          dictionariesProvider.overrideWith(
+            () => MockDictionariesNotifier(mockData2),
+          ),
         ],
       );
       addTearDown(container2.dispose);
-      container2.read(currentModeProvider.notifier).state = TranslationMode.japanese;
+      container2.read(currentModeProvider.notifier).state =
+          TranslationMode.japanese;
 
       // Await future for container2
       await container2.read(dictionariesProvider.future);
 
       // Under disabled mode, it should fallback to lacViet's haken instead of Sudachi's ハケン
-      await container2.read(settingsProvider.notifier).setSudachiReadings(SudachiReadingsMode.disabled);
+      await container2
+          .read(settingsProvider.notifier)
+          .setSudachiReadings(SudachiReadingsMode.disabled);
       container2.read(lookupControllerProvider.notifier).lookup('覇権');
       result = container2.read<LookupResult?>(lookupControllerProvider);
       expect(result, isNotNull);

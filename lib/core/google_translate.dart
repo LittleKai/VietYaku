@@ -16,20 +16,28 @@ class GoogleTranslateClient {
   static const _userAgent =
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
 
-  /// Dịch [text] sang tiếng Việt. [sourceLang]: 'ja', 'zh-CN'…
+  /// Dịch [text] sang [targetLang]. [sourceLang]: 'ja', 'zh-CN'…
   /// Trả null khi cả hai đường đều thất bại.
-  Future<String?> translate(String text, {required String sourceLang}) async {
+  Future<String?> translate(
+    String text, {
+    required String sourceLang,
+    String targetLang = 'vi',
+  }) async {
     if (text.trim().isEmpty) return null;
-    return await _viaGtx(text, sourceLang) ??
-        await _viaMobileWeb(text, sourceLang);
+    return await _viaGtx(text, sourceLang, targetLang) ??
+        await _viaMobileWeb(text, sourceLang, targetLang);
   }
 
-  Future<String?> _viaGtx(String text, String sourceLang) async {
+  Future<String?> _viaGtx(
+    String text,
+    String sourceLang,
+    String targetLang,
+  ) async {
     try {
       final uri = Uri.https('translate.googleapis.com', '/translate_a/single', {
         'client': 'gtx',
         'sl': sourceLang,
-        'tl': 'vi',
+        'tl': targetLang,
         'dt': 't',
         'q': text,
       });
@@ -53,11 +61,15 @@ class GoogleTranslateClient {
     }
   }
 
-  Future<String?> _viaMobileWeb(String text, String sourceLang) async {
+  Future<String?> _viaMobileWeb(
+    String text,
+    String sourceLang,
+    String targetLang,
+  ) async {
     try {
       final uri = Uri.https('translate.google.com', '/m', {
         'sl': sourceLang,
-        'tl': 'vi',
+        'tl': targetLang,
         'q': text,
       });
       final res = await _client

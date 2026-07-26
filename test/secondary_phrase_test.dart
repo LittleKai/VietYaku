@@ -43,10 +43,7 @@ void main() {
 
   test('greedy longest-match: cụm dài thắng cụm ngắn', () {
     const text = 'たりしていた';
-    final lacViet = _dict(DictType.lacViet, {
-      'たり': 'ngắn',
-      'たりしていた': 'dài',
-    });
+    final lacViet = _dict(DictType.lacViet, {'たり': 'ngắn', 'たりしていた': 'dài'});
     final phrases = findSecondaryPhrases(
       text: text,
       tokens: _unmatchedRunes(text),

@@ -23,6 +23,10 @@ class LoadedDictionaries {
   final PhraseDictionary jaVi;
   final PhraseDictionary zhVi;
 
+  /// Kết quả tra online đã lưu (`OnlineDict_<mode>.txt` trong appdata; rỗng khi
+  /// chưa tra lần nào). Value là các mục `<<Nguồn>>` ghép lại, escape `\n`.
+  final PhraseDictionary onlineDict;
+
   /// Phát âm kana từ SudachiDict (data/jp/SudachiReadings.txt, chỉ mode Nhật;
   /// rỗng khi thiếu file). Dùng làm fallback phát âm trong ô Nghĩa.
   final PhraseDictionary sudachiReadings;
@@ -44,9 +48,12 @@ class LoadedDictionaries {
     required this.chinesePhienAmEnglish,
     required this.jaVi,
     required this.zhVi,
+    PhraseDictionary? onlineDict,
     PhraseDictionary? sudachiReadings,
     required this.stats,
   }) : mazii = mazii ?? PhraseDictionary(DictType.mazii, const {}),
+       onlineDict =
+           onlineDict ?? PhraseDictionary(DictType.onlineDict, const {}),
        sudachiReadings =
            sudachiReadings ?? PhraseDictionary(DictType.jaVi, const {});
 
@@ -99,6 +106,9 @@ class DictionaryRepository {
   String sharedLacVietPath(TranslationMode mode) =>
       p.join(paths.dictionariesDir.path, 'SharedLacViet_${mode.name}.txt');
 
+  String onlineDictPath(TranslationMode mode) =>
+      p.join(paths.dictionariesDir.path, 'OnlineDict_${mode.name}.txt');
+
   Future<LoadedDictionaries> loadAll(
     Map<DictType, String> dictPaths, {
     required TranslationMode mode,
@@ -149,6 +159,7 @@ class DictionaryRepository {
           : emptyResult(DictType.vietPhrase),
       loadPath(DictType.jaVi, sudachiPath('SudachiReadings.txt')),
       load(DictType.mazii),
+      loadPath(DictType.onlineDict, onlineDictPath(mode)),
     ]);
 
     var names = results[1].dictionary;
@@ -196,6 +207,7 @@ class DictionaryRepository {
       chinesePhienAmEnglish: results[9].dictionary,
       jaVi: results[10].dictionary,
       zhVi: results[11].dictionary,
+      onlineDict: results[18].dictionary,
       sudachiReadings: results[16].dictionary,
       stats: {
         for (final r in results.take(12))
@@ -203,6 +215,10 @@ class DictionaryRepository {
         DictType.mazii: (
           fromCache: results[17].fromCache,
           elapsedMs: results[17].elapsedMs,
+        ),
+        DictType.onlineDict: (
+          fromCache: results[18].fromCache,
+          elapsedMs: results[18].elapsedMs,
         ),
       },
     );

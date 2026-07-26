@@ -3,7 +3,7 @@
 
 ## 1. Project Overview
 
-- **Type:** App đa nền tảng (Windows desktop + Android) — dịch Nhật/Trung→Việt kiểu VietPhrase + công cụ sửa từ điển JP, thay thế QuickTranslator_Jap (WinForms). Dịch chính offline; có thêm tính năng online tùy chọn: tra nghĩa Mazii/Google Dịch và tab Google Translate (endpoint gtx + fallback crawl translate.google.com/m). Android: chỉ dịch + TTS; ẩn Sửa từ điển/đồng bộ file (desktop-only).
+- **Type:** App đa nền tảng (Windows desktop + Android) — dịch Nhật/Trung→Việt kiểu VietPhrase + công cụ sửa từ điển JP, thay thế QuickTranslator_Jap (WinForms). Dịch chính offline; có thêm tính năng online tùy chọn: tra nghĩa Mazii / Google Dịch (Việt) / Jisho (Nhật→Anh) hoặc Google Anh (Trung) / Weblio 日中 (Nhật→Trung) và tab Google Translate (endpoint gtx + fallback crawl translate.google.com/m). Android: chỉ dịch + TTS; ẩn Sửa từ điển/đồng bộ file (desktop-only).
 - **Tech Stack:** Flutter 3.44.2, Dart ^3.12, Material 3
 - **Package Manager:** pub (flutter pub)
 - **i18n:** None (UI tiếng Việt cố định)
@@ -38,11 +38,11 @@ VietYaku/
 │   │   ├── dictionary/             # domain (dict_type, phrase_dictionary) · data (dict_parser, binary_cache, dictionary_loader, dictionary_repository, user_dict_service) · application (dictionaries_provider)
 │   │   ├── dictionary_sync/        # domain shared entry · typed HTTP API · merge overlay · Riverpod admin session/sync controller
 │   │   ├── epub_converter/         # đọc EPUB spine/OPF + xuất CSV/XLSX/MD/DOCX/TXT; UI chọn file/xem trước/lưu
-│   │   ├── translation/            # domain (translation_engine, token, reading_extractor) · data (mazii_api) · application (translation_controller + currentModeProvider, lookup_controller, token_selection, viet_draft — controller dùng chung ô Bản dịch) · presentation (translate_screen: 2 cột kéo được + lưu tỷ lệ, menu bar, source_pane + hover tô đỏ, result_pane chỉ VietPhrase + tab Google Dịch, viet_pane — ô Bản dịch Việt luôn trống, han_viet_pane, token_text_view — chuẩn hoá dấu câu/toàn-hình + menu chèn nghĩa, lacviet_panel + nhãn từ điển có màu + nút tra online)
+│   │   ├── translation/            # domain (translation_engine, token, reading_extractor, online_lookup_source) · data (mazii_api, jisho_api, weblio_api) · application (translation_controller + currentModeProvider, lookup_controller, online_lookup_controller, token_selection, viet_draft — controller dùng chung ô Bản dịch) · presentation (translate_screen: 2 cột kéo được + lưu tỷ lệ, menu bar, source_pane + hover tô đỏ, result_pane chỉ VietPhrase + tab Google Dịch, viet_pane — ô Bản dịch Việt luôn trống, han_viet_pane, token_text_view — chuẩn hoá dấu câu/toàn-hình + menu chèn nghĩa, lacviet_panel + nhãn từ điển có màu + nút tra online)
 │   │   ├── repair/                 # domain (jp_repair_pipeline, simp2jp_table, repair_report) · application (repair_controller) · presentation (repair_screen, repair_preview)
 │   │   └── settings/               # settings_provider, settings_screen (thuật toán/TTS/repair/sync/dict), appearance_screen (cỡ chữ+font/màu kana/hiển thị)
 │   └── shared/widgets/             # tts_button, entry_edit_dialog, app_dialog, icon_context_menu, settings_layout (SettingsPage/SettingsSection/SettingsSwitchRow/SettingsControlRow/SettingsValueBadge)
-└── test/                           # 179 tests (22 file; integration dữ liệu thật tự skip nếu thiếu path)
+└── test/                           # 187 tests (23 file; integration dữ liệu thật tự skip nếu thiếu path)
 ```
 
 ### Critical Files
@@ -83,8 +83,9 @@ Menu bar trên cùng (chọn Nhật/Trung + Dán & Dịch). Trái (flex 2): tabs
 ### Repair Flow
 RepairScreen → pick file → preview per-line (Isolate.run, 50 dòng đổi đầu tiên) → Run (`Isolate.spawn` + progress SendPort, kết quả qua `Isolate.exit`) → RepairReport → export `*_JP.txt` (UTF-8 BOM CRLF cạnh gốc + copy appdata + xóa .vydc cũ) → reload providers.
 
-### Storage (appdata = `getApplicationSupportDirectory()`)
-`cache/` (.vydc) · `dictionaries/` (*_JP.txt, UserDict.txt, UserNames.txt, SharedVietPhrase_*.txt, SharedLacViet_*.txt, PendingVietPhrase_*.txt, PendingLacViet_*.txt) · `saved_words.json`.
+### Storage (`AppPaths` — KHÔNG dùng AppData trên desktop)
+Release: `<thư mục chứa .exe>/userdata/` · debug/profile: `<repo>/data/userdata/` · Android/iOS (ngoại lệ): `getApplicationSupportDirectory()`. `AppPaths.init()` chép `dictionaries/` từ AppData cũ sang một lần khi thư mục mới còn trống.
+`cache/` (.vydc) · `dictionaries/` (*_JP.txt, UserDict.txt, UserNames.txt, OnlineDict_japanese.txt, OnlineDict_chinese.txt, SharedVietPhrase_*.txt, SharedLacViet_*.txt, PendingVietPhrase_*.txt, PendingLacViet_*.txt) · `saved_words.json`.
 
 ---
 
@@ -104,7 +105,7 @@ RepairScreen → pick file → preview per-line (Isolate.run, 50 dòng đổi đ
 | Menu bar Nhật/Trung + Dịch + Dán & Dịch | ✅ Done | translate_screen (_MenuBar), translation_controller.translate/pasteAndTranslate, source_pane.sourceDraftProvider | Nút Dịch dịch nội dung ô Nguồn (đọc sourceDraftProvider) |
 | Chỉnh cỡ chữ + font các ô | ✅ Done | appearance_screen, settings_provider.paneTextStyle | Trong tab Giao diện; áp cho Nguồn/Kết quả/Nghĩa/ô Việt, lưu prefs |
 | Chỉnh cỡ chữ + font toàn giao diện | ✅ Done | appearance_screen (`_SystemFontRow`), settings_provider (`uiFontScale`/`uiFontFamily`), app_theme (`fontScale`/`fontFamily`), app.dart | Section đầu tab Giao diện; scale 80–140% + font áp lên `theme.textTheme` (chrome), KHÔNG đụng nội dung ô dịch; lưu prefs `ui.fontScale`/`ui.fontFamily` |
-| Tra nghĩa online (dialog song song) | ✅ Done | mazii_api, google_translate, online_lookup_dialog, lacviet_panel, source_pane | Nút/context menu mở `showOnlineLookupDialog`: Mazii + Google Dịch chạy SONG SONG (mỗi nguồn 1 FutureBuilder, hiện ngay khi xong), kết quả trên dialog mới — KHÔNG còn inject vào ô Nghĩa. Mazii theo mode: Nhật → dict `javi` (nhãn "Mazii"), Trung → dict `cnvi` "Mazii Trung-Việt" (`_format` đọc `pinyin` khi thiếu `phonetic`). Google sourceLang theo mode (ja/zh-CN). Hanzii v2 mã hóa response nên không dùng |
+| Tra nghĩa online (4 nguồn, song song, có lưu) | ✅ Done | online_lookup_source (domain), online_lookup_controller, online_lookup_dialog, lookup_controller (encode/decodeOnlineSections, addOnlineSections), jisho_api, weblio_api, user_dict_service, dictionary_repository, settings_provider/screen, mazii_api, google_translate | Nút/context menu mở `showOnlineLookupDialog`: các nguồn đang bật chạy SONG SONG (mỗi nguồn 1 FutureBuilder, hiện ngay khi xong). 4 nguồn bật/tắt độc lập trong Cài đặt → "Tra online" (`settings.onlineLookupSources`, mặc định bật cả 4, rỗng = tắt hẳn): `mazii` → nhãn `Mazii Online` (Nhật dict `javi`, Trung `cnvi`, `_format` đọc `pinyin` khi thiếu `phonetic`); `googleVi` → `Google Dịch`; `english` → mode Nhật dùng **Jisho** (JMdict, GET `jisho.org/api/v1/search/words`, keyless, có kana/JLPT/`is_common`/từ loại — Mazii không có `jaen`/`cnen`) nhãn `Jisho`, mode Trung dùng Google → en nhãn `Google Anh`; `chinese` → **Weblio 日中中日辞典** nhãn `Weblio 日中` (Nhật→Trung đối chiếu Hán tự + pinyin; crawl thẻ `<meta name="description">` của `cjjc.weblio.jp/content/<từ>` rồi tách nhãn 読み方/中国語訳/ピンイン/… thành dòng — mô tả bị cắt ~200 ký tự nên mục dài mất đuôi; tự bỏ qua ở mode Trung). Nhãn section do controller đặt theo mode, không lấy từ `source.label`. Kết quả đồng thời chèn cuối ô Nghĩa (`addOnlineSections`, bỏ mục cũ cùng nhãn); riêng nguồn từ điển thật (`task.saved` = Mazii, Jisho, Weblio) mới lưu vào `OnlineDict_<mode>.txt`, kết quả Google KHÔNG lưu (DictType.onlineDict, value là các mục `<<Nguồn>>` escape `\n` kiểu LacViet) → lần sau tra lại hiện offline ngay. Phần lưu chạy độc lập, đóng dialog sớm vẫn lưu. Hanzii v2 mã hóa response nên không dùng |
 | Tab Google Dịch cả đoạn | ✅ Done | result_pane, core/google_translate | gtx endpoint; fallback crawl translate.google.com/m |
 | Lưu từ + export vocabflip | ❌ Removed (session #3) | — | saved_words_provider.dart còn trên đĩa nhưng không được import (user tự xóa nếu muốn) |
 | Settings + copy kết quả + release build | ✅ Done | settings_screen, appearance_screen, result_pane | exe standalone verified |
@@ -121,7 +122,7 @@ RepairScreen → pick file → preview per-line (Isolate.run, 50 dòng đổi đ
 | Hệ thiết kế tập trung (theme sáng/tối) | ✅ Done | core/theme/app_theme.dart, shared/widgets/settings_layout.dart, app.dart, token_text_view, source_pane, settings_screen/appearance_screen | Component theme cho dialog/ô nhập/dropdown/tab/nút/rail/card/tooltip/snackbar/slider/chip; dark tự theo OS; font dropdown dùng DropdownMenu M3. `_refine()` đảo quy ước M3: các lớp nổi (`surfaceContainerLowest…Highest`) SÁNG HƠN `surface` ở cả hai chế độ để card nổi khỏi canvas; mọi trạng thái active nhuộm màu nhấn (SegmentedButton tô primary, FilterChip nhuộm nền/viền/nhãn, slider track, rail indicator). Mỗi `SettingsSection` có màu nhấn riêng: header nhuộm màu, dải màu trái 4px, ô icon tô đặc, bóng nhuộm theo màu nhấn; số liệu cạnh slider dùng `SettingsValueBadge` (viền + chữ màu nhấn, tabular figures). Invariant được khoá bằng `test/app_theme_test.dart` |
 | Tự động kiểm tra cập nhật (GitHub Releases) | ✅ Done | features/update/* (app_version, github_release_api, download_file, update_controller, update_dialog), app.dart, settings_provider, settings_screen | Windows: tải ZIP → giải nén → `.bat` tự thay thư mục cài đặt + khởi động lại; Android: tải `.apk` → open_filex, fallback mở trang GitHub Release nếu chưa có asset `.apk` (thực trạng hiện tại); silent check lúc khởi động (cache 24h) + nút "Kiểm tra ngay" + toggle + bỏ qua bản này |
 
-**Verify end-to-end:** `dart run tool/export_jp.dart` → VietPhrase_JP.txt (187.419 entries) + LacViet_JP.txt (103.632) cạnh file gốc; hết key `覚 悟`/`军`, value nguyên vẹn từng byte; dịch Nhật match dài, dịch Trung có fallback phiên âm. `flutter test` 179 pass + `flutter analyze --no-pub` sạch; Windows release build gần nhất thành công.
+**Verify end-to-end:** `dart run tool/export_jp.dart` → VietPhrase_JP.txt (187.419 entries) + LacViet_JP.txt (103.632) cạnh file gốc; hết key `覚 悟`/`军`, value nguyên vẹn từng byte; dịch Nhật match dài, dịch Trung có fallback phiên âm. `flutter test` 184 pass + `flutter analyze --no-pub` sạch; Windows release build gần nhất thành công.
 
 ---
 
@@ -180,7 +181,7 @@ RepairScreen → pick file → preview per-line (Isolate.run, 50 dòng đổi đ
 
 ### Testing checklist:
 - [ ] `flutter analyze` sạch
-- [ ] `flutter test` pass (179 tests; integration tự skip nếu thiếu dữ liệu thật)
+- [ ] `flutter test` pass (187 tests; integration tự skip nếu thiếu dữ liệu thật)
 - [ ] Nếu đụng repair/parser: `dart run tool/export_jp.dart` verify OK
 
 ### Don't forget to:
@@ -200,7 +201,7 @@ flutter analyze                    # lint — phải sạch
 flutter build windows --release    # exe tại build\windows\x64\runner\Release\
 
 # Test
-flutter test                       # toàn bộ 179 tests
+flutter test                       # toàn bộ 187 tests
 
 # Tools (dev)
 dart run tool/build_simp2jp.dart   # sinh lại assets mapping (cần mạng)

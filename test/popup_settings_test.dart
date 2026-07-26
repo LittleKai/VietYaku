@@ -15,9 +15,9 @@ void main() {
 
     expect(container.read(settingsProvider).popupDictionaryTypes, isEmpty);
 
-    await container
-        .read(settingsProvider.notifier)
-        .setPopupDictionaryTypes(const [LookupDictionaryType.lacViet]);
+    await container.read(settingsProvider.notifier).setPopupDictionaryTypes(
+      const [LookupDictionaryType.lacViet],
+    );
     expect(container.read(settingsProvider).popupDictionaryTypes, [
       LookupDictionaryType.lacViet,
     ]);
@@ -28,15 +28,9 @@ void main() {
     expect(container.read(settingsProvider).popupDictionaryTypes, isEmpty);
 
     // Truyền nhiều loại → chỉ giữ 1.
-    await container
-        .read(settingsProvider.notifier)
-        .setPopupDictionaryTypes(const [
-          LookupDictionaryType.vietPhrase,
-          LookupDictionaryType.lacViet,
-        ]);
-    expect(
-      container.read(settingsProvider).popupDictionaryTypes,
-      hasLength(1),
+    await container.read(settingsProvider.notifier).setPopupDictionaryTypes(
+      const [LookupDictionaryType.vietPhrase, LookupDictionaryType.lacViet],
     );
+    expect(container.read(settingsProvider).popupDictionaryTypes, hasLength(1));
   });
 }

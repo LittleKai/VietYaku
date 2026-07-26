@@ -268,7 +268,10 @@ void main() {
     test('click đầu cụm → cả cụm', () {
       final engine = TranslationEngine(
         dicts: [
-          dict(DictType.vietPhrase, {'少女達': 'các thiếu nữ', '女達': 'các cô gái'}),
+          dict(DictType.vietPhrase, {
+            '少女達': 'các thiếu nữ',
+            '女達': 'các cô gái',
+          }),
         ],
       );
       final match = engine.matchAt('少女達', 0);
@@ -279,7 +282,10 @@ void main() {
     test('click vào 女 giữa 少女達 → tra lại từ 女, bỏ qua 少', () {
       final engine = TranslationEngine(
         dicts: [
-          dict(DictType.vietPhrase, {'少女達': 'các thiếu nữ', '女達': 'các cô gái'}),
+          dict(DictType.vietPhrase, {
+            '少女達': 'các thiếu nữ',
+            '女達': 'các cô gái',
+          }),
         ],
       );
       final match = engine.matchAt('少女達', 1);

@@ -160,7 +160,8 @@ List<CharCategoryRun> categoryRunsOf(String text) {
     final start = i;
     final category = charCategoryOf(codePointAt(text, i));
     i += runeLengthAt(text, i);
-    while (i < text.length && charCategoryOf(codePointAt(text, i)) == category) {
+    while (i < text.length &&
+        charCategoryOf(codePointAt(text, i)) == category) {
       i += runeLengthAt(text, i);
     }
     runs.add((start: start, end: i, category: category));

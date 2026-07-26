@@ -146,7 +146,10 @@ void main() {
     // Trang chỉ có ảnh trong <div> → vẫn giữ được (img).
     expect(rows.where((row) => row == '(img)').length, greaterThanOrEqualTo(2));
     // Chương không có <h1> KHÔNG được chèn tên file làm dòng (ch1/ch2).
-    expect(rows.any((row) => row.contains('ch1') || row.contains('ch2')), isFalse);
+    expect(
+      rows.any((row) => row.contains('ch1') || row.contains('ch2')),
+      isFalse,
+    );
   });
 }
 

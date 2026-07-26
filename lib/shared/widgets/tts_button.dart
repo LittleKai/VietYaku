@@ -29,7 +29,7 @@ class TtsButton extends ConsumerWidget {
       tooltip: available
           ? tooltip
           : 'Chưa có voice $language.\nCài tại Settings > Time & Language > '
-              'Speech > Add voices',
+                'Speech > Add voices',
       onPressed: available
           ? () {
               final settings = ref.read(settingsProvider);

@@ -89,11 +89,7 @@ void main() {
           kind: TokenKind.matched,
           rawValue: 'đi thôi',
         ),
-        const Token(
-          source: '。」',
-          sourceStart: 3,
-          kind: TokenKind.passthrough,
-        ),
+        const Token(source: '。」', sourceStart: 3, kind: TokenKind.passthrough),
         const Token(
           source: '彼',
           sourceStart: 5,

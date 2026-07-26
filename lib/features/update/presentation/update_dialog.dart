@@ -69,9 +69,7 @@ class _UpdateDialogContent extends ConsumerWidget {
       default:
         final body = state.release?.body.trim();
         return Text(
-          body != null && body.isNotEmpty
-              ? body
-              : 'Đã có phiên bản mới.',
+          body != null && body.isNotEmpty ? body : 'Đã có phiên bản mới.',
         );
     }
   }

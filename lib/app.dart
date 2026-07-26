@@ -125,9 +125,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
                       onDestinationSelected: (index) =>
                           setState(() => _selectedIndex = index),
                       labelType: extended ? null : NavigationRailLabelType.none,
-                      leading: _SidebarHeader(
-                        extended: extended,
-                      ),
+                      leading: _SidebarHeader(extended: extended),
                       destinations: const [
                         NavigationRailDestination(
                           icon: _NavIcon(
@@ -244,9 +242,7 @@ class _NavIcon extends StatelessWidget {
 }
 
 class _SidebarHeader extends StatelessWidget {
-  const _SidebarHeader({
-    required this.extended,
-  });
+  const _SidebarHeader({required this.extended});
 
   final bool extended;
 
@@ -313,10 +309,7 @@ class _SidebarHeader extends StatelessWidget {
 }
 
 class _SidebarToggleButton extends StatefulWidget {
-  const _SidebarToggleButton({
-    required this.extended,
-    required this.onPressed,
-  });
+  const _SidebarToggleButton({required this.extended, required this.onPressed});
 
   final bool extended;
   final VoidCallback onPressed;
@@ -349,7 +342,9 @@ class _SidebarToggleButtonState extends State<_SidebarToggleButton> {
                 ? colorScheme.primaryContainer
                 : colorScheme.surface,
             border: Border.all(
-              color: _isHovered ? colorScheme.primary : colorScheme.outlineVariant,
+              color: _isHovered
+                  ? colorScheme.primary
+                  : colorScheme.outlineVariant,
               width: 1,
             ),
             boxShadow: [
@@ -363,7 +358,9 @@ class _SidebarToggleButtonState extends State<_SidebarToggleButton> {
           child: Icon(
             widget.extended ? Icons.chevron_left : Icons.chevron_right,
             size: 16,
-            color: _isHovered ? colorScheme.onPrimaryContainer : colorScheme.onSurface,
+            color: _isHovered
+                ? colorScheme.onPrimaryContainer
+                : colorScheme.onSurface,
           ),
         ),
       ),

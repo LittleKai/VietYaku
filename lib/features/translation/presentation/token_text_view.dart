@@ -528,7 +528,9 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
           rawKatakanaColor == Colors.black.toARGB32()) {
         katakanaColor = Colors.white;
       } else if (rawKatakanaColor == const Color(0xFF2E7D32).toARGB32()) {
-        katakanaColor = const Color(0xFF66BB6A); // Xanh lục tươi sáng tương phản cao
+        katakanaColor = const Color(
+          0xFF66BB6A,
+        ); // Xanh lục tươi sáng tương phản cao
       } else if (katakanaColor.computeLuminance() < 0.40) {
         katakanaColor = Color.lerp(katakanaColor, Colors.white, 0.65)!;
       }

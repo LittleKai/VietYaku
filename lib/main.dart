@@ -14,14 +14,18 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // window_manager chỉ chạy trên desktop; Android/iOS bỏ qua.
-  final isDesktop =
-      Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+  final isDesktop = Platform.isWindows || Platform.isLinux || Platform.isMacOS;
   if (isDesktop) {
     await windowManager.ensureInitialized();
-    
+
     // Tự động tìm đường dẫn chứa từ điển (release build dùng data/flutter_assets/data)
     final exeDir = p.dirname(Platform.resolvedExecutable);
-    final relativeReleaseData = p.join(exeDir, 'data', 'flutter_assets', 'data');
+    final relativeReleaseData = p.join(
+      exeDir,
+      'data',
+      'flutter_assets',
+      'data',
+    );
     if (Directory(relativeReleaseData).existsSync()) {
       defaultDataDir = relativeReleaseData;
     } else {

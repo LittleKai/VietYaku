@@ -392,7 +392,7 @@ class _SourcePaneState extends ConsumerState<SourcePane> {
           IconContextMenuItem(
             icon: Icons.travel_explore,
             iconColor: meaningLabelColor('Google Dịch', scheme),
-            label: 'Tra online (Mazii + Google Dịch)',
+            label: 'Tra online',
             onPressed: () {
               hide();
               ref.read(lookupControllerProvider.notifier).lookup(selection);
