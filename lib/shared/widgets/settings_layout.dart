@@ -1,39 +1,91 @@
 import 'package:flutter/material.dart';
 
+/// Một tab của [SettingsPage].
+class SettingsTab {
+  const SettingsTab({
+    required this.label,
+    required this.icon,
+    required this.children,
+    this.accentColor,
+  });
+
+  final String label;
+  final IconData icon;
+  final List<Widget> children;
+
+  /// Màu nhấn riêng của tab: tô ô icon đầu tên tab, nhãn và gạch chân khi tab
+  /// đang được chọn. Bỏ trống → dùng màu primary.
+  final Color? accentColor;
+}
+
 /// Khung trang dùng chung cho các màn hình cấu hình.
+///
+/// Truyền [children] cho trang một mạch, hoặc [tabs] khi cần chia tab (mỗi tab
+/// cuộn riêng, tiêu đề và thanh tab đứng yên).
 class SettingsPage extends StatefulWidget {
   const SettingsPage({
     super.key,
     required this.title,
     required this.description,
-    required this.children,
+    this.children = const [],
+    this.tabs = const [],
   });
 
   final String title;
   final String description;
   final List<Widget> children;
+  final List<SettingsTab> tabs;
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  final _scrollController = ScrollController();
+  /// Mỗi tab một controller để Scrollbar bám đúng list đang hiện.
+  final _scrollControllers = <int, ScrollController>{};
 
   @override
   void dispose() {
-    _scrollController.dispose();
+    for (final controller in _scrollControllers.values) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
+  Widget _header(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          widget.title,
+          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+            color: scheme.primary,
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.4,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          widget.description,
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+        ),
+      ],
+    );
+  }
+
+  Widget _scrollBody(int index, List<Widget> children, {Widget? leading}) {
+    final controller = _scrollControllers.putIfAbsent(
+      index,
+      ScrollController.new,
+    );
     return Scrollbar(
-      controller: _scrollController,
+      controller: controller,
       child: ListView(
-        controller: _scrollController,
-        padding: const EdgeInsets.fromLTRB(24, 24, 24, 40),
+        controller: controller,
+        padding: EdgeInsets.fromLTRB(24, leading == null ? 12 : 24, 24, 40),
         children: [
           Center(
             child: ConstrainedBox(
@@ -41,30 +93,10 @@ class _SettingsPageState extends State<SettingsPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text(
-                    widget.title,
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      color: scheme.primary,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -0.4,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    widget.description,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  for (
-                    var index = 0;
-                    index < widget.children.length;
-                    index++
-                  ) ...[
-                    widget.children[index],
-                    if (index != widget.children.length - 1)
-                      const SizedBox(height: 18),
+                  if (leading != null) ...[leading, const SizedBox(height: 24)],
+                  for (var i = 0; i < children.length; i++) ...[
+                    children[i],
+                    if (i != children.length - 1) const SizedBox(height: 18),
                   ],
                 ],
               ),
@@ -72,6 +104,116 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
         ],
       ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.tabs.isEmpty) {
+      return _scrollBody(0, widget.children, leading: _header(context));
+    }
+    return DefaultTabController(
+      length: widget.tabs.length,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 980),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _header(context),
+                    const SizedBox(height: 12),
+                    _SettingsTabBar(tabs: widget.tabs),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: TabBarView(
+              children: [
+                for (var i = 0; i < widget.tabs.length; i++)
+                  _scrollBody(i, widget.tabs[i].children),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// TabBar của trang cài đặt: mỗi tab có ô icon màu riêng ở đầu tên, nhãn và
+/// gạch chân đổi theo màu của tab đang chọn.
+class _SettingsTabBar extends StatelessWidget {
+  const _SettingsTabBar({required this.tabs});
+
+  final List<SettingsTab> tabs;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final controller = DefaultTabController.of(context);
+    final animation = controller.animation!;
+
+    return AnimatedBuilder(
+      animation: animation,
+      builder: (context, _) {
+        final current = animation.value.round().clamp(0, tabs.length - 1);
+        final activeAccent = _resolvedAccent(
+          context,
+          tabs[current].accentColor ?? theme.colorScheme.primary,
+        );
+
+        return TabBar(
+          isScrollable: true,
+          tabAlignment: TabAlignment.start,
+          labelColor: activeAccent,
+          indicatorColor: activeAccent,
+          overlayColor: WidgetStatePropertyAll(
+            activeAccent.withValues(alpha: 0.08),
+          ),
+          tabs: [
+            for (var i = 0; i < tabs.length; i++)
+              Tab(
+                height: 46,
+                child: _tab(context, tabs[i], selected: i == current),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _tab(BuildContext context, SettingsTab tab, {required bool selected}) {
+    final accent = _resolvedAccent(
+      context,
+      tab.accentColor ?? Theme.of(context).colorScheme.primary,
+    );
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          width: 26,
+          height: 26,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: selected ? accent : accent.withValues(alpha: 0.14),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(
+            tab.icon,
+            size: 16,
+            color: selected ? _onAccent(accent) : accent,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(tab.label),
+      ],
     );
   }
 }

@@ -169,7 +169,7 @@ class TokenSelectionNotifier extends Notifier<TokenSelection?> {
     final text = ref.read(translationControllerProvider).sourceText;
     ref
         .read(lookupControllerProvider.notifier)
-        .lookup(word, sentence: _sentenceAt(text, start));
+        .lookup(word, rawSentence: _sentenceAt(text, start));
   }
 
   /// Đoạn nguồn từ vị trí chọn: tối đa 12 rune, dừng ở dấu ngắt câu.

@@ -10,12 +10,14 @@ class TtsButton extends ConsumerWidget {
   final String Function() textProvider;
   final TranslationMode mode;
   final String tooltip;
+  final Color? color;
 
   const TtsButton({
     super.key,
     required this.textProvider,
     required this.mode,
     this.tooltip = 'Đọc',
+    this.color,
   });
 
   @override
@@ -25,7 +27,7 @@ class TtsButton extends ConsumerWidget {
     final language = TtsService.languageFor(mode);
 
     return IconButton(
-      icon: const Icon(Icons.volume_up),
+      icon: Icon(Icons.volume_up, color: available ? color : null),
       tooltip: available
           ? tooltip
           : 'Chưa có voice $language.\nCài tại Settings > Time & Language > '
@@ -37,7 +39,7 @@ class TtsButton extends ConsumerWidget {
                 textProvider(),
                 mode,
                 voiceKey: settings.ttsVoiceFor(mode),
-                rate: settings.ttsSpeechRate,
+                rate: settings.ttsSpeechRateFor(mode),
               );
             }
           : null,

@@ -7,14 +7,17 @@ import '../../dictionary/application/dictionaries_provider.dart';
 import '../../dictionary/data/user_dict_service.dart';
 import '../../settings/settings_provider.dart';
 import '../domain/online_lookup_source.dart';
+import '../domain/trad2simp_table.dart';
 import '../domain/translation_engine.dart';
 import 'lookup_controller.dart';
+import 'trad2simp_provider.dart';
 import 'translation_controller.dart';
 
 /// Một nguồn đang tra: dialog dựng FutureBuilder riêng cho từng cái.
 /// [label] là nhãn `<<Từ điển>>` khi hiện trong ô Nghĩa và khi lưu từ điển.
-/// [saved] = true khi nguồn là từ điển thật (Mazii, Jisho, Weblio) — chỉ nguồn
-/// này mới được ghi vào OnlineDict; kết quả máy dịch (Google) chỉ hiện tạm.
+/// [saved] = true khi nguồn là từ điển thật (Mazii, Jisho, Weblio, Youdao) —
+/// chỉ nguồn này mới được ghi vào OnlineDict; kết quả máy dịch (Google) chỉ
+/// hiện tạm.
 typedef OnlineLookupTask = ({
   OnlineLookupSource source,
   String label,
@@ -28,14 +31,22 @@ typedef OnlineLookupTask = ({
 /// đã xong: chèn các mục có nội dung vào ô Nghĩa và lưu vào
 /// `OnlineDict_<mode>.txt` rồi nạp lại từ điển (lần tra sau có sẵn offline).
 /// Phần lưu chạy độc lập với dialog — đóng dialog sớm vẫn lưu được.
-List<OnlineLookupTask> startOnlineLookup(WidgetRef ref, String word) {
-  final sources = ref.read(settingsProvider).onlineLookupSources;
+List<OnlineLookupTask> startOnlineLookup(WidgetRef ref, String rawWord) {
+  final settings = ref.read(settingsProvider);
+  final sources = settings.onlineLookupSources;
   final mode = ref.read(currentModeProvider);
   final isJa = mode == TranslationMode.japanese;
+  // Mode Trung: tra và lưu bằng bản giản thể, khớp với key mà lookup_controller
+  // dùng khi đọc lại OnlineDict.
+  final word = !isJa && settings.convertTraditionalToSimplified
+      ? (ref.read(trad2SimpTableProvider).valueOrNull ?? Trad2SimpTable.empty)
+            .convert(rawWord)
+      : rawWord;
   final mazii = ref.read(maziiApiProvider);
   final google = ref.read(googleTranslateProvider);
   final jisho = ref.read(jishoApiProvider);
   final weblio = ref.read(weblioApiProvider);
+  final youdao = ref.read(youdaoApiProvider);
   final sourceLang = isJa ? 'ja' : 'zh-CN';
 
   final tasks = <OnlineLookupTask>[];
@@ -56,8 +67,8 @@ List<OnlineLookupTask> startOnlineLookup(WidgetRef ref, String word) {
           saved: false,
           body: google.translate(word, sourceLang: sourceLang),
         ));
-      // Jisho là từ điển thật (JMdict) nên hơn hẳn máy dịch, nhưng chỉ có
-      // tiếng Nhật → mode Trung vẫn phải nhờ Google.
+      // Cả hai chiều đều là từ điển thật: Nhật→Anh dùng Jisho (JMdict),
+      // Trung→Anh dùng 有道词典 (endpoint jsonapi, không cần key).
       case OnlineLookupSource.english:
         tasks.add(
           isJa
@@ -69,13 +80,9 @@ List<OnlineLookupTask> startOnlineLookup(WidgetRef ref, String word) {
                 )
               : (
                   source: source,
-                  label: 'Google Anh',
-                  saved: false,
-                  body: google.translate(
-                    word,
-                    sourceLang: sourceLang,
-                    targetLang: 'en',
-                  ),
+                  label: 'Youdao 中英',
+                  saved: true,
+                  body: youdao.lookup(word),
                 ),
         );
       // Weblio 日中中日辞典 là từ điển thật (~1.6 triệu mục, có cả pinyin) nên

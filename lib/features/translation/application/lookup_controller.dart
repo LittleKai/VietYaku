@@ -8,14 +8,18 @@ import '../../settings/settings_provider.dart';
 import '../data/jisho_api.dart';
 import '../data/mazii_api.dart';
 import '../data/weblio_api.dart';
+import '../data/youdao_api.dart';
 import '../domain/reading_extractor.dart';
 import '../domain/lookup_dictionary_type.dart';
+import '../domain/trad2simp_table.dart';
 import '../domain/translation_engine.dart';
+import 'trad2simp_provider.dart';
 import 'translation_controller.dart';
 
 final maziiApiProvider = Provider<MaziiApi>((ref) => MaziiApi());
 final jishoApiProvider = Provider<JishoApi>((ref) => JishoApi());
 final weblioApiProvider = Provider<WeblioApi>((ref) => WeblioApi());
+final youdaoApiProvider = Provider<YoudaoApi>((ref) => YoudaoApi());
 final googleTranslateProvider = Provider<GoogleTranslateClient>(
   (ref) => GoogleTranslateClient(),
 );
@@ -115,10 +119,20 @@ class LookupController extends Notifier<LookupResult?> {
 
   /// Tra đa từ điển cho [word]; [sentence] là đoạn nguồn quanh vị trí chọn
   /// (dùng cho mục Phiên Âm).
-  void lookup(String word, {String sentence = ''}) {
+  void lookup(String rawWord, {String rawSentence = ''}) {
     final dicts = ref.read(dictionariesProvider).valueOrNull;
-    if (dicts == null || word.isEmpty) return;
+    if (dicts == null || rawWord.isEmpty) return;
     final mode = ref.read(currentModeProvider);
+
+    // Mode Trung: quy phồn→giản trước khi tra, y như lúc dịch cả văn bản. Chọn
+    // chữ trong ô Nguồn (vẫn là bản gốc phồn thể) thì mới tra trúng key dict.
+    final trad2Simp =
+        mode == TranslationMode.chinese &&
+            ref.read(settingsProvider).convertTraditionalToSimplified
+        ? trad2SimpOf(ref)
+        : Trad2SimpTable.empty;
+    final word = trad2Simp.convert(rawWord);
+    final sentence = trad2Simp.convert(rawSentence);
 
     final sections = <LookupSection>[];
     final firstChar = word.substring(0, runeLengthAt(word, 0));

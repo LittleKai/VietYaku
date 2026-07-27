@@ -33,13 +33,24 @@ class IconContextMenu extends StatelessWidget {
       anchors: anchors,
       children: [
         for (final item in items)
-          TextButton.icon(
-            icon: Icon(item.icon, size: 18, color: item.iconColor),
-            label: Text(item.label),
-            onPressed: item.onPressed,
-            style: TextButton.styleFrom(
-              alignment: Alignment.centerLeft,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          // DesktopTextSelectionToolbar xếp con trong Column có
+          // crossAxisAlignment mặc định (center) ở khung rộng cố định → nút co
+          // theo nội dung và nằm giữa. Ép nút rộng hết khung thì
+          // `alignment: centerLeft` mới có tác dụng (đúng cách Flutter làm cho
+          // DesktopTextSelectionToolbarButton).
+          SizedBox(
+            width: double.infinity,
+            child: TextButton.icon(
+              icon: Icon(item.icon, size: 18, color: item.iconColor),
+              label: Text(item.label),
+              onPressed: item.onPressed,
+              style: TextButton.styleFrom(
+                alignment: Alignment.centerLeft,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+              ),
             ),
           ),
       ],

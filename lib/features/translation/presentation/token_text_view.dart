@@ -11,12 +11,14 @@ import '../../dictionary/domain/dict_type.dart';
 import '../../dictionary_sync/application/dictionary_sync_controller.dart';
 import '../../dictionary_sync/domain/shared_dictionary_entry.dart';
 import '../../settings/settings_provider.dart';
+import '../application/lookup_controller.dart';
 import '../application/secondary_phrases_provider.dart';
 import '../application/token_selection.dart';
 import '../application/viet_draft.dart';
 import '../domain/secondary_phrase.dart';
 import '../domain/token.dart';
 import 'lacviet_panel.dart' show meaningLabelColor;
+import 'online_lookup_dialog.dart';
 
 /// Một token đã tính text hiển thị (đã chuẩn hoá + viết hoa).
 typedef _Piece = ({Token token, String text});
@@ -502,8 +504,22 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
         },
       ),
     );
+    custom.add(
+      IconContextMenuItem(
+        icon: Icons.travel_explore,
+        iconColor: meaningLabelColor('Google Dịch', scheme),
+        label: 'Tra online',
+        onPressed: () {
+          editableTextState.hideToolbar();
+          // Tra key CJK của vùng chọn, không phải nghĩa tiếng Việt hiển thị.
+          ref.read(lookupControllerProvider.notifier).lookup(word);
+          showOnlineLookupDialog(context, ref, word: word);
+        },
+      ),
+    );
 
-    // Tô đen → chỉ hiện các mục Thêm/Sửa (+ mục admin nếu đăng nhập).
+    // Tô đen → chỉ hiện các mục Thêm/Sửa + Tra online (+ mục admin nếu
+    // đăng nhập).
     return IconContextMenu(
       anchors: editableTextState.contextMenuAnchors,
       items: custom,

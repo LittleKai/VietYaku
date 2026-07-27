@@ -41,15 +41,16 @@ Specific files user mentioned  → Only if needed for implementation
 - Ưu tiên dict cùng độ dài match: UserDict > Names > VietPhrase.
 - Repair: VALUE KHÔNG ĐỔI 1 BYTE, chỉ sửa key; xuất `*_JP.txt` UTF-8 BOM CRLF cạnh file gốc + copy vào appdata. KHÔNG ghi đè file gốc.
 - Xóa space trong key: khi CẢ HAI ký tự liền kề đều KHÔNG phải ASCII alphanumeric `[A-Za-z0-9]` (không phải quy tắc "hai phía là CJK").
+- Phồn→giản CHỈ mode Trung (mode Nhật quy giản thể là phá kanji Nhật). Chuyển ngầm ngay trước khi tra — `translate()`, `LookupController.lookup()`, `startOnlineLookup()` — ô Nguồn giữ nguyên chữ người dùng dán vào. Bảng `assets/mappings/trad2simp.tsv` sinh từ `data/cn/cedict_ts.u8` bằng `tool/build_trad2simp.dart` (không cần mạng), CHỈ nhận cặp 1 UTF-16 code unit → 1 code unit để `sourceStart` của token còn khớp văn bản gốc. Setting `convertTraditionalToSimplified`, mặc định bật.
 - Bộ dict theo ngôn ngữ: mode Nhật → `data/jp`, mode Trung → `data/cn`; đổi mode reload qua `currentModeProvider` (KHÔNG watch translationController từ dictionariesProvider — vòng phụ thuộc). Override `*_JP.txt` appdata chỉ áp dụng mode Nhật.
-- Online: không key/API trả phí — Mazii (Nhật/Trung), Jisho (Nhật→Anh, JMdict), Weblio 日中中日辞典 (Nhật→Trung, crawl thẻ `<meta name="description">` của `cjjc.weblio.jp/content/<từ>` — thân trang đầy quảng cáo và đổi layout liên tục), Google gtx + fallback crawl `translate.google.com/m`. Hanzii v2 mã hóa response → không dùng. Từ điển Nhật–Trung khác đều loại: MOJi辞書 (Parse API nội bộ, `search_v3` đã bỏ, không auth thì trả rỗng), 沪江小D (chặn request), Baidu/Youdao/Tencent (bắt đăng ký key, mà vẫn là máy dịch).
+- Online: không key/API trả phí — Mazii (Nhật/Trung), Jisho (Nhật→Anh, JMdict), Weblio 日中中日辞典 (Nhật→Trung, crawl thẻ `<meta name="description">` của `cjjc.weblio.jp/content/<từ>` — thân trang đầy quảng cáo và đổi layout liên tục), 有道词典 (Trung→Anh, `dict.youdao.com/jsonapi?q=<từ>&dicts=[["ce"]]` — không key, tự quy phồn→giản, có pinyin + từ loại. KHÔNG dùng `/suggest`: đó là gợi ý ô tìm kiếm, chỉ hiểu giản thể và thiếu phần lớn mục từ), Google gtx + fallback crawl `translate.google.com/m`. Hanzii v2 mã hóa response → không dùng. Đã loại: MOJi辞書 (Parse API nội bộ, `search_v3` đã bỏ, không auth thì trả rỗng), 沪江小D (chặn request), Baidu/Tencent + API dịch trả phí của Youdao (bắt đăng ký key, mà vẫn là máy dịch), 金山词霸 `dict-co.iciba.com` (bắt key).
 - **Chỗ ghi dữ liệu (`AppPaths`) — KHÔNG dùng AppData/Application Support trên desktop:**
   - release → `<thư mục chứa .exe>/userdata/` (`cache/` + `dictionaries/`), app chạy kiểu portable
   - debug/profile → `<repo>/data/userdata/` (đã nằm trong `.gitignore` vì `data/` bị ignore)
   - Android/iOS là ngoại lệ duy nhất: không có thư mục cạnh exe ghi được → vẫn `getApplicationSupportDirectory()`
   - `AppPaths.init()` tự chép `dictionaries/` từ AppData cũ sang chỗ mới một lần, chỉ khi thư mục mới còn trống
   - Bộ từ điển nguồn (`data/jp`, `data/cn`) vẫn chỉ đọc, không ghi đè
-- OnlineDict CHỈ lưu nghĩa từ từ điển thật (Mazii, Jisho, Weblio) — cờ `saved` trong `OnlineLookupTask`. Kết quả máy dịch (Google Việt/Anh) chỉ hiện trên dialog + ô Nghĩa của lần tra đó, không ghi vào file — nghĩa máy dịch theo ngữ cảnh, lưu lại sẽ làm bẩn từ điển.
+- OnlineDict CHỈ lưu nghĩa từ từ điển thật (Mazii, Jisho, Weblio, Youdao) — cờ `saved` trong `OnlineLookupTask`. Kết quả máy dịch (Google Việt) chỉ hiện trên dialog + ô Nghĩa của lần tra đó, không ghi vào file — nghĩa máy dịch theo ngữ cảnh, lưu lại sẽ làm bẩn từ điển.
 
 ## Giới hạn đã biết
 
@@ -102,12 +103,13 @@ Specific files user mentioned  → Only if needed for implementation
 - `lib/features/dictionary/data/dictionary_loader.dart` — load qua `Isolate.run`, cache invalidation
 - `lib/features/repair/domain/jp_repair_pipeline.dart` — sửa key (space + simp→JP), dedupe, report
 - `tool/build_simp2jp.dart` — sinh lại assets/mappings (cần mạng, chỉ lúc dev)
+- `tool/build_trad2simp.dart` — sinh `assets/mappings/trad2simp.tsv` từ `data/cn/cedict_ts.u8`
 - `tool/export_jp.dart` — CLI repair + verify end-to-end trên dữ liệu thật
 
 **Dev Commands:**
 ```bash
 flutter analyze                    # phải sạch trước khi kết thúc task
-flutter test                       # 85 tests (integration tự skip nếu thiếu dữ liệu thật)
+flutter test                       # 196 tests (integration tự skip nếu thiếu dữ liệu thật)
 flutter run -d windows             # chạy debug
 flutter build windows --release    # build exe độc lập
 dart run tool/build_simp2jp.dart   # sinh lại assets mapping (dev, cần mạng)

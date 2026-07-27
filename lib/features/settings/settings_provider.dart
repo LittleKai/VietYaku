@@ -106,6 +106,25 @@ class PaneFont {
       PaneFont(size: size ?? this.size, family: family ?? this.family);
 }
 
+/// Các từ điển popup khả dụng cho từng ngôn ngữ:
+/// - Tiếng Nhật: không có Trung Việt (zhVi).
+/// - Tiếng Trung: không có Nhật Việt (jaVi) và Mazii; mặc định là Lạc Việt.
+List<LookupDictionaryType> availablePopupDictionariesFor(TranslationMode mode) {
+  if (mode == TranslationMode.japanese) {
+    return LookupDictionaryType.values
+        .where((type) => type != LookupDictionaryType.zhVi)
+        .toList(growable: false);
+  } else {
+    return LookupDictionaryType.values
+        .where(
+          (type) =>
+              type != LookupDictionaryType.jaVi &&
+              type != LookupDictionaryType.mazii,
+        )
+        .toList(growable: false);
+  }
+}
+
 class AppSettings {
   /// Đường dẫn file dict nguồn theo ngôn ngữ (JP/CN mỗi bộ riêng).
   final Map<TranslationMode, Map<DictType, String>> dictPaths;
@@ -120,6 +139,10 @@ class AppSettings {
 
   /// Mode Nhật: chuẩn hoá halfwidth katakana (ｱｲｳ → アイウ) trước khi tra.
   final bool normalizeHalfwidthKana;
+
+  /// Mode Trung: quy phồn thể → giản thể trước khi tra (時間 → 时间). Văn bản
+  /// trong ô Nguồn giữ nguyên bản gốc. Không áp dụng cho mode Nhật.
+  final bool convertTraditionalToSimplified;
 
   /// Mode Nhật: merge từ điển biến thể Sudachi (data/jp/SudachiVariants.txt)
   /// dưới VietPhrase. Đổi setting → nạp lại bộ từ điển.
@@ -176,11 +199,13 @@ class AppSettings {
   final String ttsVoiceJa;
   final String ttsVoiceZh;
 
-  /// Tốc độ đọc TTS (0.1–1.0).
-  final double ttsSpeechRate;
+  /// Tốc độ đọc TTS (0.1–1.0) theo từng ngôn ngữ.
+  final double ttsSpeechRateJa;
+  final double ttsSpeechRateZh;
 
-  /// Các từ điển hiện trong popup khi active từ ở ô Nguồn (tối đa 2).
-  final List<LookupDictionaryType> popupDictionaryTypes;
+  /// Các từ điển hiện trong popup khi active từ ở ô Nguồn (tối đa 1) theo từng ngôn ngữ.
+  final List<LookupDictionaryType> popupDictionaryTypesJa;
+  final List<LookupDictionaryType> popupDictionaryTypesZh;
 
   /// Các nguồn chạy khi bấm "Tra online" (rỗng = tắt hẳn tra online).
   final List<OnlineLookupSource> onlineLookupSources;
@@ -198,6 +223,7 @@ class AppSettings {
     this.prioritizeNames = false,
     this.joinKanjiNumerals = true,
     this.normalizeHalfwidthKana = true,
+    this.convertTraditionalToSimplified = true,
     this.sudachiVariants = true,
     this.sudachiReadings = SudachiReadingsMode.sudachiFirst,
     this.secondaryPhraseDisplay = SecondaryPhraseDisplay.tight,
@@ -216,8 +242,10 @@ class AppSettings {
     this.keepSpecialQuotes = true,
     this.ttsVoiceJa = '',
     this.ttsVoiceZh = '',
-    this.ttsSpeechRate = 0.5,
-    this.popupDictionaryTypes = const [],
+    this.ttsSpeechRateJa = 0.5,
+    this.ttsSpeechRateZh = 0.5,
+    this.popupDictionaryTypesJa = const [],
+    this.popupDictionaryTypesZh = const [LookupDictionaryType.lacViet],
     this.onlineLookupSources = OnlineLookupSource.values,
     this.autoCheckUpdates = true,
     this.autoSyncDictionary = false,
@@ -226,6 +254,19 @@ class AppSettings {
   /// Voice đã chọn cho [mode] ('' = tự động).
   String ttsVoiceFor(TranslationMode mode) =>
       mode == TranslationMode.japanese ? ttsVoiceJa : ttsVoiceZh;
+
+  /// Tốc độ đọc đã chọn cho [mode].
+  double ttsSpeechRateFor(TranslationMode mode) =>
+      mode == TranslationMode.japanese ? ttsSpeechRateJa : ttsSpeechRateZh;
+
+  /// Từ điển popup đã chọn cho [mode].
+  List<LookupDictionaryType> popupDictionaryTypesFor(TranslationMode mode) =>
+      mode == TranslationMode.japanese
+          ? popupDictionaryTypesJa
+          : popupDictionaryTypesZh;
+
+  double get ttsSpeechRate => ttsSpeechRateJa;
+  List<LookupDictionaryType> get popupDictionaryTypes => popupDictionaryTypesJa;
 
   PaneFont paneFontFor(PaneId id) => paneFonts[id] ?? const PaneFont();
 
@@ -242,6 +283,7 @@ class AppSettings {
     bool? prioritizeNames,
     bool? joinKanjiNumerals,
     bool? normalizeHalfwidthKana,
+    bool? convertTraditionalToSimplified,
     bool? sudachiVariants,
     SudachiReadingsMode? sudachiReadings,
     SecondaryPhraseDisplay? secondaryPhraseDisplay,
@@ -260,8 +302,10 @@ class AppSettings {
     bool? keepSpecialQuotes,
     String? ttsVoiceJa,
     String? ttsVoiceZh,
-    double? ttsSpeechRate,
-    List<LookupDictionaryType>? popupDictionaryTypes,
+    double? ttsSpeechRateJa,
+    double? ttsSpeechRateZh,
+    List<LookupDictionaryType>? popupDictionaryTypesJa,
+    List<LookupDictionaryType>? popupDictionaryTypesZh,
     List<OnlineLookupSource>? onlineLookupSources,
     bool? autoCheckUpdates,
     bool? autoSyncDictionary,
@@ -273,6 +317,8 @@ class AppSettings {
     joinKanjiNumerals: joinKanjiNumerals ?? this.joinKanjiNumerals,
     normalizeHalfwidthKana:
         normalizeHalfwidthKana ?? this.normalizeHalfwidthKana,
+    convertTraditionalToSimplified:
+        convertTraditionalToSimplified ?? this.convertTraditionalToSimplified,
     sudachiVariants: sudachiVariants ?? this.sudachiVariants,
     sudachiReadings: sudachiReadings ?? this.sudachiReadings,
     secondaryPhraseDisplay:
@@ -293,8 +339,12 @@ class AppSettings {
     keepSpecialQuotes: keepSpecialQuotes ?? this.keepSpecialQuotes,
     ttsVoiceJa: ttsVoiceJa ?? this.ttsVoiceJa,
     ttsVoiceZh: ttsVoiceZh ?? this.ttsVoiceZh,
-    ttsSpeechRate: ttsSpeechRate ?? this.ttsSpeechRate,
-    popupDictionaryTypes: popupDictionaryTypes ?? this.popupDictionaryTypes,
+    ttsSpeechRateJa: ttsSpeechRateJa ?? this.ttsSpeechRateJa,
+    ttsSpeechRateZh: ttsSpeechRateZh ?? this.ttsSpeechRateZh,
+    popupDictionaryTypesJa:
+        popupDictionaryTypesJa ?? this.popupDictionaryTypesJa,
+    popupDictionaryTypesZh:
+        popupDictionaryTypesZh ?? this.popupDictionaryTypesZh,
     onlineLookupSources: onlineLookupSources ?? this.onlineLookupSources,
     autoCheckUpdates: autoCheckUpdates ?? this.autoCheckUpdates,
     autoSyncDictionary: autoSyncDictionary ?? this.autoSyncDictionary,
@@ -325,6 +375,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
   static const _prioritizeNamesKey = 'prioritizeNames';
   static const _joinKanjiNumeralsKey = 'translate.joinKanjiNumerals';
   static const _normalizeHalfwidthKanaKey = 'translate.normalizeHalfwidthKana';
+  static const _trad2SimpKey = 'translate.convertTraditionalToSimplified';
   static const _sudachiVariantsKey = 'translate.sudachiVariants';
   static const _sudachiReadingsKey = 'translate.sudachiReadings';
   static const _secondaryPhraseDisplayKey = 'translate.secondaryPhraseDisplay';
@@ -339,7 +390,11 @@ class SettingsNotifier extends Notifier<AppSettings> {
   static const _ttsVoiceJaKey = 'tts.voice.ja';
   static const _ttsVoiceZhKey = 'tts.voice.zh';
   static const _ttsSpeechRateKey = 'tts.speechRate';
+  static const _ttsSpeechRateJaKey = 'tts.speechRate.ja';
+  static const _ttsSpeechRateZhKey = 'tts.speechRate.zh';
   static const _popupDictionaryTypesKey = 'lookup.popupDictionaries';
+  static const _popupDictionaryTypesJaKey = 'lookup.popupDictionaries.ja';
+  static const _popupDictionaryTypesZhKey = 'lookup.popupDictionaries.zh';
   static const _onlineLookupSourcesKey = 'lookup.onlineSources';
   static const _autoCheckUpdatesKey = 'update.autoCheckUpdates';
   static const _autoSyncDictionaryKey = 'dictionarySync.autoSync';
@@ -355,6 +410,9 @@ class SettingsNotifier extends Notifier<AppSettings> {
     final defaults = AppSettings.defaults();
     final envUrl = _loadSyncServerUrlFromEnv();
     final isOverridden = envUrl != defaultSyncServerUrl;
+    final legacyTtsRate = prefs.getDouble(_ttsSpeechRateKey);
+    final legacyPopupDicts = prefs.getStringList(_popupDictionaryTypesKey);
+
     return AppSettings(
       dictPaths: {
         for (final modeEntry in defaults.dictPaths.entries)
@@ -376,6 +434,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
       prioritizeNames: prefs.getBool(_prioritizeNamesKey) ?? false,
       joinKanjiNumerals: prefs.getBool(_joinKanjiNumeralsKey) ?? true,
       normalizeHalfwidthKana: prefs.getBool(_normalizeHalfwidthKanaKey) ?? true,
+      convertTraditionalToSimplified: prefs.getBool(_trad2SimpKey) ?? true,
       sudachiVariants: prefs.getBool(_sudachiVariantsKey) ?? true,
       sudachiReadings: () {
         final val = prefs.get(_sudachiReadingsKey);
@@ -421,13 +480,35 @@ class SettingsNotifier extends Notifier<AppSettings> {
       keepSpecialQuotes: prefs.getBool(_keepSpecialQuotesKey) ?? true,
       ttsVoiceJa: prefs.getString(_ttsVoiceJaKey) ?? '',
       ttsVoiceZh: prefs.getString(_ttsVoiceZhKey) ?? '',
-      ttsSpeechRate: prefs.getDouble(_ttsSpeechRateKey) ?? 0.5,
-      popupDictionaryTypes: () {
-        final saved = prefs.getStringList(_popupDictionaryTypesKey);
+      ttsSpeechRateJa:
+          prefs.getDouble(_ttsSpeechRateJaKey) ?? legacyTtsRate ?? 0.5,
+      ttsSpeechRateZh:
+          prefs.getDouble(_ttsSpeechRateZhKey) ?? legacyTtsRate ?? 0.5,
+      popupDictionaryTypesJa: () {
+        final saved =
+            prefs.getStringList(_popupDictionaryTypesJaKey) ?? legacyPopupDicts;
         if (saved == null) return const <LookupDictionaryType>[];
         return saved
             .map((name) => LookupDictionaryType.values.asNameMap()[name])
             .whereType<LookupDictionaryType>()
+            .where((type) => type != LookupDictionaryType.zhVi)
+            .take(1)
+            .toList(growable: false);
+      }(),
+      popupDictionaryTypesZh: () {
+        final saved =
+            prefs.getStringList(_popupDictionaryTypesZhKey) ?? legacyPopupDicts;
+        if (saved == null) {
+          return const <LookupDictionaryType>[LookupDictionaryType.lacViet];
+        }
+        return saved
+            .map((name) => LookupDictionaryType.values.asNameMap()[name])
+            .whereType<LookupDictionaryType>()
+            .where(
+              (type) =>
+                  type != LookupDictionaryType.jaVi &&
+                  type != LookupDictionaryType.mazii,
+            )
             .take(1)
             .toList(growable: false);
       }(),
@@ -455,23 +536,41 @@ class SettingsNotifier extends Notifier<AppSettings> {
     }
   }
 
-  Future<void> setTtsSpeechRate(double value) async {
+  Future<void> setTtsSpeechRate(TranslationMode mode, double value) async {
     final v = value.clamp(0.1, 1.0);
     final prefs = ref.read(sharedPreferencesProvider);
-    await prefs.setDouble(_ttsSpeechRateKey, v);
-    state = state.copyWith(ttsSpeechRate: v);
+    if (mode == TranslationMode.japanese) {
+      await prefs.setDouble(_ttsSpeechRateJaKey, v);
+      state = state.copyWith(ttsSpeechRateJa: v);
+    } else {
+      await prefs.setDouble(_ttsSpeechRateZhKey, v);
+      state = state.copyWith(ttsSpeechRateZh: v);
+    }
   }
 
   Future<void> setPopupDictionaryTypes(
+    TranslationMode mode,
     Iterable<LookupDictionaryType> values,
   ) async {
-    final normalized = values.toSet().take(1).toList(growable: false);
+    final available = availablePopupDictionariesFor(mode);
+    final normalized = values
+        .where(available.contains)
+        .toSet()
+        .take(1)
+        .toList(growable: false);
     final prefs = ref.read(sharedPreferencesProvider);
+    final key = mode == TranslationMode.japanese
+        ? _popupDictionaryTypesJaKey
+        : _popupDictionaryTypesZhKey;
     await prefs.setStringList(
-      _popupDictionaryTypesKey,
+      key,
       normalized.map((value) => value.name).toList(growable: false),
     );
-    state = state.copyWith(popupDictionaryTypes: normalized);
+    if (mode == TranslationMode.japanese) {
+      state = state.copyWith(popupDictionaryTypesJa: normalized);
+    } else {
+      state = state.copyWith(popupDictionaryTypesZh: normalized);
+    }
   }
 
   /// Bật/tắt từng nguồn tra online; giữ đúng thứ tự khai báo của enum.
@@ -568,6 +667,12 @@ class SettingsNotifier extends Notifier<AppSettings> {
     final prefs = ref.read(sharedPreferencesProvider);
     await prefs.setBool(_normalizeHalfwidthKanaKey, value);
     state = state.copyWith(normalizeHalfwidthKana: value);
+  }
+
+  Future<void> setConvertTraditionalToSimplified(bool value) async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    await prefs.setBool(_trad2SimpKey, value);
+    state = state.copyWith(convertTraditionalToSimplified: value);
   }
 
   Future<void> setSudachiVariants(bool value) async {

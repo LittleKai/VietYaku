@@ -169,74 +169,136 @@ class _DraggableSplitState extends State<_DraggableSplit> {
   }
 }
 
-/// Menu bar trên cùng: chọn ngôn ngữ Nhật/Trung + Dán & Dịch.
+/// Menu bar trên cùng: chọn ngôn ngữ Nhật/Trung + Dịch Lại + Dán & Dịch.
 class _MenuBar extends ConsumerWidget {
   const _MenuBar();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final mode = ref.watch(translationControllerProvider.select((s) => s.mode));
+    final mode = ref.watch(
+      translationControllerProvider.select((s) => s.mode),
+    );
     final dictsLoading = ref.watch(dictionariesProvider).isLoading;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final isJapanese = mode == TranslationMode.japanese;
+
+    // Màu sắc nổi bật riêng biệt cho 2 mode:
+    // Nhật: Chế độ Xanh lá nhạt (sáng 0xFF43A047, tối 0xFF66BB6A)
+    // Trung: Chế độ Crimson/Flame Amber (sáng 0xFFD84315, tối 0xFFFF7043)
+    final modeColor = isJapanese
+        ? (isDark ? const Color(0xFF66BB6A) : const Color(0xFF43A047))
+        : (isDark ? const Color(0xFFFF7043) : const Color(0xFFD84315));
+
+    // Màu sắc riêng cho nút Dán & Dịch (Teal Emerald) khác nút Dịch Lại (Primary Indigo)
+    final pasteBtnBg = isDark
+        ? const Color(0xFF00897B)
+        : const Color(0xFF00796B);
 
     return Material(
       color: Theme.of(context).colorScheme.surfaceContainerLow,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        child: Row(
-          children: [
-            SegmentedButton<TranslationMode>(
-              segments: const [
-                ButtonSegment(
-                  value: TranslationMode.japanese,
-                  label: Text('Nhật', style: TextStyle(fontSize: 12)),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SegmentedButton<TranslationMode>(
+                segments: const [
+                  ButtonSegment(
+                    value: TranslationMode.japanese,
+                    label: Text('Nhật', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                  ),
+                  ButtonSegment(
+                    value: TranslationMode.chinese,
+                    label: Text('Trung', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                  ),
+                ],
+                selected: {mode},
+                showSelectedIcon: false,
+                style: ButtonStyle(
+                  visualDensity: VisualDensity.compact,
+                  backgroundColor: WidgetStateProperty.resolveWith((states) {
+                    if (states.contains(WidgetState.selected)) {
+                      return modeColor;
+                    }
+                    return null;
+                  }),
+                  foregroundColor: WidgetStateProperty.resolveWith((states) {
+                    if (states.contains(WidgetState.selected)) {
+                      return Colors.white;
+                    }
+                    return null;
+                  }),
+                  side: WidgetStateProperty.resolveWith((states) {
+                    if (states.contains(WidgetState.selected)) {
+                      return BorderSide(color: modeColor, width: 1.5);
+                    }
+                    return null;
+                  }),
                 ),
-                ButtonSegment(
-                  value: TranslationMode.chinese,
-                  label: Text('Trung', style: TextStyle(fontSize: 12)),
+                onSelectionChanged: (selection) => ref
+                    .read(translationControllerProvider.notifier)
+                    .setMode(selection.first),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: modeColor.withValues(alpha: isDark ? 0.2 : 0.1),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: modeColor.withValues(alpha: isDark ? 0.5 : 0.3),
+                  ),
                 ),
-              ],
-              selected: {mode},
-              showSelectedIcon: false,
-              style: const ButtonStyle(visualDensity: VisualDensity.compact),
-              onSelectionChanged: (selection) => ref
-                  .read(translationControllerProvider.notifier)
-                  .setMode(selection.first),
-            ),
-            const SizedBox(width: 12),
-            FilledButton.icon(
-              icon: const Icon(Icons.translate, size: 16),
-              label: const Text('Dịch', style: TextStyle(fontSize: 13)),
-              onPressed: dictsLoading
-                  ? null
-                  : () => ref
-                        .read(translationControllerProvider.notifier)
-                        .translate(ref.read(sourceDraftProvider)),
-              style: FilledButton.styleFrom(
-                visualDensity: VisualDensity.compact,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
+                child: Text(
+                  isJapanese ? 'Nhật → Việt' : 'Trung → Việt',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: modeColor,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: 8),
-            FilledButton.icon(
-              icon: const Icon(Icons.paste, size: 16),
-              label: const Text('Dán & Dịch', style: TextStyle(fontSize: 13)),
-              onPressed: dictsLoading
-                  ? null
-                  : () => ref
-                        .read(translationControllerProvider.notifier)
-                        .pasteAndTranslate(),
-              style: FilledButton.styleFrom(
-                visualDensity: VisualDensity.compact,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
+              const SizedBox(width: 12),
+              FilledButton.icon(
+                icon: const Icon(Icons.refresh_rounded, size: 16),
+                label: const Text('Dịch Lại', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                onPressed: dictsLoading
+                    ? null
+                    : () => ref
+                          .read(translationControllerProvider.notifier)
+                          .translate(ref.read(sourceDraftProvider)),
+                style: FilledButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
                 ),
               ),
-            ),
-          ],
+              const SizedBox(width: 8),
+              FilledButton.icon(
+                icon: const Icon(Icons.paste_rounded, size: 16),
+                label: const Text('Dán & Dịch', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                onPressed: dictsLoading
+                    ? null
+                    : () => ref
+                          .read(translationControllerProvider.notifier)
+                          .pasteAndTranslate(),
+                style: FilledButton.styleFrom(
+                  backgroundColor: pasteBtnBg,
+                  foregroundColor: Colors.white,
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

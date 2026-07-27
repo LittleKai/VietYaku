@@ -5,6 +5,7 @@ import 'package:vietyaku/features/settings/settings_provider.dart';
 import 'package:vietyaku/features/translation/application/lookup_controller.dart';
 import 'package:vietyaku/features/translation/data/jisho_api.dart';
 import 'package:vietyaku/features/translation/data/weblio_api.dart';
+import 'package:vietyaku/features/translation/data/youdao_api.dart';
 import 'package:vietyaku/features/translation/domain/online_lookup_source.dart';
 
 void main() {
@@ -94,6 +95,93 @@ void main() {
 
     test('không có thẻ description thì trả null', () {
       expect(WeblioApi.format('<html><body>404</body></html>', '猫'), isNull);
+    });
+  });
+
+  group('YoudaoApi.format (response thật của dict.youdao.com/jsonapi)', () {
+    /// Một nghĩa: `l.i` là các mảnh, mảnh tra được là map có `#text`.
+    Map<String, dynamic> sense(List<Object> parts, [String? pos]) => {
+      'tr': [
+        {
+          'l': {'i': parts, 'pos': ?pos},
+        },
+      ],
+    };
+
+    test('header có pinyin, mỗi nghĩa một dòng kèm từ loại', () {
+      final json = {
+        'ce': {
+          'word': [
+            {
+              'return-phrase': {
+                'l': {'i': '取消'},
+              },
+              'phone': 'qǔ xiāo',
+              'trs': [
+                sense(['', 'cancel'], 'vt.'),
+                // "call off" bị chẻ làm 2 mảnh tra được + 1 space.
+                sense([
+                  '',
+                  {'#text': 'call'},
+                  ' ',
+                  {'#text': 'off'},
+                ]),
+              ],
+            },
+          ],
+        },
+      };
+      expect(
+        YoudaoApi.format(json, '取消'),
+        '取消 「qǔ xiāo」\n- (vt.) cancel\n- call off',
+      );
+    });
+
+    test('phồn thể: header hiện headword giản thể mà Youdao quy về', () {
+      final json = {
+        'ce': {
+          'word': [
+            {
+              'return-phrase': {
+                'l': {'i': '时间'},
+              },
+              'phone': 'shí jiān',
+              'trs': [
+                sense(['', 'time'], 'n.'),
+              ],
+            },
+          ],
+        },
+      };
+      expect(YoudaoApi.format(json, '時間'), '时间 「shí jiān」\n- (n.) time');
+    });
+
+    test('không có phone thì header chỉ có headword', () {
+      final json = {
+        'ce': {
+          'word': [
+            {
+              'return-phrase': {
+                'l': {'i': '电车'},
+              },
+              'trs': [
+                sense(['', 'tram']),
+              ],
+            },
+          ],
+        },
+      };
+      expect(YoudaoApi.format(json, '电车'), '电车\n- tram');
+    });
+
+    test('từ không có trong từ điển: response thiếu khoá ce → null', () {
+      expect(
+        YoudaoApi.format(const {
+          'input': '一露头',
+          'meta': {'guessLanguage': 'zh'},
+        }, '一露头'),
+        isNull,
+      );
     });
   });
 

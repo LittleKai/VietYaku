@@ -23,9 +23,10 @@ class LacVietPanel extends ConsumerWidget {
       dictionarySyncProvider.select((state) => state.isAdmin),
     );
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final selection = ref.watch(tokenSelectionProvider);
     final popupTypes = ref.watch(
-      settingsProvider.select((s) => s.popupDictionaryTypes),
+      settingsProvider.select((s) => s.popupDictionaryTypesFor(mode)),
     );
     final hiddenTypes = selection?.origin == TokenSelectionOrigin.source
         ? popupTypes
@@ -75,23 +76,35 @@ class LacVietPanel extends ConsumerWidget {
                     ],
                   ),
                 ),
-                const _OnlineLookupButton(),
+                _OnlineLookupButton(
+                  color: isDark
+                      ? const Color(0xFF4FC3F7)
+                      : const Color(0xFF0288D1),
+                ),
                 TtsButton(
                   textProvider: () => result.matchedKey ?? result.word,
                   mode: mode,
                   tooltip: 'Đọc từ',
+                  color: isDark
+                      ? const Color(0xFFCE93D8)
+                      : const Color(0xFF7B1FA2),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.edit),
+                  icon: Icon(
+                    Icons.edit_note_rounded,
+                    color: isDark
+                        ? const Color(0xFFFFB74D)
+                        : const Color(0xFFE65100),
+                  ),
                   tooltip: isAdmin
-                      ? 'Sửa trực tiếp trong Lạc Việt'
+                      ? 'Sửa trực tiếp trong VietPhrase'
                       : 'Sửa nghĩa trong UserDict',
                   onPressed: () => isAdmin
                       ? showSharedEntryEditDialog(
                           context,
                           ref,
                           word: result.word,
-                          kind: SharedDictionaryKind.lacViet,
+                          kind: SharedDictionaryKind.vietPhrase,
                         )
                       : showEntryEditDialog(
                           context,
@@ -153,12 +166,12 @@ Color meaningLabelColor(String label, ColorScheme scheme) {
       return const Color(0xFF43A047); // light green
     case 'Google Dịch':
       return const Color(0xFF1565C0); // blue
-    case 'Google Anh':
-      return const Color(0xFF5E35B1); // deep purple
     case 'Jisho':
       return const Color(0xFF00695C); // dark teal
     case 'Weblio 日中':
       return const Color(0xFFAD1457); // dark pink
+    case 'Youdao 中英':
+      return const Color(0xFF5E35B1); // deep purple
     default:
       return scheme.primary;
   }
@@ -209,12 +222,14 @@ class _MeaningSections extends ConsumerWidget {
 
 /// Nút tra online: mở dialog tra song song Mazii + Google Dịch.
 class _OnlineLookupButton extends ConsumerWidget {
-  const _OnlineLookupButton();
+  const _OnlineLookupButton({this.color});
+
+  final Color? color;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return IconButton(
-      icon: const Icon(Icons.travel_explore),
+      icon: Icon(Icons.travel_explore, color: color),
       tooltip: 'Tra online (theo nguồn đã bật trong Cài đặt)',
       onPressed: () {
         final word = ref.read(lookupControllerProvider)?.word ?? '';

@@ -39,7 +39,7 @@ Future<void> main() async {
       size: Size(1200, 760),
       minimumSize: Size(1000, 640),
       center: true,
-      title: 'VietYaku',
+      title: 'VietYaku v1.0.5',
     );
     await windowManager.waitUntilReadyToShow(windowOptions, () async {
       await windowManager.show();

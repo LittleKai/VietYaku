@@ -7,6 +7,7 @@ import '../domain/jp_input_normalizer.dart';
 import '../domain/kanji_numeral.dart';
 import '../domain/token.dart';
 import '../domain/translation_engine.dart';
+import 'trad2simp_provider.dart';
 
 class TranslationState {
   final TranslationMode mode;
@@ -59,6 +60,8 @@ final currentModeProvider =
 class TranslationController extends Notifier<TranslationState> {
   @override
   TranslationState build() {
+    // Nạp sẵn bảng phồn→giản: `translate()` chạy đồng bộ nên không await được.
+    ref.read(trad2SimpTableProvider);
     return TranslationState(mode: ref.read(settingsProvider).defaultMode);
   }
 
@@ -85,6 +88,7 @@ class TranslationController extends Notifier<TranslationState> {
       prioritizeNames: settings.prioritizeNames,
     );
     final sw = Stopwatch()..start();
+    var lookupText = text;
     List<Token> tokens;
     if (state.mode == TranslationMode.japanese) {
       // Chuẩn hoá halfwidth katakana trước khi tra; token map ngược về
@@ -102,10 +106,19 @@ class TranslationController extends Notifier<TranslationState> {
         tokens = joinKanjiNumerals(tokens);
       }
     } else {
-      tokens = engine.translate(text, mode: state.mode);
+      // Bộ dict Trung là giản thể; quy phồn→giản trước khi tra. Bảng chỉ có cặp
+      // 1 code unit → 1 code unit nên offset token vẫn khớp `text` gốc, ô Nguồn
+      // giữ nguyên bản người dùng dán vào.
+      if (settings.convertTraditionalToSimplified) {
+        lookupText = trad2SimpOf(ref).convert(text);
+      }
+      tokens = engine.translate(lookupText, mode: state.mode);
     }
     sw.stop();
-    final hanVietTokens = dicts.hanVietEngine.translate(text, mode: state.mode);
+    final hanVietTokens = dicts.hanVietEngine.translate(
+      lookupText,
+      mode: state.mode,
+    );
     state = state.copyWith(
       sourceText: text,
       tokens: tokens,

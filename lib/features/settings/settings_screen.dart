@@ -11,7 +11,6 @@ import '../repair/domain/jp_repair_pipeline.dart';
 import '../repair/presentation/repair_screen.dart';
 import '../translation/application/translation_controller.dart';
 import '../translation/domain/translation_engine.dart';
-import '../translation/domain/lookup_dictionary_type.dart';
 import '../translation/domain/online_lookup_source.dart';
 import '../update/application/update_controller.dart';
 import '../update/presentation/update_dialog.dart';
@@ -29,213 +28,279 @@ class SettingsScreen extends ConsumerWidget {
       title: 'Cài đặt',
       description:
           'Cấu hình cách dịch, phát âm, sửa và đồng bộ dữ liệu từ điển.',
-      children: [
-        SettingsSection(
-          icon: Icons.account_tree_outlined,
+      tabs: [
+        SettingsTab(
+          label: 'Chung',
+          icon: Icons.tune,
           accentColor: const Color(0xFF3949AB),
-          title: 'Xử lý bản dịch',
-          description: 'Các thay đổi được áp dụng ở lần bấm Dịch tiếp theo.',
           children: [
-            SettingsControlRow(
-              title: 'Thuật toán dịch',
-              description: 'Chọn cách ưu tiên cụm từ khi quét toàn bộ văn bản.',
-              controlWidth: 500,
-              control: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: SegmentedButton<TranslationAlgorithm>(
-                  showSelectedIcon: false,
-                  segments: const [
-                    ButtonSegment(
-                      value: TranslationAlgorithm.leftToRight,
-                      label: Text('Trái → phải'),
-                      tooltip:
-                          'Quét trái sang phải, mỗi vị trí lấy cụm dài nhất',
+            SettingsSection(
+              icon: Icons.account_tree_outlined,
+              accentColor: const Color(0xFF3949AB),
+              title: 'Xử lý bản dịch',
+              description:
+                  'Các thay đổi được áp dụng ở lần bấm Dịch tiếp theo.',
+              children: [
+                SettingsControlRow(
+                  title: 'Thuật toán dịch',
+                  description:
+                      'Chọn cách ưu tiên cụm từ khi quét toàn bộ văn bản.',
+                  controlWidth: 500,
+                  control: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: SegmentedButton<TranslationAlgorithm>(
+                      showSelectedIcon: false,
+                      segments: const [
+                        ButtonSegment(
+                          value: TranslationAlgorithm.leftToRight,
+                          label: Text('Trái → phải'),
+                          tooltip:
+                              'Quét trái sang phải, mỗi vị trí lấy cụm dài nhất',
+                        ),
+                        ButtonSegment(
+                          value: TranslationAlgorithm.longestPhrase,
+                          label: Text('Ưu tiên cụm dài'),
+                          tooltip: 'Cụm dài nhất toàn văn bản được dịch trước',
+                        ),
+                        ButtonSegment(
+                          value: TranslationAlgorithm.longestPhrase4,
+                          label: Text('Cụm dài ≥ 4'),
+                          tooltip:
+                              'Chỉ cụm từ 4 ký tự trở lên được ưu tiên toàn văn',
+                        ),
+                      ],
+                      selected: {settings.translationAlgorithm},
+                      onSelectionChanged: (selection) =>
+                          notifier.setTranslationAlgorithm(selection.first),
                     ),
-                    ButtonSegment(
-                      value: TranslationAlgorithm.longestPhrase,
-                      label: Text('Ưu tiên cụm dài'),
-                      tooltip: 'Cụm dài nhất toàn văn bản được dịch trước',
-                    ),
-                    ButtonSegment(
-                      value: TranslationAlgorithm.longestPhrase4,
-                      label: Text('Cụm dài ≥ 4'),
-                      tooltip:
-                          'Chỉ cụm từ 4 ký tự trở lên được ưu tiên toàn văn',
-                    ),
-                  ],
-                  selected: {settings.translationAlgorithm},
-                  onSelectionChanged: (selection) =>
-                      notifier.setTranslationAlgorithm(selection.first),
+                  ),
                 ),
-              ),
+                SettingsSwitchRow(
+                  title: 'Ưu tiên Names hơn VietPhrase',
+                  description:
+                      'Names tại một vị trí thắng cụm VietPhrase dài hơn. UserDict vẫn cao nhất.',
+                  value: settings.prioritizeNames,
+                  onChanged: notifier.setPrioritizeNames,
+                ),
+              ],
             ),
-            SettingsSwitchRow(
-              title: 'Ưu tiên Names hơn VietPhrase',
+            const SettingsSection(
+              icon: Icons.travel_explore_outlined,
+              accentColor: Color(0xFF1565C0),
+              title: 'Tra online',
               description:
-                  'Names tại một vị trí thắng cụm VietPhrase dài hơn. UserDict vẫn cao nhất.',
-              value: settings.prioritizeNames,
-              onChanged: notifier.setPrioritizeNames,
+                  'Nguồn chạy khi bấm "Tra online" ở tab Dịch. Kết quả hiện trong ô Nghĩa; chỉ nghĩa từ điển thật (Mazii, Jisho, Weblio, Youdao) mới lưu vào OnlineDict.',
+              children: [_OnlineLookupSourcesSetting()],
             ),
-            SettingsSwitchRow(
-              title: 'Chuẩn hoá Katakana nửa hình',
+            const SettingsSection(
+              icon: Icons.cloud_sync_outlined,
+              accentColor: Color(0xFF00838F),
+              title: 'Từ điển chung',
               description:
-                  'Mode Nhật: đổi ｱｲｳ và ｶﾞ thành アイウ và ガ trước khi tra từ điển.',
-              value: settings.normalizeHalfwidthKana,
-              onChanged: notifier.setNormalizeHalfwidthKana,
+                  'Kéo bản mới từ server; tự động đồng bộ hoặc cập nhật thủ công. Đăng nhập quản trị để xuất bản thay đổi.',
+              children: [_DictionarySyncSettings()],
             ),
-            SettingsSwitchRow(
-              title: 'Gộp số Kanji thành số Ả Rập',
-              description:
-                  'Mode Nhật: đổi run số chưa match như 三百二十五 thành 325; cụm đã match giữ nguyên.',
-              value: settings.joinKanjiNumerals,
-              onChanged: notifier.setJoinKanjiNumerals,
-            ),
-            SettingsSwitchRow(
-              title: 'Dùng từ điển biến thể Sudachi',
-              description:
-                  'Mode Nhật: tra biến thể Okurigana như 打込む → 打ち込む. Đổi lựa chọn sẽ nạp lại từ điển.',
-              value: settings.sudachiVariants,
-              onChanged: notifier.setSudachiVariants,
-            ),
-            SettingsControlRow(
-              title: 'Nguồn phát âm Kana',
-              description:
-                  'Mode Nhật: chọn thứ tự ưu tiên phát âm trong ô Nghĩa.',
-              controlWidth: 430,
-              control: DropdownMenu<SudachiReadingsMode>(
-                expandedInsets: EdgeInsets.zero,
-                initialSelection: settings.sudachiReadings,
-                onSelected: (value) {
-                  if (value != null) notifier.setSudachiReadings(value);
-                },
-                dropdownMenuEntries: const [
-                  DropdownMenuEntry(
-                    value: SudachiReadingsMode.sudachiFirst,
-                    label: 'Ưu tiên SudachiDict',
-                  ),
-                  DropdownMenuEntry(
-                    value: SudachiReadingsMode.jaViFirst,
-                    label: 'Ưu tiên Nhật Việt / Lạc Việt',
-                  ),
-                  DropdownMenuEntry(
-                    value: SudachiReadingsMode.disabled,
-                    label: 'Không dùng SudachiDict',
-                  ),
-                ],
-              ),
-            ),
-            SettingsControlRow(
-              title: 'Đánh dấu cụm từ điển phụ',
-              description:
-                  'Mode Nhật: cụm kana chỉ có trong Lạc Việt / Nhật Việt / Mazii (không có trong VietPhrase) hiện thế nào trong ô VietPhrase.',
-              controlWidth: 430,
-              control: DropdownMenu<SecondaryPhraseDisplay>(
-                expandedInsets: EdgeInsets.zero,
-                initialSelection: settings.secondaryPhraseDisplay,
-                onSelected: (value) {
-                  if (value != null) {
-                    notifier.setSecondaryPhraseDisplay(value);
-                  }
-                },
-                dropdownMenuEntries: const [
-                  DropdownMenuEntry(
-                    value: SecondaryPhraseDisplay.off,
-                    label: 'Tắt',
-                  ),
-                  DropdownMenuEntry(
-                    value: SecondaryPhraseDisplay.tight,
-                    label: 'Sát khoảng cách',
-                  ),
-                  DropdownMenuEntry(
-                    value: SecondaryPhraseDisplay.italic,
-                    label: 'In nghiêng',
-                  ),
-                ],
-              ),
+            const SettingsSection(
+              icon: Icons.system_update_alt_outlined,
+              accentColor: Color(0xFF0277BD),
+              title: 'Cập nhật ứng dụng',
+              description: 'Kiểm tra và tải bản mới từ GitHub Releases.',
+              children: [_UpdateSettings()],
             ),
           ],
         ),
-        const SettingsSection(
-          icon: Icons.open_in_new_outlined,
-          accentColor: Color(0xFF7B1FA2),
-          title: 'Popup tra nhanh',
-          description:
-              'Hiện nghĩa khi active một cụm trong ô Nguồn; chọn tối đa 2 từ điển.',
-          children: [_PopupDictionarySetting()],
-        ),
-        const SettingsSection(
-          icon: Icons.travel_explore_outlined,
-          accentColor: Color(0xFF1565C0),
-          title: 'Tra online',
-          description:
-              'Nguồn chạy khi bấm "Tra online" ở tab Dịch. Kết quả hiện trong ô Nghĩa; chỉ nghĩa từ điển thật (Mazii, Jisho, Weblio) mới lưu vào OnlineDict.',
-          children: [_OnlineLookupSourcesSetting()],
-        ),
-        const SettingsSection(
-          icon: Icons.volume_up_outlined,
-          accentColor: Color(0xFF00897B),
-          title: 'Phát âm',
-          description: 'Giọng đọc và tốc độ riêng cho tiếng Nhật, tiếng Trung.',
+        SettingsTab(
+          label: 'Tiếng Nhật',
+          icon: Icons.translate,
+          accentColor: const Color(0xFFD81B60),
           children: [
-            _TtsSpeedSetting(),
-            _TtsVoiceSetting(mode: TranslationMode.japanese),
-            _TtsVoiceSetting(mode: TranslationMode.chinese),
-          ],
-        ),
-        if (!Platform.isAndroid)
-          SettingsSection(
-            icon: Icons.handyman_outlined,
-            accentColor: const Color(0xFFEF6C00),
-            title: 'Sửa từ điển',
-            description:
-                'Sửa key thuần Hán, xuất file _JP.txt và nạp kết quả vào ứng dụng.',
-            children: [
-              SettingsControlRow(
-                title: 'Chính sách key thuần Hán',
-                description:
-                    'Quyết định cách xử lý biến thể khi chạy công cụ sửa từ điển.',
-                controlWidth: 500,
-                control: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: SegmentedButton<RepairPolicy>(
-                    showSelectedIcon: false,
-                    segments: const [
-                      ButtonSegment(
-                        value: RepairPolicy.addVariant,
-                        label: Text('Giữ gốc + thêm JP'),
+            SettingsSection(
+              icon: Icons.text_fields_outlined,
+              accentColor: const Color(0xFF3949AB),
+              title: 'Xử lý văn bản Nhật',
+              description: 'Chỉ áp dụng khi đang dịch tiếng Nhật.',
+              children: [
+                SettingsSwitchRow(
+                  title: 'Chuẩn hoá Katakana nửa hình',
+                  description:
+                      'Đổi ｱｲｳ và ｶﾞ thành アイウ và ガ trước khi tra từ điển.',
+                  value: settings.normalizeHalfwidthKana,
+                  onChanged: notifier.setNormalizeHalfwidthKana,
+                ),
+                SettingsSwitchRow(
+                  title: 'Gộp số Kanji thành số Ả Rập',
+                  description:
+                      'Đổi run số chưa match như 三百二十五 thành 325; cụm đã match giữ nguyên.',
+                  value: settings.joinKanjiNumerals,
+                  onChanged: notifier.setJoinKanjiNumerals,
+                ),
+                SettingsSwitchRow(
+                  title: 'Dùng từ điển biến thể Sudachi',
+                  description:
+                      'Tra biến thể Okurigana như 打込む → 打ち込む. Đổi lựa chọn sẽ nạp lại từ điển.',
+                  value: settings.sudachiVariants,
+                  onChanged: notifier.setSudachiVariants,
+                ),
+                SettingsControlRow(
+                  title: 'Nguồn phát âm Kana',
+                  description: 'Chọn thứ tự ưu tiên phát âm trong ô Nghĩa.',
+                  controlWidth: 430,
+                  control: DropdownMenu<SudachiReadingsMode>(
+                    expandedInsets: EdgeInsets.zero,
+                    initialSelection: settings.sudachiReadings,
+                    onSelected: (value) {
+                      if (value != null) notifier.setSudachiReadings(value);
+                    },
+                    dropdownMenuEntries: const [
+                      DropdownMenuEntry(
+                        value: SudachiReadingsMode.sudachiFirst,
+                        label: 'Ưu tiên SudachiDict',
                       ),
-                      ButtonSegment(
-                        value: RepairPolicy.convert,
-                        label: Text('Convert hết'),
+                      DropdownMenuEntry(
+                        value: SudachiReadingsMode.jaViFirst,
+                        label: 'Ưu tiên Nhật Việt / Lạc Việt',
                       ),
-                      ButtonSegment(
-                        value: RepairPolicy.keepOnly,
-                        label: Text('Không convert'),
+                      DropdownMenuEntry(
+                        value: SudachiReadingsMode.disabled,
+                        label: 'Không dùng SudachiDict',
                       ),
                     ],
-                    selected: {settings.repairPolicy},
-                    onSelectionChanged: (selection) =>
-                        notifier.setRepairPolicy(selection.first),
                   ),
                 ),
+                SettingsControlRow(
+                  title: 'Đánh dấu cụm từ điển phụ',
+                  description:
+                      'Cụm kana chỉ có trong Lạc Việt / Nhật Việt / Mazii (không có trong VietPhrase) hiện thế nào trong ô VietPhrase.',
+                  controlWidth: 430,
+                  control: DropdownMenu<SecondaryPhraseDisplay>(
+                    expandedInsets: EdgeInsets.zero,
+                    initialSelection: settings.secondaryPhraseDisplay,
+                    onSelected: (value) {
+                      if (value != null) {
+                        notifier.setSecondaryPhraseDisplay(value);
+                      }
+                    },
+                    dropdownMenuEntries: const [
+                      DropdownMenuEntry(
+                        value: SecondaryPhraseDisplay.off,
+                        label: 'Tắt',
+                      ),
+                      DropdownMenuEntry(
+                        value: SecondaryPhraseDisplay.tight,
+                        label: 'Sát khoảng cách',
+                      ),
+                      DropdownMenuEntry(
+                        value: SecondaryPhraseDisplay.italic,
+                        label: 'In nghiêng',
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SettingsSection(
+              icon: Icons.open_in_new_outlined,
+              accentColor: Color(0xFF7B1FA2),
+              title: 'Popup tra nhanh Nhật',
+              description:
+                  'Hiện nghĩa khi active một cụm trong ô Nguồn ở mode Nhật; chọn tối đa 1 từ điển.',
+              children: [
+                _PopupDictionarySetting(mode: TranslationMode.japanese),
+              ],
+            ),
+            const SettingsSection(
+              icon: Icons.volume_up_outlined,
+              accentColor: Color(0xFF00897B),
+              title: 'Phát âm',
+              description: 'Giọng đọc và tốc độ đọc dùng cho tiếng Nhật.',
+              children: [
+                _TtsSpeedSetting(mode: TranslationMode.japanese),
+                _TtsVoiceSetting(mode: TranslationMode.japanese),
+              ],
+            ),
+            if (!Platform.isAndroid)
+              SettingsSection(
+                icon: Icons.handyman_outlined,
+                accentColor: const Color(0xFFEF6C00),
+                title: 'Sửa từ điển',
+                description:
+                    'Sửa key thuần Hán, xuất file _JP.txt và nạp kết quả vào ứng dụng.',
+                children: [
+                  SettingsControlRow(
+                    title: 'Chính sách key thuần Hán',
+                    description:
+                        'Quyết định cách xử lý biến thể khi chạy công cụ sửa từ điển.',
+                    controlWidth: 500,
+                    control: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: SegmentedButton<RepairPolicy>(
+                        showSelectedIcon: false,
+                        segments: const [
+                          ButtonSegment(
+                            value: RepairPolicy.addVariant,
+                            label: Text('Giữ gốc + thêm JP'),
+                          ),
+                          ButtonSegment(
+                            value: RepairPolicy.convert,
+                            label: Text('Convert hết'),
+                          ),
+                          ButtonSegment(
+                            value: RepairPolicy.keepOnly,
+                            label: Text('Không convert'),
+                          ),
+                        ],
+                        selected: {settings.repairPolicy},
+                        onSelectionChanged: (selection) =>
+                            notifier.setRepairPolicy(selection.first),
+                      ),
+                    ),
+                  ),
+                  const RepairScreen(showHeader: false),
+                ],
               ),
-              const RepairScreen(showHeader: false),
-            ],
-          ),
-        const SettingsSection(
-          icon: Icons.cloud_sync_outlined,
-          accentColor: Color(0xFF00838F),
-          title: 'Từ điển chung',
-          description:
-              'Kéo bản mới từ server; tự động đồng bộ hoặc cập nhật thủ công. Đăng nhập quản trị để xuất bản thay đổi.',
-          children: [_DictionarySyncSettings()],
+          ],
         ),
-        const SettingsSection(
-          icon: Icons.system_update_alt_outlined,
-          accentColor: Color(0xFF0277BD),
-          title: 'Cập nhật ứng dụng',
-          description: 'Kiểm tra và tải bản mới từ GitHub Releases.',
-          children: [_UpdateSettings()],
+        SettingsTab(
+          label: 'Tiếng Trung',
+          icon: Icons.language,
+          accentColor: const Color(0xFFEF6C00),
+          children: [
+            SettingsSection(
+              icon: Icons.text_fields_outlined,
+              accentColor: const Color(0xFF3949AB),
+              title: 'Xử lý văn bản Trung',
+              description: 'Chỉ áp dụng khi đang dịch tiếng Trung.',
+              children: [
+                SettingsSwitchRow(
+                  title: 'Quy phồn thể về giản thể trước khi tra',
+                  description:
+                      'Bộ từ điển Trung là giản thể nên 時間 phải tra thành 时间. Ô Nguồn vẫn giữ nguyên chữ phồn thể đã dán vào.',
+                  value: settings.convertTraditionalToSimplified,
+                  onChanged: notifier.setConvertTraditionalToSimplified,
+                ),
+              ],
+            ),
+            const SettingsSection(
+              icon: Icons.open_in_new_outlined,
+              accentColor: Color(0xFF7B1FA2),
+              title: 'Popup tra nhanh Trung',
+              description:
+                  'Hiện nghĩa khi active một cụm trong ô Nguồn ở mode Trung; chọn tối đa 1 từ điển.',
+              children: [
+                _PopupDictionarySetting(mode: TranslationMode.chinese),
+              ],
+            ),
+            const SettingsSection(
+              icon: Icons.volume_up_outlined,
+              accentColor: Color(0xFF00897B),
+              title: 'Phát âm',
+              description: 'Giọng đọc và tốc độ đọc dùng cho tiếng Trung.',
+              children: [
+                _TtsSpeedSetting(mode: TranslationMode.chinese),
+                _TtsVoiceSetting(mode: TranslationMode.chinese),
+              ],
+            ),
+          ],
         ),
       ],
     );
@@ -243,23 +308,32 @@ class SettingsScreen extends ConsumerWidget {
 }
 
 class _PopupDictionarySetting extends ConsumerWidget {
-  const _PopupDictionarySetting();
+  const _PopupDictionarySetting({required this.mode});
+
+  final TranslationMode mode;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final selected = ref.watch(
-      settingsProvider.select((settings) => settings.popupDictionaryTypes),
+      settingsProvider.select(
+        (settings) => settings.popupDictionaryTypesFor(mode),
+      ),
     );
+    final available = availablePopupDictionariesFor(mode);
+    final label = mode == TranslationMode.japanese ? 'tiếng Nhật' : 'tiếng Trung';
+    final defaultDesc = mode == TranslationMode.chinese
+        ? 'Chỉ chọn được 1 từ điển. Mặc định là Lạc Việt.'
+        : 'Chỉ chọn được 1 từ điển. Mặc định không chọn (tắt popup).';
     return SettingsControlRow(
-      title: 'Từ điển trong popup',
-      description: 'Chỉ chọn được 1 từ điển. Mặc định không chọn (tắt popup).',
+      title: 'Từ điển trong popup ($label)',
+      description: defaultDesc,
       controlWidth: 540,
       control: Wrap(
         spacing: 8,
         runSpacing: 8,
         alignment: WrapAlignment.end,
         children: [
-          for (final type in LookupDictionaryType.values)
+          for (final type in available)
             FilterChip(
               label: Text(type.label),
               selected: selected.contains(type),
@@ -267,7 +341,7 @@ class _PopupDictionarySetting extends ConsumerWidget {
               onSelected: (enabled) {
                 ref
                     .read(settingsProvider.notifier)
-                    .setPopupDictionaryTypes(enabled ? [type] : const []);
+                    .setPopupDictionaryTypes(mode, enabled ? [type] : const []);
               },
             ),
         ],
@@ -319,19 +393,22 @@ class _OnlineLookupSourcesSetting extends ConsumerWidget {
 }
 
 class _TtsSpeedSetting extends ConsumerWidget {
-  const _TtsSpeedSetting();
+  const _TtsSpeedSetting({required this.mode});
+
+  final TranslationMode mode;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final rate = ref.watch(
-      settingsProvider.select((value) => value.ttsSpeechRate),
+      settingsProvider.select((value) => value.ttsSpeechRateFor(mode)),
     );
     final notifier = ref.read(settingsProvider.notifier);
     final ratePct = (rate * 100).round();
+    final label = mode == TranslationMode.japanese ? 'tiếng Nhật' : 'tiếng Trung';
 
     return SettingsControlRow(
-      title: 'Tốc độ đọc',
-      description: 'Áp dụng cho cả giọng Nhật và Trung.',
+      title: 'Tốc độ đọc ($label)',
+      description: 'Áp dụng cho giọng $label.',
       controlWidth: 430,
       control: Row(
         children: [
@@ -342,7 +419,7 @@ class _TtsSpeedSetting extends ConsumerWidget {
               max: 1.0,
               divisions: 18,
               label: '$ratePct%',
-              onChanged: notifier.setTtsSpeechRate,
+              onChanged: (v) => notifier.setTtsSpeechRate(mode, v),
             ),
           ),
           SettingsValueBadge(label: '$ratePct%', width: 56),
@@ -425,7 +502,7 @@ class _TtsVoiceSetting extends ConsumerWidget {
               _samples[mode]!,
               mode,
               voiceKey: settings.ttsVoiceFor(mode),
-              rate: settings.ttsSpeechRate,
+              rate: settings.ttsSpeechRateFor(mode),
             ),
           ),
         ],

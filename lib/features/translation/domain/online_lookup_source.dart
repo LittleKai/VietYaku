@@ -6,7 +6,7 @@
 enum OnlineLookupSource {
   mazii('Mazii Online', 'Nhật→Việt (javi) hoặc Trung→Việt (cnvi)'),
   googleVi('Google Việt', 'Google Dịch sang tiếng Việt'),
-  english('Nghĩa tiếng Anh', 'Nhật: Jisho (JMdict) · Trung: Google Dịch'),
+  english('Nghĩa tiếng Anh', 'Nhật: Jisho (JMdict) · Trung: 有道词典'),
   chinese(
     'Nghĩa tiếng Trung',
     'Weblio 日中中日辞典 để đối chiếu Hán tự (chỉ mode Nhật)',

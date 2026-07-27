@@ -415,8 +415,11 @@ class _SourcePaneState extends ConsumerState<SourcePane> {
     );
     final selection = ref.watch(tokenSelectionProvider);
     final result = ref.watch(lookupControllerProvider);
+    final mode = ref.watch(
+      translationControllerProvider.select((s) => s.mode),
+    );
     final popupTypes = ref.watch(
-      settingsProvider.select((s) => s.popupDictionaryTypes),
+      settingsProvider.select((s) => s.popupDictionaryTypesFor(mode)),
     );
     final popupSections =
         selection?.origin == TokenSelectionOrigin.source && result != null

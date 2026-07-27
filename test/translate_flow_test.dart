@@ -53,14 +53,17 @@ void main() {
       reason: 'dictionaries phải load xong',
     );
 
-    // Dán đoạn Nhật thật rồi bấm Dịch.
+    // Dán đoạn Nhật thật rồi dịch. Nút Dịch nằm trên menu bar của HomeShell
+    // (lib/app.dart), không có trong cây widget của riêng TranslateScreen.
     await tester.enterText(find.byType(TextField).first, '覇権を握る覚悟だ');
-    await tester.tap(find.text('Dịch'));
-    await tester.pump();
 
     final container = ProviderScope.containerOf(
       tester.element(find.byType(TranslateScreen)),
     );
+    container
+        .read(translationControllerProvider.notifier)
+        .translate('覇権を握る覚悟だ');
+    await tester.pump();
 
     // Dịch xong phải có token (dòng status "N token · Xms" đã bị bỏ).
     expect(

@@ -8,7 +8,7 @@ import 'lacviet_panel.dart' show meaningLabelColor;
 
 /// Dialog tra online: các nguồn đang bật trong Cài đặt chạy SONG SONG, mỗi
 /// nguồn hiện kết quả riêng ngay khi xong (không chờ nguồn kia). Kết quả cũng
-/// được chèn vào ô Nghĩa; riêng nguồn từ điển thật (Mazii, Jisho, Weblio) lưu vào
+/// được chèn vào ô Nghĩa; riêng nguồn từ điển thật (Mazii, Jisho, Weblio, Youdao) lưu vào
 /// `OnlineDict_<mode>.txt`, kết quả máy dịch thì không.
 Future<void> showOnlineLookupDialog(
   BuildContext context,

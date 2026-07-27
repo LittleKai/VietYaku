@@ -27,7 +27,7 @@ class VietYakuApp extends ConsumerWidget {
     final fontScale = ref.watch(settingsProvider.select((s) => s.uiFontScale));
     final themeMode = ref.watch(settingsProvider.select((s) => s.themeMode));
     return MaterialApp(
-      title: 'VietYaku',
+      title: 'VietYaku v1.0.5',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(fontFamily: fontFamily, fontScale: fontScale),
       darkTheme: AppTheme.dark(fontFamily: fontFamily, fontScale: fontScale),
@@ -65,6 +65,9 @@ class _HomeShellState extends ConsumerState<HomeShell> {
             windowManager.maximize();
           }
         });
+        PackageInfo.fromPlatform().then((info) {
+          windowManager.setTitle('VietYaku v${info.version}');
+        }).catchError((_) {});
       }
       final settings = ref.read(settingsProvider);
       if (settings.autoCheckUpdates) {
@@ -265,14 +268,10 @@ class _SidebarHeader extends StatelessWidget {
       );
     }
 
-    return FutureBuilder<List<String>>(
-      future: Future.wait([
-        PackageInfo.fromPlatform().then((info) => info.version),
-        windowManager.getTitle(),
-      ]),
+    return FutureBuilder<PackageInfo>(
+      future: PackageInfo.fromPlatform(),
       builder: (context, snapshot) {
-        final version = snapshot.data?[0] ?? '';
-        final windowTitle = snapshot.data?[1] ?? 'VietYaku';
+        final version = snapshot.data?.version ?? '';
         return SizedBox(
           width: 224,
           child: Padding(
@@ -287,15 +286,16 @@ class _SidebarHeader extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        windowTitle,
+                        'VietYaku',
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
-                      Text(
-                        'v$version',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      if (version.isNotEmpty)
+                        Text(
+                          'v$version',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
                         ),
-                      ),
                     ],
                   ),
                 ),
