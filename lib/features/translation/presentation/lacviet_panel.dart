@@ -63,14 +63,28 @@ class LacVietPanel extends ConsumerWidget {
                         style: theme.textTheme.titleLarge,
                       ),
                       if (result.reading != null || result.hanViet != null)
-                        Text(
-                          [
-                            if (result.reading != null) result.reading!,
-                            if (result.hanViet != null)
-                              'Hán Việt: ${result.hanViet}',
-                          ].join(' · '),
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
+                        Text.rich(
+                          TextSpan(
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                            children: [
+                              if (result.reading != null)
+                                TextSpan(text: result.reading!),
+                              if (result.reading != null &&
+                                  result.hanViet != null)
+                                const TextSpan(text: ' · '),
+                              if (result.hanViet != null) ...[
+                                const TextSpan(text: '('),
+                                const TextSpan(
+                                  text: 'Hán Việt',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                TextSpan(text: ': ${result.hanViet})'),
+                              ],
+                            ],
                           ),
                         ),
                     ],

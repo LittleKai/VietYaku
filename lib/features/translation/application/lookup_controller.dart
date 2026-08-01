@@ -241,12 +241,7 @@ class LookupController extends Notifier<LookupResult?> {
       }
     }
 
-    String? hanViet;
-    if (word.length == runeLengthAt(word, 0) &&
-        isHanCodePoint(codePointAt(word, 0))) {
-      final v = dicts.chinesePhienAm.entries[word];
-      if (v != null) hanViet = v.split('/').first.trim();
-    }
+    final hanViet = _hanVietOf(dicts, word);
 
     // Phát âm: mode Nhật → ưu tiên theo cài đặt sudachiReadings; mode khác →
     // LacViet trước, kana Nhật Việt là fallback.
@@ -331,6 +326,36 @@ class LookupController extends Notifier<LookupResult?> {
       .map((s) => s.trim())
       .where((s) => s.isNotEmpty)
       .join('; ');
+
+  /// Hán Việt của [text] (1 chữ hoặc cả cụm): mỗi chữ Hán tra
+  /// ChinesePhienAmWords, miss → giữ nguyên chữ gốc; ký tự không phải Hán
+  /// (hiragana, katakana, dấu câu...) bị lọc bỏ hoàn toàn. Null khi không có
+  /// chữ Hán nào tra được (VD chọn thuần kana).
+  static String? _hanVietOf(LoadedDictionaries dicts, String text) {
+    final buffer = StringBuffer();
+    var hasHit = false;
+    var i = 0;
+    while (i < text.length) {
+      final len = runeLengthAt(text, i);
+      final ch = text.substring(i, i + len);
+      if (isHanCodePoint(codePointAt(text, i))) {
+        if (buffer.isNotEmpty) buffer.write(' ');
+        final v = dicts.chinesePhienAm.entries[ch];
+        if (v != null) {
+          buffer.write(_capitalizeFirst(v.split('/').first.trim()));
+          hasHit = true;
+        } else {
+          buffer.write(ch);
+        }
+      }
+      i += len;
+    }
+    return hasHit ? buffer.toString() : null;
+  }
+
+  /// Viết hoa chữ cái đầu (âm Hán Việt hiển thị kiểu tên riêng).
+  static String _capitalizeFirst(String s) =>
+      s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
 
   /// Phiên âm từng chữ Hán: ChinesePhienAmWords → Hán Việt;
   /// miss → ChinesePhienAmEnglishWords trong `[]`; khác giữ nguyên.

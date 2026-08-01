@@ -56,6 +56,7 @@ data/
 
 # Generated repair files
 **/*_JP.txt
+.claude\tmp
 
 # Temporary files (keep UI screenshots)
 /tmp/*
