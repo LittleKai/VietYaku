@@ -26,7 +26,8 @@ Skill này tự động hóa quy trình: build Windows → tạo GitHub Release 
 Hỏi user:
 - **Version**: tag mới (ví dụ `v1.0.0`). Nếu user không chỉ định, đọc version từ `pubspec.yaml` và đề xuất.
 - **Release title**: tên hiển thị trên GitHub (mặc định: `VietYaku <version>`)
-- **Release notes**: mô tả thay đổi (mặc định: bỏ trống).
+- **Release notes**: nội dung phiên bản. Tự động đọc danh sách các commit gần nhất (`rtk git log` từ release tag trước hoặc các commit gần nhất), tổng hợp thành danh sách thay đổi hướng tới người dùng. 
+  - ⚠️ **Quy tắc bắt buộc**: Tuyệt đối **TRÁNH nhắc đến các phần liên quan đến code**, tên file, tên class, tên hàm, refactoring hay kỹ thuật lập trình. Chỉ mô tả các tính năng mới, cải tiến giao diện hoặc sửa lỗi dưới góc độ trải nghiệm người dùng (ví dụ: "Cải thiện hiển thị âm Hán Việt", "Tối ưu hóa tốc độ nạp từ điển").
 - **Prerelease?**: có đánh dấu là prerelease không (mặc định: không)
 - **Build targets**: Windows (mặc định). <!-- [DISABLED-ANDROID] APK, Windows, hoặc cả hai (mặc định: cả hai) -->
 
