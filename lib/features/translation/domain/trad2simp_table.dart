@@ -32,6 +32,18 @@ class Trad2SimpTable {
 
   bool get isEmpty => _map.isEmpty;
 
+  /// Chữ ký của bảng, dùng đặt tên file cache `.vydc` của bộ dict đã quy giản.
+  /// Sinh lại `trad2simp.tsv` là đổi chữ ký → cache cũ tự bị bỏ qua thay vì
+  /// âm thầm giữ key quy sai.
+  String get signature {
+    var hash = 0xcbf29ce484222325;
+    for (final key in _map.keys.toList()..sort()) {
+      hash = (hash ^ key) * 0x100000001b3;
+      hash = (hash ^ _map[key]!) * 0x100000001b3;
+    }
+    return hash.toUnsigned(32).toRadixString(36);
+  }
+
   /// Trả về chính [text] khi không có ký tự phồn thể nào — trường hợp phổ biến
   /// nhất, không cấp phát thêm.
   String convert(String text) {

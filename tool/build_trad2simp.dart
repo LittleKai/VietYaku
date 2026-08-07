@@ -56,12 +56,35 @@ void main(List<String> args) {
   }
 
   final table = <String, String>{};
+  final weight = <String, int>{};
   var ambiguous = 0;
   for (final entry in counts.entries) {
     final byCount = entry.value.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
     if (byCount.length > 1) ambiguous++;
     table[entry.key] = byCount.first.key;
+    weight[entry.key] = byCount.first.value;
+  }
+
+  // Bảng đúng thì đích không bao giờ là nguồn của cặp khác: đã là giản thể thì
+  // không còn gì để quy nữa. Còn `a→b` mà `b→c` nghĩa là một trong hai mắt xích
+  // là rác — sinh ra từ vài mục cedict bị đảo cột (`提尔 提爾`) hoặc lệch ký tự,
+  // cho ra cặp ngược chiều (`尔→爾`) lẫn cặp bậy (`辛→緬`). Chiều đúng đến từ
+  // hàng nghìn mục, chiều sai chỉ vài mục, nên bỏ mắt xích nhẹ ký hơn cho tới
+  // khi hết chuỗi.
+  final dropped = <String>[];
+  while (true) {
+    String? drop;
+    for (final key in table.keys) {
+      final mid = table[key]!;
+      if (!table.containsKey(mid)) continue;
+      drop = weight[key]! <= weight[mid]! ? key : mid;
+      break;
+    }
+    if (drop == null) break;
+    table.remove(drop);
+    weight.remove(drop);
+    dropped.add(drop);
   }
 
   final keys = table.keys.toList()..sort();
@@ -79,6 +102,7 @@ void main(List<String> args) {
     )
     ..writeln('Ký tự phồn thể       : ${keys.length}')
     ..writeln('Có nhiều giản thể    : $ambiguous (lấy bản hay gặp nhất)')
+    ..writeln('Bỏ mắt xích rác      : ${dropped.length} (${dropped.join()})')
     ..writeln('Đã ghi assets/mappings/trad2simp.tsv');
 }
 

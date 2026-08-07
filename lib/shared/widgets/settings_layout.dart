@@ -421,10 +421,17 @@ class _SettingsCopy extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final accent = _SettingsAccent.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: Theme.of(context).textTheme.titleSmall),
+        Text(
+          title,
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+            color: accent,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
         const SizedBox(height: 3),
         Text(
           description,

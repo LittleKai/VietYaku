@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import '../../../core/app_paths.dart';
+import '../../translation/domain/trad2simp_table.dart';
 import '../../translation/domain/translation_engine.dart';
 import '../domain/dict_type.dart';
 import '../domain/phrase_dictionary.dart';
@@ -113,11 +114,16 @@ class DictionaryRepository {
     Map<DictType, String> dictPaths, {
     required TranslationMode mode,
     bool useSudachiVariants = true,
+    Trad2SimpTable? trad2simp,
   }) async {
+    // Bộ dict đã quy giản dùng cache riêng; chữ ký bảng nằm trong tên file nên
+    // sinh lại trad2simp.tsv là cache cũ tự bị bỏ qua.
+    final cacheVariant = trad2simp == null ? '' : 'simp${trad2simp.signature}';
     Future<LoadResult> loadPath(DictType type, String source) => loadDictionary(
       sourcePath: source,
-      cachePath: paths.cacheFileFor(source),
+      cachePath: paths.cacheFileFor(source, variant: cacheVariant),
       type: type,
+      trad2simp: trad2simp,
     );
 
     // File Sudachi sinh bởi tool/build_sudachi_assets.dart, nằm cạnh

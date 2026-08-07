@@ -5,6 +5,9 @@ import '../../features/dictionary/application/dictionaries_provider.dart';
 import '../../features/dictionary/data/user_dict_service.dart';
 import '../../features/dictionary_sync/application/dictionary_sync_controller.dart';
 import '../../features/dictionary_sync/domain/shared_dictionary_entry.dart';
+import '../../features/glossary/data/glossary_service.dart';
+import '../../features/glossary/presentation/glossary_update_dialog.dart';
+import '../../features/settings/settings_provider.dart';
 import '../../features/translation/application/translation_controller.dart';
 import 'app_dialog.dart';
 
@@ -99,6 +102,16 @@ Future<void> showSharedEntryEditDialog(
             ? dicts.vietPhrase.entries[word]
             : dicts.lacViet.entries[word]);
   final holder = _EntryFieldControllers();
+  final mode = ref.read(translationControllerProvider).mode;
+
+  // Nút đẩy sang glossary chỉ hiện khi thư mục Glossary trong Cài đặt trỏ đúng
+  // chỗ (có `<lang>/Global Glossary.json` của ngôn ngữ đang dịch).
+  final glossaryLang = GlossaryService.langFor(mode);
+  final canUpdateGlossary =
+      isVietPhrase &&
+      GlossaryService(
+        ref.read(settingsProvider).glossaryDir,
+      ).hasGlossaryFor(mode);
 
   final saved = await showAppDialog<bool>(
     context: context,
@@ -114,6 +127,17 @@ Future<void> showSharedEntryEditDialog(
       initialMeaning: existing ?? '',
     ),
     actionsBuilder: (dialogContext) => [
+      if (canUpdateGlossary)
+        TextButton.icon(
+          icon: const Icon(Icons.menu_book_outlined, size: 18),
+          onPressed: () => showGlossaryUpdateDialog(
+            dialogContext,
+            ref,
+            source: holder.keyText.trim(),
+            meaning: holder.meaningText.trim(),
+          ),
+          label: Text('Cập nhật Glossary $glossaryLang'),
+        ),
       TextButton(
         onPressed: () => Navigator.pop(dialogContext, false),
         child: const Text('Hủy'),
@@ -132,7 +156,6 @@ Future<void> showSharedEntryEditDialog(
   if (key.isEmpty || meaning.isEmpty) return;
 
   try {
-    final mode = ref.read(translationControllerProvider).mode;
     await ref
         .read(dictionarySyncProvider.notifier)
         .stageLocalEdit(mode: mode, kind: kind, source: key, target: meaning);

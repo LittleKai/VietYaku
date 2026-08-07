@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/app_paths.dart';
 import '../../settings/settings_provider.dart';
+import '../../translation/application/trad2simp_provider.dart';
 import '../../translation/application/translation_controller.dart';
+import '../../translation/domain/translation_engine.dart';
 import '../data/dictionary_repository.dart';
 
 final appPathsProvider = FutureProvider<AppPaths>((ref) => AppPaths.init());
@@ -22,10 +24,22 @@ class DictionariesNotifier extends AsyncNotifier<LoadedDictionaries> {
     final useSudachiVariants = ref.watch(
       settingsProvider.select((s) => s.sudachiVariants),
     );
+    // Mode Trung: quy luôn key phồn thể trong dict về giản thể, cùng công tắc
+    // với việc quy văn bản nguồn — tắt thì cả hai phía giữ nguyên phồn thể.
+    // Mode Nhật không bao giờ quy (kanji Nhật quy giản thể là phá chữ).
+    final convertTrad = ref.watch(
+      settingsProvider.select((s) => s.convertTraditionalToSimplified),
+    );
+    final trad2simp = mode == TranslationMode.chinese && convertTrad
+        ? await ref.watch(trad2SimpTableProvider.future)
+        : null;
     final sw = Stopwatch()..start();
-    final loaded = await DictionaryRepository(
-      paths,
-    ).loadAll(dictPaths, mode: mode, useSudachiVariants: useSudachiVariants);
+    final loaded = await DictionaryRepository(paths).loadAll(
+      dictPaths,
+      mode: mode,
+      useSudachiVariants: useSudachiVariants,
+      trad2simp: trad2simp,
+    );
     debugPrint(
       'Dictionaries loaded in ${sw.elapsedMilliseconds}ms: '
       '${loaded.stats.entries.map((e) => '${e.key.name} '

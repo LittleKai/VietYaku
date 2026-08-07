@@ -25,9 +25,12 @@ class AppPaths {
   Directory get dictionariesDir =>
       Directory(p.join(support.path, 'dictionaries'));
 
-  String cacheFileFor(String sourcePath) {
+  /// [variant] tách cache của cùng một file nguồn khi nội dung parse ra khác
+  /// nhau (bộ dict Trung đã quy phồn→giản dùng variant riêng).
+  String cacheFileFor(String sourcePath, {String variant = ''}) {
     final name = p.basenameWithoutExtension(sourcePath);
-    return p.join(cacheDir.path, '$name.vydc');
+    final suffix = variant.isEmpty ? '' : '.$variant';
+    return p.join(cacheDir.path, '$name$suffix.vydc');
   }
 
   static Future<AppPaths> init() async {

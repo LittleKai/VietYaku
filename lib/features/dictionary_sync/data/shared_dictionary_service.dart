@@ -33,9 +33,20 @@ class SharedDictionaryService {
   Future<void> stageLocalEdit(
     TranslationMode mode,
     SharedDictionaryEntry entry,
+  ) => stageLocalEdits(mode, [entry]);
+
+  /// Như [stageLocalEdit] nhưng ghi mỗi file đúng một lần — dùng cho màn đồng
+  /// bộ hàng loạt, nơi một lần áp dụng có thể tới hàng trăm mục.
+  Future<void> stageLocalEdits(
+    TranslationMode mode,
+    Iterable<SharedDictionaryEntry> entries,
   ) async {
-    await _upsert(pendingFileFor(mode, entry.kind), [entry]);
-    await applyDelta(mode, [entry]);
+    for (final kind in SharedDictionaryKind.values) {
+      final ofKind = entries.where((entry) => entry.kind == kind).toList();
+      if (ofKind.isEmpty) continue;
+      await _upsert(pendingFileFor(mode, kind), ofKind);
+    }
+    await applyDelta(mode, entries);
   }
 
   Future<List<SharedDictionaryEntry>> pendingEntries(

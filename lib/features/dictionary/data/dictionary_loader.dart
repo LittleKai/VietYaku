@@ -4,6 +4,7 @@ import 'dart:isolate';
 import 'dart:typed_data';
 
 import '../../../core/fnv_hash.dart';
+import '../../translation/domain/trad2simp_table.dart';
 import '../domain/dict_type.dart';
 import '../domain/phrase_dictionary.dart';
 import 'binary_cache.dart';
@@ -28,14 +29,43 @@ Future<LoadResult> loadDictionary({
   required String sourcePath,
   required String cachePath,
   required DictType type,
+  Trad2SimpTable? trad2simp,
 }) {
   return Isolate.run(
     () => loadDictionarySync(
       sourcePath: sourcePath,
       cachePath: cachePath,
       type: type,
+      trad2simp: trad2simp,
     ),
   );
+}
+
+/// Quy key phồn thể về giản thể, tại chỗ. Key giản thể có sẵn LUÔN thắng: mọi
+/// đường tra đều quy văn bản về giản thể trước, nên key phồn thể trong dict
+/// vốn không bao giờ khớp được — bỏ chúng đi không mất gì, còn thêm được dạng
+/// giản thể cho những mục trước giờ nằm chết.
+void normalizeKeysToSimplified(
+  Map<String, String> entries,
+  Trad2SimpTable trad2simp,
+) {
+  if (trad2simp.isEmpty) return;
+  final converted = <String, String>{};
+  final traditionalKeys = <String>[];
+  for (final entry in entries.entries) {
+    final simplified = trad2simp.convert(entry.key);
+    if (identical(simplified, entry.key)) continue;
+    traditionalKeys.add(entry.key);
+    // Hai key phồn thể có thể quy về cùng một key giản thể — giữ mục đầu tiên
+    // theo thứ tự file, đúng như cách dict_parser xử lý key trùng.
+    converted.putIfAbsent(simplified, () => entry.value);
+  }
+  for (final key in traditionalKeys) {
+    entries.remove(key);
+  }
+  for (final entry in converted.entries) {
+    entries.putIfAbsent(entry.key, () => entry.value);
+  }
 }
 
 /// Bản đồng bộ (chạy được trong isolate lẫn test).
@@ -43,6 +73,7 @@ LoadResult loadDictionarySync({
   required String sourcePath,
   required String cachePath,
   required DictType type,
+  Trad2SimpTable? trad2simp,
 }) {
   final sw = Stopwatch()..start();
   final srcFile = File(sourcePath);
@@ -88,6 +119,7 @@ LoadResult loadDictionarySync({
   final entries = type == DictType.cedict
       ? parseCedictEntries(content)
       : parseEntries(content);
+  if (trad2simp != null) normalizeKeysToSimplified(entries, trad2simp);
   try {
     cacheFile.parent.createSync(recursive: true);
     cacheFile.writeAsBytesSync(

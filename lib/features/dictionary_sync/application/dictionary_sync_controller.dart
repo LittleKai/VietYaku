@@ -150,6 +150,23 @@ class DictionarySyncController extends Notifier<DictionarySyncState> {
     );
   }
 
+  /// Lưu nhiều sửa đổi cùng lúc (màn đồng bộ Glossary ↔ VietPhrase). Ghi file
+  /// một lần rồi nạp lại từ điển một lần, không auto-publish như
+  /// [stageLocalEdit] — số lượng lớn nên để admin tự bấm Update.
+  Future<void> stageLocalEditsBulk({
+    required TranslationMode mode,
+    required List<SharedDictionaryEntry> entries,
+  }) async {
+    if (!state.isAdmin || entries.isEmpty) return;
+    final paths = await ref.read(appPathsProvider.future);
+    await SharedDictionaryService(paths).stageLocalEdits(mode, entries);
+    await _reloadCurrentTranslation();
+    state = state.copyWith(
+      message:
+          'Đã lưu ${entries.length} mục. Bấm Update để gửi lên server.',
+    );
+  }
+
   /// Gửi tất cả sửa đổi admin đang chờ của cả hai ngôn ngữ lên server.
   Future<int> publishPending() async {
     final session = state.session;

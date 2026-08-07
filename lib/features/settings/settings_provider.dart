@@ -18,6 +18,10 @@ import '../repair/domain/jp_repair_pipeline.dart';
 /// đối của dev không tồn tại trên máy Android). Là biến (không `const`) để
 /// `main()` ghi đè trước khi `SettingsNotifier.build()` đọc.
 String defaultDataDir = r'D:\Dev\Python\LittleKai_Ecosystem\VietYaku\data';
+
+/// Thư mục `Glossary/` của AI_Translation_Bridge (chứa `JP/` và `CN/`).
+const defaultGlossaryDir =
+    r'D:\Dev\Python\LittleKai_Ecosystem\AI_Translation_Bridge\Glossary';
 const defaultSyncServerUrl = String.fromEnvironment(
   'LITTLEKAI_SERVER_URL',
   defaultValue: 'http://localhost:5000',
@@ -216,6 +220,10 @@ class AppSettings {
   /// Tự động đồng bộ (kéo) từ điển chung từ server lúc khởi động. Mặc định tắt.
   final bool autoSyncDictionary;
 
+  /// Thư mục `Glossary/` của AI_Translation_Bridge. Chỉ dùng khi đăng nhập
+  /// quản trị: cho phép đẩy mục đang sửa sang `Global Glossary.json` JP/CN.
+  final String glossaryDir;
+
   const AppSettings({
     required this.dictPaths,
     required this.defaultMode,
@@ -249,6 +257,7 @@ class AppSettings {
     this.onlineLookupSources = OnlineLookupSource.values,
     this.autoCheckUpdates = true,
     this.autoSyncDictionary = false,
+    this.glossaryDir = defaultGlossaryDir,
   });
 
   /// Voice đã chọn cho [mode] ('' = tự động).
@@ -309,6 +318,7 @@ class AppSettings {
     List<OnlineLookupSource>? onlineLookupSources,
     bool? autoCheckUpdates,
     bool? autoSyncDictionary,
+    String? glossaryDir,
   }) => AppSettings(
     dictPaths: dictPaths ?? this.dictPaths,
     defaultMode: defaultMode ?? this.defaultMode,
@@ -348,6 +358,7 @@ class AppSettings {
     onlineLookupSources: onlineLookupSources ?? this.onlineLookupSources,
     autoCheckUpdates: autoCheckUpdates ?? this.autoCheckUpdates,
     autoSyncDictionary: autoSyncDictionary ?? this.autoSyncDictionary,
+    glossaryDir: glossaryDir ?? this.glossaryDir,
   );
 
   static AppSettings defaults() => AppSettings(
@@ -398,6 +409,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
   static const _onlineLookupSourcesKey = 'lookup.onlineSources';
   static const _autoCheckUpdatesKey = 'update.autoCheckUpdates';
   static const _autoSyncDictionaryKey = 'dictionarySync.autoSync';
+  static const _glossaryDirKey = 'glossary.dir';
   static String _fontSizeKey(PaneId id) => 'paneFont.${id.name}.size';
   static String _fontFamilyKey(PaneId id) => 'paneFont.${id.name}.family';
   static const _uiFontScaleKey = 'ui.fontScale';
@@ -522,6 +534,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
       }(),
       autoCheckUpdates: prefs.getBool(_autoCheckUpdatesKey) ?? true,
       autoSyncDictionary: prefs.getBool(_autoSyncDictionaryKey) ?? false,
+      glossaryDir: prefs.getString(_glossaryDirKey) ?? defaultGlossaryDir,
     );
   }
 
@@ -750,6 +763,13 @@ class SettingsNotifier extends Notifier<AppSettings> {
     final prefs = ref.read(sharedPreferencesProvider);
     await prefs.setBool(_autoSyncDictionaryKey, value);
     state = state.copyWith(autoSyncDictionary: value);
+  }
+
+  Future<void> setGlossaryDir(String value) async {
+    final normalized = value.trim();
+    final prefs = ref.read(sharedPreferencesProvider);
+    await prefs.setString(_glossaryDirKey, normalized);
+    state = state.copyWith(glossaryDir: normalized);
   }
 }
 

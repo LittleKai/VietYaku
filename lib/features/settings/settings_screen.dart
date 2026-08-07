@@ -1,5 +1,6 @@
-import 'dart:io' show Platform;
+import 'dart:io' show Directory, Platform;
 
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -7,6 +8,8 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../../core/tts_service.dart';
 import '../../shared/widgets/settings_layout.dart';
 import '../dictionary_sync/application/dictionary_sync_controller.dart';
+import '../glossary/data/glossary_service.dart';
+import '../glossary/presentation/glossary_sync_screen.dart';
 import '../repair/domain/jp_repair_pipeline.dart';
 import '../repair/presentation/repair_screen.dart';
 import '../translation/application/translation_controller.dart';
@@ -704,7 +707,104 @@ class _DictionarySyncSettingsState
                   ],
                 ),
         ),
+        if (sync.isAdmin) ...[
+          const _GlossaryDirSetting(),
+          const _GlossarySyncSetting(),
+        ],
       ],
+    );
+  }
+}
+
+/// Chọn thư mục `Glossary/` của AI_Translation_Bridge. Trỏ đúng chỗ thì dialog
+/// sửa VietPhrase có thêm nút đẩy từ sang `Global Glossary.json` JP/CN.
+class _GlossaryDirSetting extends ConsumerWidget {
+  const _GlossaryDirSetting();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final dir = ref.watch(settingsProvider.select((s) => s.glossaryDir));
+    final service = GlossaryService(dir);
+    final found = TranslationMode.values
+        .where(service.hasGlossaryFor)
+        .map(GlossaryService.langFor)
+        .join(', ');
+
+    return SettingsControlRow(
+      title: 'Thư mục Glossary',
+      description: dir.trim().isEmpty
+          ? 'Chưa chọn thư mục.'
+          : found.isEmpty
+          ? 'Không thấy "Global Glossary.json" trong $dir\\JP hoặc $dir\\CN.'
+          : 'Đã thấy Global Glossary: $found. Dialog sửa VietPhrase sẽ có nút cập nhật glossary.',
+      controlWidth: 650,
+      control: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          Icon(
+            found.isEmpty ? Icons.error_outline : Icons.check_circle_outline,
+            size: 20,
+            color: found.isEmpty
+                ? Theme.of(context).colorScheme.error
+                : Theme.of(context).colorScheme.primary,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Tooltip(
+              message: dir.isEmpty ? 'Chưa chọn' : dir,
+              child: Text(
+                dir.isEmpty ? 'Chưa chọn' : dir,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.right,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          FilledButton.tonalIcon(
+            icon: const Icon(Icons.folder_open, size: 18),
+            label: const Text('Chọn thư mục'),
+            onPressed: () async {
+              final picked = await getDirectoryPath(
+                initialDirectory: Directory(dir).existsSync() ? dir : null,
+              );
+              if (picked == null) return;
+              await ref.read(settingsProvider.notifier).setGlossaryDir(picked);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Mở màn đồng bộ hàng loạt Glossary ↔ VietPhrase.
+class _GlossarySyncSetting extends ConsumerWidget {
+  const _GlossarySyncSetting();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final dir = ref.watch(settingsProvider.select((s) => s.glossaryDir));
+    final mode = ref.watch(
+      translationControllerProvider.select((state) => state.mode),
+    );
+    final ready = GlossaryService(dir).hasGlossaryFor(mode);
+
+    return SettingsControlRow(
+      title: 'Đồng bộ Glossary ↔ VietPhrase',
+      description: ready
+          ? 'So sánh hai bên theo từng chiều, lọc trùng/không trùng và created_by, tick chọn rồi cập nhật hàng loạt.'
+          : 'Cần chọn đúng thư mục Glossary có "Global Glossary.json" của ngôn ngữ đang dịch.',
+      controlWidth: 210,
+      control: Align(
+        alignment: Alignment.centerRight,
+        child: FilledButton.tonalIcon(
+          icon: const Icon(Icons.sync_alt),
+          label: const Text('Mở màn đồng bộ'),
+          onPressed: ready
+              ? () => Navigator.of(context).push(GlossarySyncScreen.route())
+              : null,
+        ),
+      ),
     );
   }
 }
