@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/widgets/app_dialog.dart';
 import '../../settings/settings_provider.dart';
 import '../../translation/application/translation_controller.dart';
+import '../../translation/domain/translation_engine.dart';
 import '../application/glossary_sync_controller.dart';
 import '../data/glossary_service.dart';
 
@@ -30,6 +31,29 @@ class GlossarySyncScreen extends ConsumerWidget {
       child: Scaffold(
         appBar: AppBar(
           title: Text('Đồng bộ Glossary ↔ VietPhrase ($lang)'),
+          actions: [
+            Padding(
+              padding: const EdgeInsets.only(right: 16),
+              child: SegmentedButton<TranslationMode>(
+                segments: const [
+                  ButtonSegment(
+                    value: TranslationMode.japanese,
+                    label: Text('Tiếng Nhật (JP)'),
+                  ),
+                  ButtonSegment(
+                    value: TranslationMode.chinese,
+                    label: Text('Tiếng Trung (CN)'),
+                  ),
+                ],
+                selected: {mode},
+                onSelectionChanged: (value) {
+                  ref
+                      .read(translationControllerProvider.notifier)
+                      .setMode(value.first);
+                },
+              ),
+            ),
+          ],
           bottom: TabBar(
             tabs: [
               for (final direction in GlossarySyncDirection.values)
@@ -118,24 +142,48 @@ class _DirectionTabState extends ConsumerState<_DirectionTab>
 
   void _resetPaging() => setState(() => _page = 0);
 
-  Future<void> _apply(List<GlossarySyncRow> rows, {required bool bulk}) async {
+  List<GlossarySyncRow> _getReverseRows(Iterable<GlossarySyncRow> rows) {
+    return [
+      for (final row in rows)
+        if (row.otherTarget != null && row.otherTarget!.trim().isNotEmpty)
+          GlossarySyncRow(
+            source: row.source,
+            target: row.otherTarget!.trim(),
+            otherTarget: row.target,
+            createdBy:
+                widget.direction == GlossarySyncDirection.vietPhraseToGlossary
+                    ? row.createdBy
+                    : 'user',
+          ),
+    ];
+  }
+
+  Future<void> _apply(
+    List<GlossarySyncRow> rows, {
+    required bool bulk,
+    GlossarySyncDirection? customDirection,
+  }) async {
     if (rows.isEmpty || _applying) return;
-    if (bulk && !await _confirmBulk(rows.length)) return;
+    final direction = customDirection ?? widget.direction;
+    if (bulk && !await _confirmBulk(rows.length, direction: direction)) return;
     if (!mounted) return;
 
     setState(() => _applying = true);
     try {
-      await applyGlossarySyncRows(ref, widget.direction, rows);
+      await applyGlossarySyncRows(ref, direction, rows);
       if (!mounted) return;
       setState(() {
         for (final row in rows) {
           _selected.remove(row.source);
         }
+        _cachedSource = null;
+        _cachedResult = null;
+        _page = 0;
       });
       _showMessage(
         rows.length == 1
-            ? 'Đã cập nhật: ${rows.first.source} → ${rows.first.target}'
-            : 'Đã cập nhật ${rows.length} mục.',
+            ? 'Đã cập nhật (${direction.label}): ${rows.first.source} → ${rows.first.target}'
+            : 'Đã cập nhật ${rows.length} mục (${direction.label}).',
       );
     } catch (_) {
       _showMessage('Không ghi được thay đổi. Kiểm tra lại thư mục Glossary.');
@@ -144,15 +192,18 @@ class _DirectionTabState extends ConsumerState<_DirectionTab>
     }
   }
 
-  Future<bool> _confirmBulk(int count) async {
+  Future<bool> _confirmBulk(
+    int count, {
+    required GlossarySyncDirection direction,
+  }) async {
     final toGlossary =
-        widget.direction == GlossarySyncDirection.vietPhraseToGlossary;
+        direction == GlossarySyncDirection.vietPhraseToGlossary;
     final confirmed = await showAppDialog<bool>(
       context: context,
       icon: Icons.sync_alt,
       accentColor: _glossaryAccent,
       title: 'Cập nhật $count mục',
-      description: widget.direction.label,
+      description: direction.label,
       width: 460,
       content: Text(
         toGlossary
@@ -168,7 +219,7 @@ class _DirectionTabState extends ConsumerState<_DirectionTab>
         ),
         FilledButton(
           onPressed: () => Navigator.pop(dialogContext, true),
-          child: Text('Cập nhật $count mục'),
+          child: Text('Cập nhật $count mục (${direction.label})'),
         ),
       ],
     );
@@ -188,6 +239,30 @@ class _DirectionTabState extends ConsumerState<_DirectionTab>
     final glossaryDir = ref.watch(settingsProvider.select((s) => s.glossaryDir));
     final mode = ref.watch(
       translationControllerProvider.select((state) => state.mode),
+    );
+    ref.listen(
+      translationControllerProvider.select((state) => state.mode),
+      (previous, next) {
+        if (previous != next) {
+          setState(() {
+            _selected.clear();
+            _page = 0;
+            _cachedSource = null;
+            _cachedResult = null;
+          });
+        }
+      },
+    );
+    ref.listen(
+      glossarySyncRowsProvider(widget.direction),
+      (previous, next) {
+        if (next.hasValue) {
+          setState(() {
+            _cachedSource = null;
+            _cachedResult = null;
+          });
+        }
+      },
     );
     if (!GlossaryService(glossaryDir).hasGlossaryFor(mode)) {
       return _CenteredNote(
@@ -296,9 +371,17 @@ class _DirectionTabState extends ConsumerState<_DirectionTab>
   }
 
   Widget _selectionBar(List<GlossarySyncRow> visible) {
+    final scheme = Theme.of(context).colorScheme;
     final allOnPageSelected =
         visible.isNotEmpty &&
         visible.every((row) => _selected.containsKey(row.source));
+
+    final oppositeDirection =
+        widget.direction == GlossarySyncDirection.glossaryToVietPhrase
+            ? GlossarySyncDirection.vietPhraseToGlossary
+            : GlossarySyncDirection.glossaryToVietPhrase;
+    final reverseRows = _getReverseRows(_selected.values);
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: Row(
@@ -334,11 +417,32 @@ class _DirectionTabState extends ConsumerState<_DirectionTab>
                     dimension: 18,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Icon(Icons.sync_alt, size: 18),
-            label: Text('Cập nhật ${_selected.length} mục đã chọn'),
+                : const Icon(Icons.arrow_forward, size: 18),
+            label: Text('${widget.direction.label} (${_selected.length})'),
             onPressed: _selected.isEmpty || _applying
                 ? null
                 : () => _apply(_selected.values.toList(), bulk: true),
+          ),
+          const SizedBox(width: 8),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(
+              backgroundColor: scheme.tertiary,
+              foregroundColor: scheme.onTertiary,
+            ),
+            icon: _applying
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.arrow_back, size: 18),
+            label: Text('${oppositeDirection.label} (${reverseRows.length})'),
+            onPressed: _selected.isEmpty || reverseRows.isEmpty || _applying
+                ? null
+                : () => _apply(
+                      reverseRows,
+                      bulk: true,
+                      customDirection: oppositeDirection,
+                    ),
           ),
           const SizedBox(width: 8),
         ],

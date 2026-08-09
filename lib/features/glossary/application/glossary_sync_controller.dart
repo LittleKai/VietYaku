@@ -158,5 +158,10 @@ Future<void> applyGlossarySyncRows(
       for (final row in rows) row.source: row.target,
     });
   }
-  ref.invalidate(glossarySyncRowsProvider(direction));
+  ref.invalidate(
+    glossarySyncRowsProvider(GlossarySyncDirection.glossaryToVietPhrase),
+  );
+  ref.invalidate(
+    glossarySyncRowsProvider(GlossarySyncDirection.vietPhraseToGlossary),
+  );
 }
