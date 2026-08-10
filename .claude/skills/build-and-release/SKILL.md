@@ -31,34 +31,33 @@ Hỏi user:
   #### Cách thu thập commit:
   1. Tìm tag release gần nhất: `rtk git tag --sort=-creatordate -n1`
   2. Lấy tất cả commits từ tag đó đến HEAD: `rtk git log <tag_trước>..HEAD --oneline`
-  3. Nếu có uncommitted changes (`rtk git diff --stat`), cũng tính vào nội dung release.
-  4. Đọc nội dung chi tiết nếu cần: `rtk git log <tag_trước>..HEAD --format="%h %s"`
+  3. BẮT BỘC kiểm tra chi tiết nội dung thay đổi của từng commit: `rtk git log <tag_trước>..HEAD -p` hoặc `rtk git show <commit_hash>` để nắm trọn vẹn từng tính năng, sửa lỗi UI, cập nhật từ điển và trải nghiệm người dùng.
+  4. Nếu có uncommitted changes (`rtk git diff`), đọc kỹ các file thay đổi để đưa vào nội dung release.
+  5. Tuyệt đối KHÔNG tóm tắt qua loa hay bỏ sót các chi tiết nhỏ (như nút bấm mới, sửa bo góc dialog, tối ưu bộ từ điển/glossary, icon mới...).
 
   #### Cấu trúc release notes (viết bằng tiếng Việt):
 
   ```markdown
-  ## Có gì mới
+  ## Có gì mới trong phiên bản <version>
 
-  ### ✨ Tính năng mới
-  - Mô tả tính năng 1
-  - Mô tả tính năng 2
+  ### ✨ Tính năng mới & Cải tiến
+  - **Tên tính năng 1:**
+    - Chi tiết cải tiến 1.1
+    - Chi tiết cải tiến 1.2
+  - **Tên tính năng 2:**
+    - Chi tiết cải tiến 2.1
 
-  ### 🔧 Cải tiến
-  - Mô tả cải tiến 1
-  - Mô tả cải tiến 2
-
-  ### 🐛 Sửa lỗi
-  - Mô tả lỗi đã sửa 1
-  - Mô tả lỗi đã sửa 2
+  ### 🐛 Sửa lỗi & Tinh chỉnh Giao diện
+  - **Mô tả lỗi/tinh chỉnh 1:**
+    - Chi tiết sửa lỗi 1.1
   ```
 
   #### Quy tắc viết nội dung:
-  - ⚠️ **Bắt buộc**: Tuyệt đối **TRÁNH nhắc đến các phần liên quan đến code**, tên file, tên class, tên hàm, refactoring hay kỹ thuật lập trình.
-  - Chỉ mô tả dưới **góc độ trải nghiệm người dùng** (ví dụ: "Cải thiện hiển thị âm Hán Việt", "Tối ưu hóa tốc độ nạp từ điển").
-  - Gộp nhiều commit liên quan thành **1 bullet duy nhất** nếu cùng nói về một tính năng/cải tiến.
-  - Bỏ qua các commit thuần kỹ thuật (refactor, chore, cleanup) nếu chúng không ảnh hưởng tới người dùng.
+  - ⚠️ **Bắt buộc**: Kiểm tra KỸ LƯỠNG và ĐẦY ĐỦ toàn bộ thay đổi trước khi soạn Release Notes.
+  - Tuyệt đối **TRÁNH nhắc đến các phần kỹ thuật code**, tên file (`.dart`), tên class, function hay refactor nội bộ.
+  - Chỉ mô tả dưới **góc độ trải nghiệm người dùng** nhưng phải **CHI TIẾT và PHONG PHÚ** (dùng các nhóm gạch đầu dòng con để liệt kê rõ từng điểm cải tiến).
+  - Gộp các commit cùng chủ đề thành một mục chính kèm các dòng mô tả chi tiết bên dưới.
   - Nếu một section không có nội dung, **bỏ section đó đi** (không để trống).
-  - Viết ngắn gọn, rõ ràng, mỗi bullet 1-2 dòng.
 - **Prerelease?**: có đánh dấu là prerelease không (mặc định: không)
 - **Build targets**: Windows (mặc định). <!-- [DISABLED-ANDROID] APK, Windows, hoặc cả hai (mặc định: cả hai) -->
 

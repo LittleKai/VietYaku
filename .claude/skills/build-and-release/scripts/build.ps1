@@ -1,34 +1,26 @@
 <#
 .SYNOPSIS
     Build VietYaku Windows release.
-    # [DISABLED-ANDROID] APK build tạm thời bị tắt.
 
 .DESCRIPTION
-    - Cập nhật version trong pubspec.yaml (tùy chọn)
+    - Update version in pubspec.yaml
     - Build Windows release
-    # [DISABLED-ANDROID] - Build APK release
-    - Đóng gói output vào build/release/
+    - Package output into build/release/
 
 .PARAMETER Version
-    Version string (ví dụ: "1.0.0" hoặc "v1.0.0"). Prefix "v" sẽ tự bỏ cho pubspec.
+    Version string (e.g. "1.0.0" or "v1.0.0").
 
 .PARAMETER Targets
-    Comma-separated build targets: "windows" (mặc định). # [DISABLED-ANDROID] Trước đó mặc định là "apk,windows".
+    Comma-separated build targets: "windows" (default).
 
 .PARAMETER SkipVersionUpdate
-    Bỏ qua bước cập nhật version trong pubspec.yaml.
-
-.EXAMPLE
-    .\build.ps1 -Version "1.2.0"
-    .\build.ps1 -Version "v1.2.0" -Targets "apk"
-    .\build.ps1 -Version "1.2.0" -Targets "windows" -SkipVersionUpdate
+    Skip updating version in pubspec.yaml.
 #>
 
 param(
     [Parameter(Mandatory = $true)]
     [string]$Version,
 
-    # [DISABLED-ANDROID] Mặc định trước đó: "apk,windows"
     [string]$Targets = "windows",
 
     [switch]$SkipVersionUpdate
@@ -58,16 +50,13 @@ function Write-Err {
 # --- Resolve paths ---
 
 $ProjectRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
-# Nếu script nằm ở .claude/skills/build-and-release/scripts/build.ps1
-# thì ProjectRoot = project root
 
-# Fallback: nếu gọi từ project root
 if (-not (Test-Path (Join-Path $ProjectRoot "pubspec.yaml"))) {
     $ProjectRoot = Get-Location
 }
 
 if (-not (Test-Path (Join-Path $ProjectRoot "pubspec.yaml"))) {
-    Write-Err "Không tìm thấy pubspec.yaml. Hãy chạy script từ project root."
+    Write-Err "Could not find pubspec.yaml. Please run script from project root."
     exit 1
 }
 
@@ -80,7 +69,7 @@ $TagVersion = if ($Version.StartsWith('v')) { $Version } else { "v$Version" }
 
 # Parse build number from existing pubspec
 $PubspecPath = Join-Path $ProjectRoot "pubspec.yaml"
-$PubspecContent = Get-Content $PubspecPath -Raw
+$PubspecContent = Get-Content $PubspecPath -Raw -Encoding UTF8
 
 if ($PubspecContent -match 'version:\s*(\S+)\+(\d+)') {
     $OldVersion = $Matches[1]
@@ -101,11 +90,11 @@ Write-Host "Targets      : $Targets"
 # --- Update pubspec.yaml ---
 
 if (-not $SkipVersionUpdate) {
-    Write-Step "Cập nhật version trong pubspec.yaml"
+    Write-Step "Updating version in pubspec.yaml"
 
     $NewPubspec = $PubspecContent -replace 'version:\s*\S+\+\d+', "version: $SemVer+$NewBuildNumber"
     Set-Content -Path $PubspecPath -Value $NewPubspec -NoNewline -Encoding UTF8
-    Write-Success "pubspec.yaml → version: $SemVer+$NewBuildNumber"
+    Write-Success "pubspec.yaml -> version: $SemVer+$NewBuildNumber"
 }
 
 # --- Prepare output dir ---
@@ -121,28 +110,6 @@ Write-Success "Output dir: $ReleaseDir"
 
 $TargetList = $Targets.Split(',') | ForEach-Object { $_.Trim().ToLower() }
 
-# --- Build APK --- [DISABLED-ANDROID] Tạm thời bị tắt
-# if ($TargetList -contains "apk") {
-#     Write-Step "Building APK (release)"
-#
-#     flutter build apk --release
-#     if ($LASTEXITCODE -ne 0) {
-#         Write-Err "Flutter build apk failed!"
-#         exit 1
-#     }
-#
-#     $ApkSource = Join-Path $ProjectRoot "build" "app" "outputs" "flutter-apk" "app-release.apk"
-#     if (-not (Test-Path $ApkSource)) {
-#         Write-Err "APK not found at: $ApkSource"
-#         exit 1
-#     }
-#
-#     $ApkDest = Join-Path $ReleaseDir "VietYaku-$SemVer.apk"
-#     Copy-Item $ApkSource $ApkDest
-#     $ApkSize = [math]::Round((Get-Item $ApkDest).Length / 1MB, 2)
-#     Write-Success "APK: $ApkDest ($ApkSize MB)"
-# }
-
 # --- Build Windows ---
 
 if ($TargetList -contains "windows") {
@@ -156,7 +123,6 @@ if ($TargetList -contains "windows") {
 
     $WinBuildDir = Join-Path $ProjectRoot "build\windows\x64\runner\Release"
     if (-not (Test-Path $WinBuildDir)) {
-        # Fallback cho cấu trúc cũ
         $WinBuildDir = Join-Path $ProjectRoot "build\windows\runner\Release"
     }
 
@@ -166,7 +132,7 @@ if ($TargetList -contains "windows") {
     }
 
     $ZipDest = Join-Path $ReleaseDir "VietYaku-windows-x64.zip"
-    Write-Step "Đóng gói Windows → ZIP"
+    Write-Step "Compressing Windows -> ZIP"
 
     Compress-Archive -Path "$WinBuildDir\*" -DestinationPath $ZipDest -Force
     $ZipSize = [math]::Round((Get-Item $ZipDest).Length / 1MB, 2)
@@ -175,7 +141,7 @@ if ($TargetList -contains "windows") {
 
 # --- Summary ---
 
-Write-Step "Build hoàn tất!"
+Write-Step "Build completed!"
 
 $Artifacts = Get-ChildItem $ReleaseDir
 Write-Host "Artifacts:" -ForegroundColor Yellow
@@ -185,4 +151,4 @@ foreach ($f in $Artifacts) {
 }
 
 Write-Host ""
-Write-Host "Tiếp theo: chạy release.ps1 để đẩy lên GitHub." -ForegroundColor Cyan
+Write-Host "Next step: run release.ps1 to publish to GitHub." -ForegroundColor Cyan

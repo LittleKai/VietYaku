@@ -1,35 +1,30 @@
-﻿<#
+<#
 .SYNOPSIS
-    Tạo GitHub Release và upload artifacts cho VietYaku.
+    Create GitHub Release and upload artifacts for VietYaku.
 
 .DESCRIPTION
-    - Đọc GITHUB_TOKEN từ .env
-    - Tạo git tag và push
-    - Tạo GitHub Release qua REST API
-    - Upload APK và Windows ZIP lên release
+    - Read GITHUB_TOKEN from .env
+    - Create git tag and push
+    - Create GitHub Release via REST API
+    - Upload Windows ZIP to release
 
 .PARAMETER Version
-    Version/tag string (ví dụ: "v1.0.0" hoặc "1.0.0"). Auto-prefix "v" nếu thiếu.
+    Version/tag string (e.g. "v1.0.0" or "1.0.0").
 
 .PARAMETER Title
-    Tên release hiển thị trên GitHub. Mặc định: "VietYaku <version>".
+    Release title on GitHub.
 
 .PARAMETER Notes
-    Release notes (plain text hoặc markdown). Mặc định: auto-generated từ git log.
+    Release notes (string or path to file).
 
 .PARAMETER Prerelease
-    Đánh dấu release là prerelease.
+    Mark release as prerelease.
 
 .PARAMETER Draft
-    Tạo release ở trạng thái draft (không publish ngay).
+    Create release as draft.
 
 .PARAMETER SkipBuild
-    Bỏ qua bước build, dùng artifacts có sẵn trong build/release/.
-
-.EXAMPLE
-    .\release.ps1 -Version "1.0.0" -Title "VietYaku v1.0.0" -Notes "First release"
-    .\release.ps1 -Version "v1.0.0" -Prerelease
-    .\release.ps1 -Version "1.0.0" -SkipBuild
+    Skip build step and use existing artifacts in build/release/.
 #>
 
 param(
@@ -75,7 +70,7 @@ if (-not (Test-Path (Join-Path $ProjectRoot "pubspec.yaml"))) {
     $ProjectRoot = Get-Location
 }
 if (-not (Test-Path (Join-Path $ProjectRoot "pubspec.yaml"))) {
-    Write-Err "Không tìm thấy pubspec.yaml. Hãy chạy script từ project root."
+    Write-Err "Could not find pubspec.yaml. Please run script from project root."
     exit 1
 }
 
@@ -88,11 +83,11 @@ $SemVer = $Version -replace '^v', ''
 
 # --- Read GITHUB_TOKEN ---
 
-Write-Step "Đọc GITHUB_TOKEN từ .env"
+Write-Step "Reading GITHUB_TOKEN from .env"
 
 $EnvFile = Join-Path $ProjectRoot ".env"
 if (-not (Test-Path $EnvFile)) {
-    Write-Err ".env file không tồn tại!"
+    Write-Err ".env file does not exist!"
     exit 1
 }
 
@@ -104,7 +99,7 @@ Get-Content $EnvFile | ForEach-Object {
 }
 
 if (-not $Token) {
-    Write-Err "Không tìm thấy GITHUB_TOKEN trong .env"
+    Write-Err "Could not find GITHUB_TOKEN in .env"
     exit 1
 }
 
@@ -114,7 +109,7 @@ Write-Success ("GITHUB_TOKEN loaded (" + $Token.Substring(0,8) + '...)')
 
 $RemoteUrl = git remote get-url origin 2>$null
 if (-not $RemoteUrl) {
-    Write-Err "Không tìm thấy git remote 'origin'"
+    Write-Err "Could not find git remote origin"
     exit 1
 }
 
@@ -123,7 +118,7 @@ if ($RemoteUrl -match 'github\.com[:/]([^/]+)/([^/.]+?)(?:\.git)?$') {
     $Owner = $Matches[1]
     $Repo = $Matches[2]
 } else {
-    Write-Err "Không parse được owner/repo từ remote URL: $RemoteUrl"
+    Write-Err "Could not parse owner/repo from remote URL: $RemoteUrl"
     exit 1
 }
 
@@ -136,36 +131,38 @@ if (-not $Title) {
     $Title = "VietYaku $TagVersion"
 }
 
-if (-not $Notes) {
+if ($Notes -and (Test-Path $Notes -PathType Leaf)) {
+    $Notes = Get-Content $Notes -Raw -Encoding UTF8
+} elseif (-not $Notes) {
     $Notes = ""
 }
 
-# --- Build (nếu cần) ---
+# --- Build (if needed) ---
 
 $ReleaseDir = Join-Path $ProjectRoot "build\release"
 
 if (-not $SkipBuild) {
-    Write-Step "Chạy build script"
+    Write-Step "Running build script"
     $BuildScript = Join-Path $PSScriptRoot "build.ps1"
     & $BuildScript -Version $SemVer
     if ($LASTEXITCODE -ne 0) {
-        Write-Err "Build thất bại!"
+        Write-Err "Build failed!"
         exit 1
     }
 }
 
 # --- Verify artifacts ---
 
-Write-Step "Kiểm tra artifacts"
+Write-Step "Checking artifacts"
 
 if (-not (Test-Path $ReleaseDir)) {
-    Write-Err "Thư mục build/release/ không tồn tại. Chạy build trước!"
+    Write-Err "Directory build/release/ does not exist. Run build first!"
     exit 1
 }
 
 $Artifacts = Get-ChildItem $ReleaseDir -File
 if ($Artifacts.Count -eq 0) {
-    Write-Err "Không có artifacts trong build/release/"
+    Write-Err "No artifacts found in build/release/"
     exit 1
 }
 
@@ -177,34 +174,34 @@ foreach ($f in $Artifacts) {
 
 # --- Create git tag ---
 
-Write-Step "Tạo git tag: $TagVersion"
+Write-Step "Creating git tag: $TagVersion"
 
 $ExistingTag = git tag -l $TagVersion 2>$null
 if ($ExistingTag) {
-    Write-Host "Tag $TagVersion đã tồn tại, bỏ qua tạo tag."
+    Write-Host "Tag $TagVersion already exists, skipping tag creation."
 } else {
     git tag -a $TagVersion -m "Release $TagVersion"
     if ($LASTEXITCODE -ne 0) {
-        Write-Err "Tạo git tag thất bại!"
+        Write-Err "Creating git tag failed!"
         exit 1
     }
-    Write-Success "Tag $TagVersion đã tạo"
+    Write-Success "Tag $TagVersion created"
 }
 
 # --- Push tag ---
 
-Write-Step "Push tag lên origin"
+Write-Step "Pushing tag to origin"
 
 git push origin $TagVersion
 if ($LASTEXITCODE -ne 0) {
-    Write-Err "Push tag thất bại!"
+    Write-Err "Push tag failed!"
     exit 1
 }
-Write-Success "Tag đã push"
+Write-Success "Tag pushed"
 
 # --- Create GitHub Release ---
 
-Write-Step "Tạo GitHub Release"
+Write-Step "Creating GitHub Release"
 
 $Headers = @{
     "Authorization" = "Bearer $Token"
@@ -238,7 +235,7 @@ try {
 
 # --- Upload assets ---
 
-Write-Step "Upload artifacts lên release"
+Write-Step "Uploading artifacts to release"
 
 $UploadUrlBase = "https://uploads.github.com/repos/$Owner/$Repo/releases/$ReleaseId/assets"
 
@@ -249,7 +246,6 @@ foreach ($Artifact in $Artifacts) {
 
     Write-Host "Uploading: $FileName ($FileSize MB)..." -NoNewline
 
-    # Detect content type
     $ContentType = switch -Regex ($FileName) {
         '\.apk$'  { "application/vnd.android.package-archive" }
         '\.zip$'  { "application/zip" }
@@ -264,7 +260,7 @@ foreach ($Artifact in $Artifacts) {
         $UploadResponse = Invoke-RestMethod -Uri $UploadUrl -Method POST -Headers $Headers `
             -Body $FileBytes -ContentType $ContentType
         Write-Host " [OK]" -ForegroundColor Green
-        Write-Host "  → $($UploadResponse.browser_download_url)"
+        Write-Host "  -> $($UploadResponse.browser_download_url)"
     } catch {
         $StatusCode = $_.Exception.Response.StatusCode.Value__
         $ErrorBody = $_.ErrorDetails.Message
@@ -277,7 +273,7 @@ foreach ($Artifact in $Artifacts) {
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Green
-Write-Host " Release hoàn tất!" -ForegroundColor Green
+Write-Host " Release completed successfully!" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Green
 Write-Host ""
 Write-Host "GitHub Release : $HtmlUrl" -ForegroundColor Yellow

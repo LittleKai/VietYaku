@@ -68,10 +68,143 @@ class _UpdateDialogContent extends ConsumerWidget {
         );
       default:
         final body = state.release?.body.trim();
-        return Text(
-          body != null && body.isNotEmpty ? body : 'Đã có phiên bản mới.',
-        );
+        if (body == null || body.isEmpty) {
+          return const Text('Đã có phiên bản mới.');
+        }
+        return _ReleaseNotesView(notes: body);
     }
+  }
+}
+
+/// Parse và hiển thị Release Notes chuẩn định dạng, loại bỏ ký hiệu Markdown thô.
+class _ReleaseNotesView extends StatelessWidget {
+  const _ReleaseNotesView({required this.notes});
+
+  final String notes;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    final lines = notes.split('\n');
+    final widgets = <Widget>[];
+
+    final titleStyle = theme.textTheme.titleMedium?.copyWith(
+      color: scheme.primary,
+      fontWeight: FontWeight.bold,
+    );
+    final subtitleStyle = theme.textTheme.titleSmall?.copyWith(
+      color: scheme.primary,
+      fontWeight: FontWeight.bold,
+    );
+    final bodyStyle = theme.textTheme.bodyMedium?.copyWith(
+      color: scheme.onSurface,
+      height: 1.4,
+    );
+    final boldStyle = bodyStyle?.copyWith(
+      fontWeight: FontWeight.bold,
+    );
+
+    for (final rawLine in lines) {
+      final line = rawLine.trimRight();
+      if (line.trim().isEmpty) {
+        widgets.add(const SizedBox(height: 4));
+        continue;
+      }
+
+      if (line.startsWith('## ')) {
+        final text = line.substring(3).trim();
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.only(top: 8, bottom: 6),
+            child: Text(text, style: titleStyle),
+          ),
+        );
+      } else if (line.startsWith('### ')) {
+        final text = line.substring(4).trim();
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.only(top: 10, bottom: 6),
+            child: Text(text, style: subtitleStyle),
+          ),
+        );
+      } else if (line.trimLeft().startsWith('- ')) {
+        final isSubItem = line.startsWith('  ') || line.startsWith('\t');
+        final content = line.trimLeft().substring(2).trim();
+        widgets.add(
+          Padding(
+            padding: EdgeInsets.only(
+              left: isSubItem ? 18 : 4,
+              bottom: 4,
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isSubItem ? '◦ ' : '• ',
+                  style: TextStyle(
+                    color: isSubItem ? scheme.onSurfaceVariant : scheme.primary,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Expanded(
+                  child: Text.rich(
+                    TextSpan(
+                      children: _parseInlineMarkdown(
+                        content,
+                        bodyStyle ?? const TextStyle(),
+                        boldStyle ?? const TextStyle(),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      } else {
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Text.rich(
+              TextSpan(
+                children: _parseInlineMarkdown(
+                  line.trim(),
+                  bodyStyle ?? const TextStyle(),
+                  boldStyle ?? const TextStyle(),
+                ),
+              ),
+            ),
+          ),
+        );
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: widgets,
+    );
+  }
+
+  List<TextSpan> _parseInlineMarkdown(
+    String text,
+    TextStyle baseStyle,
+    TextStyle boldStyle,
+  ) {
+    final spans = <TextSpan>[];
+    final parts = text.split('**');
+    for (var i = 0; i < parts.length; i++) {
+      if (parts[i].isEmpty) continue;
+      spans.add(
+        TextSpan(
+          text: parts[i],
+          style: i.isOdd ? boldStyle : baseStyle,
+        ),
+      );
+    }
+    return spans;
   }
 }
 
