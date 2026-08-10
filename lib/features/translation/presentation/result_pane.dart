@@ -1,15 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../shared/widgets/feature_help_button.dart';
 import '../../clipboard/application/clipboard_reader_controller.dart';
 import '../../settings/settings_provider.dart';
 import '../application/lookup_controller.dart';
 import '../application/translation_controller.dart';
 import '../application/translation_rules_provider.dart';
 import '../domain/token.dart';
-import '../domain/translation_rule.dart';
 import '../domain/translation_engine.dart';
+import '../domain/translation_rule.dart';
 import 'token_text_view.dart';
+
+enum _ResultTabType {
+  singleMeaning('VietPhrase một nghĩa'),
+  multiMeaning('VietPhrase (đa nghĩa)'),
+  postProcessing('Hậu xử lý'),
+  googleTranslate('Google Dịch');
+
+  final String label;
+  const _ResultTabType(this.label);
+}
 
 /// Kết quả dịch: một nghĩa, đa nghĩa, hậu xử lý và Google Dịch tùy chọn.
 class ResultPane extends ConsumerStatefulWidget {
@@ -28,15 +39,13 @@ class _ResultPaneState extends ConsumerState<ResultPane>
   bool _gtLoading = false;
   String? _gtText;
 
-  bool get _multiMeaning => _tabController.index == 1;
-  bool get _postTabActive => _tabController.index == 2;
-  bool get _gtTabActive => _gtTabOpen && _tabController.index == 3;
-
   @override
   void initState() {
     super.initState();
-    // Đa nghĩa là tab mặc định.
-    _tabController = _makeController(length: 3, initialIndex: 1);
+    final postEnabled = ref.read(settingsProvider).postProcessingEnabled;
+    final initialLength = 2 + (postEnabled ? 1 : 0);
+    // Đa nghĩa là tab mặc định (index 1).
+    _tabController = _makeController(length: initialLength, initialIndex: 1);
   }
 
   TabController _makeController({
@@ -55,15 +64,27 @@ class _ResultPaneState extends ConsumerState<ResultPane>
   }
 
   Future<void> _openGoogleTranslateTab() async {
+    final postEnabled = ref.read(settingsProvider).postProcessingEnabled;
+    final activeTabs = <_ResultTabType>[
+      _ResultTabType.singleMeaning,
+      _ResultTabType.multiMeaning,
+      if (postEnabled) _ResultTabType.postProcessing,
+      _ResultTabType.googleTranslate,
+    ];
+    final gtIndex = activeTabs.indexOf(_ResultTabType.googleTranslate);
+
     if (!_gtTabOpen) {
       final old = _tabController;
       setState(() {
         _gtTabOpen = true;
-        _tabController = _makeController(length: 4, initialIndex: 3);
+        _tabController = _makeController(
+          length: activeTabs.length,
+          initialIndex: gtIndex,
+        );
       });
       old.dispose();
     } else {
-      _tabController.animateTo(3);
+      _tabController.animateTo(gtIndex);
     }
     await _fetchGoogleTranslate();
   }
@@ -97,10 +118,35 @@ class _ResultPaneState extends ConsumerState<ResultPane>
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(translationControllerProvider);
+    final postEnabled = ref.watch(
+      settingsProvider.select((s) => s.postProcessingEnabled),
+    );
     final bracketSingle = ref.watch(
       settingsProvider.select((s) => s.bracketSingleMeaning),
     );
-    final String Function(Token) textOf = _multiMeaning
+
+    final activeTabs = <_ResultTabType>[
+      _ResultTabType.singleMeaning,
+      _ResultTabType.multiMeaning,
+      if (postEnabled) _ResultTabType.postProcessing,
+      if (_gtTabOpen) _ResultTabType.googleTranslate,
+    ];
+
+    if (_tabController.length != activeTabs.length) {
+      final old = _tabController;
+      final newIndex = old.index.clamp(0, activeTabs.length - 1);
+      _tabController = _makeController(
+        length: activeTabs.length,
+        initialIndex: newIndex,
+      );
+      WidgetsBinding.instance.addPostFrameCallback((_) => old.dispose());
+    }
+
+    final activeIndex = _tabController.index.clamp(0, activeTabs.length - 1);
+    final activeTab = activeTabs[activeIndex];
+
+    final isMultiMeaning = activeTab == _ResultTabType.multiMeaning;
+    final String Function(Token) textOf = isMultiMeaning
         ? (t) => t.displayAllWith(bracketSingle: bracketSingle)
         : (t) => t.display;
 
@@ -121,10 +167,7 @@ class _ResultPaneState extends ConsumerState<ResultPane>
               child: TabBar(
                 controller: _tabController,
                 tabs: [
-                  const Tab(text: 'VietPhrase một nghĩa'),
-                  const Tab(text: 'VietPhrase (đa nghĩa)'),
-                  const Tab(text: 'Hậu xử lý'),
-                  if (_gtTabOpen) const Tab(text: 'Google Dịch'),
+                  for (final tab in activeTabs) Tab(text: tab.label),
                 ],
               ),
             ),
@@ -135,9 +178,9 @@ class _ResultPaneState extends ConsumerState<ResultPane>
             ),
           ],
         ),
-        if (_gtTabActive)
+        if (activeTab == _ResultTabType.googleTranslate)
           Expanded(child: _buildGoogleTranslateView(context))
-        else if (_postTabActive)
+        else if (activeTab == _ResultTabType.postProcessing)
           Expanded(child: _buildPostProcessingView(context, state))
         else if (!state.hasResult)
           const Expanded(
@@ -192,6 +235,21 @@ class _ResultPaneState extends ConsumerState<ResultPane>
                     '${ruleFile.document.rules.length} rule · '
                     '${result.matches.length} rule khớp',
                     style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(width: 4),
+                  const FeatureHelpButton(
+                    title: 'Hướng dẫn & Ví dụ Hậu xử lý',
+                    summary:
+                        'Quy tắc hậu xử lý tự động thay thế/chuẩn hoá văn bản bằng Regex và Luật Nhân sau khi dịch VietPhrase.',
+                    accentColor: Color(0xFF6A1B9A),
+                    points: [
+                      'Quy tắc áp dụng tuần tự từ trên xuống dưới trên bản dịch VietPhrase.',
+                      'Thay thế tĩnh: "regex => thay_thế" hoặc "regex<TAB>thay_thế".\nVí dụ: "không có cái gì => không có gì".',
+                      'Regex bắt nhóm: Dùng () để bắt nhóm, thế bằng \$1, \$2... \$9.\nVí dụ: "ngươi (\\w+) à => cậu \$1 phải không" (ngươi đi à → cậu đi phải không).',
+                      'Phân nhóm & Ghi chú: Dùng [Tên nhóm] để nhóm quy tắc (bật/tắt theo nhóm) và # để viết comment.',
+                      'Luật Nhân (mode Trung): Dùng mẫu {0} đại diện cho tên/đại từ động từ từ điển.\nVí dụ: "{0} đại nhân => ngài {0}" (Tiêu Viêm đại nhân → ngài Tiêu Viêm).',
+                      'Thử nghiệm rule: Mở Cài đặt → Chung → "Mở rule tester" để gõ thử văn bản, kiểm tra rule nào đang khớp và sửa trực tiếp.',
+                    ],
                   ),
                   const Spacer(),
                   IconButton(

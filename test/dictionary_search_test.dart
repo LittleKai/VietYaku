@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vietyaku/features/dictionary/domain/dict_type.dart';
 import 'package:vietyaku/features/dictionary_search/domain/dictionary_search.dart';
+import 'package:vietyaku/features/translation/domain/translation_engine.dart';
 
 void main() {
   final layers = [
@@ -62,4 +63,18 @@ void main() {
     );
     expect(response.totalMatches, 2);
   });
+
+  test('isAvailableFor lọc đúng từ điển theo mode ngôn ngữ', () {
+    expect(DictType.mazii.isAvailableFor(TranslationMode.japanese), isTrue);
+    expect(DictType.jaVi.isAvailableFor(TranslationMode.japanese), isTrue);
+    expect(DictType.zhVi.isAvailableFor(TranslationMode.japanese), isFalse);
+
+    expect(DictType.mazii.isAvailableFor(TranslationMode.chinese), isFalse);
+    expect(DictType.jaVi.isAvailableFor(TranslationMode.chinese), isFalse);
+    expect(DictType.zhVi.isAvailableFor(TranslationMode.chinese), isTrue);
+
+    expect(DictType.vietPhrase.isAvailableFor(TranslationMode.japanese), isTrue);
+    expect(DictType.vietPhrase.isAvailableFor(TranslationMode.chinese), isTrue);
+  });
 }
+

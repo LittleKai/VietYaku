@@ -125,6 +125,21 @@ class SettingsScreen extends ConsumerWidget {
                   description:
                       'Áp tuần tự file rule theo ngôn ngữ trong tab Hậu xử lý.',
                   value: settings.postProcessingEnabled,
+                  help: const FeatureHelpButton(
+                    title: 'Hướng dẫn & Ví dụ Hậu xử lý',
+                    summary:
+                        'Tự động thay thế hoặc chuẩn hoá văn bản bằng bộ quy tắc regex sau khi dịch VietPhrase.',
+                    accentColor: Color(0xFF6A1B9A),
+                    points: [
+                      'Khi bật, tab "Hậu xử lý" xuất hiện trên màn hình Dịch để xem kết quả sau khi áp dụng quy tắc.',
+                      'Quy tắc áp dụng tuần tự từ trên xuống dưới trên bản dịch VietPhrase.',
+                      'Thay thế tĩnh: "regex => thay_thế" hoặc "regex<TAB>thay_thế".\nVí dụ: "không có cái gì => không có gì".',
+                      'Regex bắt nhóm: Dùng () để bắt nhóm, thế bằng \$1, \$2... \$9.\nVí dụ: "ngươi (\\w+) à => cậu \$1 phải không" (ngươi đi à → cậu đi phải không).',
+                      'Phân nhóm & Ghi chú: Dùng [Tên nhóm] để nhóm quy tắc (bật/tắt theo nhóm) và # để viết comment.',
+                      'Luật Nhân (mode Trung): Dùng mẫu {0} đại diện cho tên/đại từ động từ từ điển.\nVí dụ: "{0} đại nhân => ngài {0}" (Tiêu Viêm đại nhân → ngài Tiêu Viêm).',
+                      'Có thể mở "Mở rule tester" bên dưới để xem danh sách, thử nghiệm hoặc chỉnh sửa quy tắc.',
+                    ],
+                  ),
                   onChanged: notifier.setPostProcessingEnabled,
                 ),
                 SettingsControlRow(

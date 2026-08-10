@@ -58,5 +58,9 @@ void main() {
       expect(color.resolve({WidgetState.selected}), s.primary);
       expect(color.resolve(<WidgetState>{}), s.onSurfaceVariant);
     });
+
+    test('AppTheme ($mode): dialogTheme cắt xén góc bo mượt mà', () {
+      expect(entry.value.dialogTheme.clipBehavior, Clip.antiAlias);
+    });
   }
 }

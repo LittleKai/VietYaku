@@ -167,6 +167,7 @@ class _TranslationRuleTesterDialogState
     final regexDocument = parsePostProcessingRules(_rulesController.text);
     final groups = regexDocument.rules.map((rule) => rule.group).toSet();
     return AlertDialog(
+      clipBehavior: Clip.antiAlias,
       title: Text('Quy tắc dịch · $modeLabel'),
       content: SizedBox(
         width: math.min(820, MediaQuery.sizeOf(context).width * 0.82),

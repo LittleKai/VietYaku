@@ -34,11 +34,15 @@ class _DictionarySearchScreenState
   void _search() {
     final text = _queryController.text.trim();
     if (text.isEmpty) return;
+    final mode = ref.read(currentModeProvider);
+    final activeTypes = _selectedTypes
+        .where((type) => type.isAvailableFor(mode))
+        .toSet();
     setState(() {
       _submittedQuery = DictionarySearchQuery(
         text: text,
         mode: _searchMode,
-        dictionaryTypes: Set.unmodifiable(_selectedTypes),
+        dictionaryTypes: Set.unmodifiable(activeTypes),
       );
     });
   }
@@ -51,6 +55,7 @@ class _DictionarySearchScreenState
         dictionaries.valueOrNull?.searchLayers
             .where((layer) => layer.entries.isNotEmpty)
             .map((layer) => layer.type)
+            .where((type) => type.isAvailableFor(mode))
             .toSet()
             .toList()
           ?..sort((a, b) => a.index.compareTo(b.index));
@@ -75,7 +80,7 @@ class _DictionarySearchScreenState
                 'Key chính xác tìm đúng một key; “bắt đầu bằng” tìm theo tiền tố.',
                 'Wildcard: * đại diện cho chuỗi bất kỳ, ? đại diện cho một ký tự. Ví dụ *龍* hoặc 少?.',
                 'Toàn văn trong nghĩa là tra ngược từ tiếng Việt và không phân biệt chữ hoa/thường.',
-                'Có thể lọc theo mode Nhật/Trung và từng loại từ điển.',
+                'Có thể lọc theo mode Nhật/Trung và từng loại từ điển khả dụng cho ngôn ngữ đó.',
                 'Nhãn “Lớp đang thắng” cho biết base/shared/user overlay nào thực sự được áp dụng.',
                 'Việc quét chạy trong worker isolate riêng; engine HashMap và đường dịch nóng không bị thay đổi.',
               ],
@@ -99,10 +104,16 @@ class _DictionarySearchScreenState
               ],
               selected: {mode},
               onSelectionChanged: (selection) async {
-                setState(() => _submittedQuery = null);
+                final nextMode = selection.first;
+                setState(() {
+                  _submittedQuery = null;
+                  _selectedTypes = _selectedTypes
+                      .where((type) => type.isAvailableFor(nextMode))
+                      .toSet();
+                });
                 await ref
                     .read(translationControllerProvider.notifier)
-                    .setMode(selection.first);
+                    .setMode(nextMode);
               },
             ),
           ),

@@ -1,6 +1,6 @@
 # Important Fixed Bugs
 
-**Last Updated:** 2026-08-09
+**Last Updated:** 2026-08-10
 
 ---
 
@@ -13,6 +13,13 @@ Record only high-impact, hard-to-detect, or likely-to-recur bugs. Do not record 
 ---
 
 ## Fixed Bugs
+
+### 2026-08-10 - Disposing `TextEditingController` or `ValueNotifier` in dialog method after `await showAppDialog` causes crash
+- **Symptom:** Exception thrown when interacting with dialogs in `glossary_sync_screen.dart`: `A TextEditingController was used after being disposed. Once you have called dispose() on a TextEditingController, it can no longer be used. The relevant error-causing widget was: TextField at glossary_sync_screen.dart:326:15`.
+- **Root Cause:** Local `TextEditingController`s and `ValueNotifier`s were created in a helper method, passed into `StatefulBuilder`/`TextField` inside `showAppDialog`, and `.dispose()` was called immediately after `await showAppDialog` returned. Because `showAppDialog` resolves as soon as `Navigator.pop` is invoked, the dialog widget tree (`TextField`) is STILL mounted and rebuilding during the route exit animation. Disposing controllers before element unmount causes `TextField` to access disposed controllers during transition frames.
+- **Fix:** Refactored dialog content into `StatefulWidget` classes (`_SingleEditDialogContent`, `_BulkEditDialogContent`, `_ConfirmDeleteDialogContent`) that own `TextEditingController`s in `initState()` and dispose them in `State.dispose()`. `State.dispose()` is executed automatically by Flutter AFTER element unmount and pop animation finish. `ValueNotifier`s are safely disposed via `.disposeAfterRouteAnimation()`.
+- **Do Not Repeat:** Never instantiate local `TextEditingController`s outside of a `State` class for dialogs, and never call `.dispose()` on them immediately after `await showAppDialog`. Always let a `StatefulWidget` own and dispose its controllers in `State.dispose()`, or delay disposal until route unmount.
+- **Related Files:** `lib/features/glossary/presentation/glossary_sync_screen.dart`, `lib/shared/widgets/entry_edit_dialog.dart`
 
 ### 2026-08-09 - `trad2simp.tsv` quy nhầm chữ VỐN ĐÃ giản thể (子→自, 三→叁, 斯→四…)
 - **Symptom:** Màn Glossary ↔ VietPhrase, mode Trung, tab "Không trùng": bấm Cập nhật xong từ vẫn nằm nguyên trong danh sách, bấm bao nhiêu lần cũng không biến mất (98 mục kẹt vĩnh viễn). Không lỗi, không cảnh báo. Tra online cho các từ chứa những chữ này cũng trả kết quả rác.

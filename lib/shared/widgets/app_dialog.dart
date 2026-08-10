@@ -55,6 +55,7 @@ class AppDialog extends StatelessWidget {
     final screenHeight = MediaQuery.sizeOf(context).height;
 
     return Dialog(
+      clipBehavior: Clip.antiAlias,
       child: ConstrainedBox(
         constraints: BoxConstraints(
           maxWidth: width,

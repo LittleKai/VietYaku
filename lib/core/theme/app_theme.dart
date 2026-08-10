@@ -174,6 +174,7 @@ class AppTheme {
           borderRadius: BorderRadius.circular(16),
           side: BorderSide(color: scheme.outlineVariant, width: borderWidth),
         ),
+        clipBehavior: Clip.antiAlias,
         titleTextStyle: text.titleLarge,
         contentTextStyle: text.bodyMedium,
         insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),

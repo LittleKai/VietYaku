@@ -196,9 +196,9 @@ class _DirectionTabState extends ConsumerState<_DirectionTab>
     if (rows.isEmpty || _applying) return;
     final mode = ref.read(translationControllerProvider).mode;
     final lang = GlossaryService.langFor(mode);
-    var deleteFromGlossary = true;
-    var deleteFromVietPhrase = true;
+
     final canDeleteNotifier = ValueNotifier<bool>(true);
+    _ConfirmDeleteResult? resultData;
 
     final confirmed = await showAppDialog<bool>(
       context: context,
@@ -209,37 +209,10 @@ class _DirectionTabState extends ConsumerState<_DirectionTab>
           ? 'Xóa "${rows.first.source}" khỏi các bên từ điển được chọn:'
           : 'Xóa ${rows.length} mục từ đã chọn khỏi các bên từ điển:',
       width: 520,
-      content: StatefulBuilder(
-        builder: (context, setDialogState) {
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              CheckboxListTile(
-                value: deleteFromGlossary,
-                title: Text('Xóa khỏi Global Glossary ($lang)'),
-                subtitle: const Text('Ghi trực tiếp vào file Global Glossary.json'),
-                controlAffinity: ListTileControlAffinity.leading,
-                onChanged: (v) => setDialogState(() {
-                  deleteFromGlossary = v ?? false;
-                  canDeleteNotifier.value = deleteFromGlossary || deleteFromVietPhrase;
-                }),
-              ),
-              CheckboxListTile(
-                value: deleteFromVietPhrase,
-                title: const Text('Xóa khỏi VietPhrase cục bộ'),
-                subtitle: const Text(
-                  'Xếp hàng xóa VietPhrase (bấm Update để gửi lên server)',
-                ),
-                controlAffinity: ListTileControlAffinity.leading,
-                onChanged: (v) => setDialogState(() {
-                  deleteFromVietPhrase = v ?? false;
-                  canDeleteNotifier.value = deleteFromGlossary || deleteFromVietPhrase;
-                }),
-              ),
-            ],
-          );
-        },
+      content: _ConfirmDeleteDialogContent(
+        lang: lang,
+        canDeleteNotifier: canDeleteNotifier,
+        onChanged: (res) => resultData = res,
       ),
       actionsBuilder: (dialogContext) => [
         TextButton(
@@ -260,16 +233,16 @@ class _DirectionTabState extends ConsumerState<_DirectionTab>
         ),
       ],
     );
-    canDeleteNotifier.dispose();
+    canDeleteNotifier.disposeAfterRouteAnimation();
 
-    if (confirmed != true) return;
+    if (confirmed != true || resultData == null) return;
     setState(() => _applying = true);
     try {
       await deleteGlossarySyncRows(
         ref,
         rows: rows,
-        deleteFromGlossary: deleteFromGlossary,
-        deleteFromVietPhrase: deleteFromVietPhrase,
+        deleteFromGlossary: resultData!.deleteFromGlossary,
+        deleteFromVietPhrase: resultData!.deleteFromVietPhrase,
       );
       if (!mounted) return;
       setState(() {
@@ -292,17 +265,8 @@ class _DirectionTabState extends ConsumerState<_DirectionTab>
     final mode = ref.read(translationControllerProvider).mode;
     final lang = GlossaryService.langFor(mode);
 
-    final sourceController = TextEditingController(text: row.source);
-    final targetController = TextEditingController(text: row.target);
-    var updateGlossary = true;
-    var updateVietPhrase = true;
     final canSaveNotifier = ValueNotifier<bool>(true);
-
-    void checkCanSave() {
-      canSaveNotifier.value = sourceController.text.trim().isNotEmpty &&
-          targetController.text.trim().isNotEmpty &&
-          (updateGlossary || updateVietPhrase);
-    }
+    _SingleEditResult? resultData;
 
     final saved = await showAppDialog<bool>(
       context: context,
@@ -311,49 +275,11 @@ class _DirectionTabState extends ConsumerState<_DirectionTab>
       title: 'Sửa mục từ',
       description: 'Chỉnh sửa từ nguồn và nghĩa tiếng Việt:',
       width: 550,
-      content: StatefulBuilder(
-        builder: (context, setDialogState) {
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              TextField(
-                controller: sourceController,
-                decoration: const InputDecoration(labelText: 'Từ nguồn'),
-                onChanged: (_) => checkCanSave(),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: targetController,
-                decoration: const InputDecoration(labelText: 'Nghĩa tiếng Việt'),
-                onChanged: (_) => checkCanSave(),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'Áp dụng thay đổi vào:',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              CheckboxListTile(
-                value: updateGlossary,
-                title: Text('Cập nhật Global Glossary ($lang)'),
-                controlAffinity: ListTileControlAffinity.leading,
-                onChanged: (v) => setDialogState(() {
-                  updateGlossary = v ?? false;
-                  checkCanSave();
-                }),
-              ),
-              CheckboxListTile(
-                value: updateVietPhrase,
-                title: const Text('Cập nhật VietPhrase cục bộ'),
-                controlAffinity: ListTileControlAffinity.leading,
-                onChanged: (v) => setDialogState(() {
-                  updateVietPhrase = v ?? false;
-                  checkCanSave();
-                }),
-              ),
-            ],
-          );
-        },
+      content: _SingleEditDialogContent(
+        row: row,
+        lang: lang,
+        canSaveNotifier: canSaveNotifier,
+        onChanged: (res) => resultData = res,
       ),
       actionsBuilder: (dialogContext) => [
         TextButton(
@@ -370,14 +296,12 @@ class _DirectionTabState extends ConsumerState<_DirectionTab>
         ),
       ],
     );
+    canSaveNotifier.disposeAfterRouteAnimation();
 
-    final newSource = sourceController.text.trim();
-    final newTarget = targetController.text.trim();
-    sourceController.dispose();
-    targetController.dispose();
-    canSaveNotifier.dispose();
-
-    if (saved != true || newSource.isEmpty || newTarget.isEmpty) return;
+    if (saved != true || resultData == null) return;
+    final newSource = resultData!.newSource;
+    final newTarget = resultData!.newTarget;
+    if (newSource.isEmpty || newTarget.isEmpty) return;
 
     setState(() => _applying = true);
     try {
@@ -386,8 +310,8 @@ class _DirectionTabState extends ConsumerState<_DirectionTab>
         oldRow: row,
         newSource: newSource,
         newTarget: newTarget,
-        updateGlossary: updateGlossary,
-        updateVietPhrase: updateVietPhrase,
+        updateGlossary: resultData!.updateGlossary,
+        updateVietPhrase: resultData!.updateVietPhrase,
       );
       if (!mounted) return;
       setState(() {
@@ -396,7 +320,7 @@ class _DirectionTabState extends ConsumerState<_DirectionTab>
         _cachedResult = null;
       });
       _showMessage(
-        updateGlossary && updateVietPhrase
+        resultData!.updateGlossary && resultData!.updateVietPhrase
             ? 'Đã cập nhật cả 2 bên (Glossary & VietPhrase): $newSource → $newTarget'
             : 'Đã cập nhật: $newSource → $newTarget',
       );
@@ -416,20 +340,8 @@ class _DirectionTabState extends ConsumerState<_DirectionTab>
     final mode = ref.read(translationControllerProvider).mode;
     final lang = GlossaryService.langFor(mode);
 
-    var isReplaceMode = false;
-    final newTargetController = TextEditingController();
-    final findTextController = TextEditingController();
-    final replaceTextController = TextEditingController();
-    var updateGlossary = true;
-    var updateVietPhrase = true;
     final canApplyNotifier = ValueNotifier<bool>(false);
-
-    void checkCanApply() {
-      final textOk = !isReplaceMode
-          ? newTargetController.text.trim().isNotEmpty
-          : findTextController.text.isNotEmpty;
-      canApplyNotifier.value = (updateGlossary || updateVietPhrase) && textOk;
-    }
+    _BulkEditResult? resultData;
 
     final saved = await showAppDialog<bool>(
       context: context,
@@ -438,78 +350,10 @@ class _DirectionTabState extends ConsumerState<_DirectionTab>
       title: 'Sửa hàng loạt ${rows.length} mục đã chọn',
       description: 'Chọn chế độ sửa và nơi áp dụng:',
       width: 600,
-      content: StatefulBuilder(
-        builder: (context, setDialogState) {
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SegmentedButton<bool>(
-                segments: const [
-                  ButtonSegment(value: false, label: Text('Đặt nghĩa mới')),
-                  ButtonSegment(value: true, label: Text('Thay thế chuỗi')),
-                ],
-                selected: {isReplaceMode},
-                onSelectionChanged: (v) => setDialogState(() {
-                  isReplaceMode = v.first;
-                  checkCanApply();
-                }),
-              ),
-              const SizedBox(height: 16),
-              if (!isReplaceMode)
-                TextField(
-                  controller: newTargetController,
-                  decoration: const InputDecoration(
-                    labelText: 'Nghĩa mới cho tất cả mục',
-                    hintText: 'Nhập nghĩa tiếng Việt mới',
-                  ),
-                  onChanged: (_) => checkCanApply(),
-                )
-              else ...[
-                TextField(
-                  controller: findTextController,
-                  decoration: const InputDecoration(
-                    labelText: 'Chuỗi cần tìm trong nghĩa',
-                    hintText: 'Cần tìm...',
-                  ),
-                  onChanged: (_) => checkCanApply(),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: replaceTextController,
-                  decoration: const InputDecoration(
-                    labelText: 'Thay thế bằng',
-                    hintText: 'Thay thế...',
-                  ),
-                  onChanged: (_) => checkCanApply(),
-                ),
-              ],
-              const SizedBox(height: 16),
-              const Text(
-                'Áp dụng thay đổi vào:',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              CheckboxListTile(
-                value: updateGlossary,
-                title: Text('Cập nhật Global Glossary ($lang)'),
-                controlAffinity: ListTileControlAffinity.leading,
-                onChanged: (v) => setDialogState(() {
-                  updateGlossary = v ?? false;
-                  checkCanApply();
-                }),
-              ),
-              CheckboxListTile(
-                value: updateVietPhrase,
-                title: const Text('Cập nhật VietPhrase cục bộ'),
-                controlAffinity: ListTileControlAffinity.leading,
-                onChanged: (v) => setDialogState(() {
-                  updateVietPhrase = v ?? false;
-                  checkCanApply();
-                }),
-              ),
-            ],
-          );
-        },
+      content: _BulkEditDialogContent(
+        lang: lang,
+        canApplyNotifier: canApplyNotifier,
+        onChanged: (res) => resultData = res,
       ),
       actionsBuilder: (dialogContext) => [
         TextButton(
@@ -526,28 +370,21 @@ class _DirectionTabState extends ConsumerState<_DirectionTab>
         ),
       ],
     );
+    canApplyNotifier.disposeAfterRouteAnimation();
 
-    final newTarget = newTargetController.text.trim();
-    final findText = findTextController.text;
-    final replaceText = replaceTextController.text;
-    newTargetController.dispose();
-    findTextController.dispose();
-    replaceTextController.dispose();
-    canApplyNotifier.dispose();
-
-    if (saved != true) return;
+    if (saved != true || resultData == null) return;
 
     setState(() => _applying = true);
     try {
       await bulkEditGlossarySyncRows(
         ref,
         rows: rows,
-        newTarget: newTarget,
-        isReplaceMode: isReplaceMode,
-        findText: findText,
-        replaceText: replaceText,
-        updateGlossary: updateGlossary,
-        updateVietPhrase: updateVietPhrase,
+        newTarget: resultData!.newTarget,
+        isReplaceMode: resultData!.isReplaceMode,
+        findText: resultData!.findText,
+        replaceText: resultData!.replaceText,
+        updateGlossary: resultData!.updateGlossary,
+        updateVietPhrase: resultData!.updateVietPhrase,
       );
       if (!mounted) return;
       setState(() {
@@ -558,7 +395,7 @@ class _DirectionTabState extends ConsumerState<_DirectionTab>
         _cachedResult = null;
       });
       _showMessage(
-        updateGlossary && updateVietPhrase
+        resultData!.updateGlossary && resultData!.updateVietPhrase
             ? 'Đã sửa ${rows.length} mục ở cả 2 bên (Glossary & VietPhrase).'
             : 'Đã sửa ${rows.length} mục.',
       );
@@ -1014,3 +851,356 @@ class _CenteredNote extends StatelessWidget {
     ),
   );
 }
+
+extension _ValueNotifierX on ValueNotifier<dynamic> {
+  void disposeAfterRouteAnimation() {
+    Future<void>.delayed(const Duration(milliseconds: 500), dispose);
+  }
+}
+
+class _ConfirmDeleteResult {
+  const _ConfirmDeleteResult({
+    required this.deleteFromGlossary,
+    required this.deleteFromVietPhrase,
+  });
+
+  final bool deleteFromGlossary;
+  final bool deleteFromVietPhrase;
+}
+
+class _ConfirmDeleteDialogContent extends StatefulWidget {
+  const _ConfirmDeleteDialogContent({
+    required this.lang,
+    required this.canDeleteNotifier,
+    required this.onChanged,
+  });
+
+  final String lang;
+  final ValueNotifier<bool> canDeleteNotifier;
+  final ValueChanged<_ConfirmDeleteResult> onChanged;
+
+  @override
+  State<_ConfirmDeleteDialogContent> createState() =>
+      _ConfirmDeleteDialogContentState();
+}
+
+class _ConfirmDeleteDialogContentState
+    extends State<_ConfirmDeleteDialogContent> {
+  bool _deleteFromGlossary = true;
+  bool _deleteFromVietPhrase = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _notify();
+  }
+
+  void _notify() {
+    widget.canDeleteNotifier.value =
+        _deleteFromGlossary || _deleteFromVietPhrase;
+    widget.onChanged(
+      _ConfirmDeleteResult(
+        deleteFromGlossary: _deleteFromGlossary,
+        deleteFromVietPhrase: _deleteFromVietPhrase,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        CheckboxListTile(
+          value: _deleteFromGlossary,
+          title: Text('Xóa khỏi Global Glossary (${widget.lang})'),
+          subtitle: const Text('Ghi trực tiếp vào file Global Glossary.json'),
+          controlAffinity: ListTileControlAffinity.leading,
+          onChanged: (v) => setState(() {
+            _deleteFromGlossary = v ?? false;
+            _notify();
+          }),
+        ),
+        CheckboxListTile(
+          value: _deleteFromVietPhrase,
+          title: const Text('Xóa khỏi VietPhrase cục bộ'),
+          subtitle: const Text(
+            'Xếp hàng xóa VietPhrase (bấm Update để gửi lên server)',
+          ),
+          controlAffinity: ListTileControlAffinity.leading,
+          onChanged: (v) => setState(() {
+            _deleteFromVietPhrase = v ?? false;
+            _notify();
+          }),
+        ),
+      ],
+    );
+  }
+}
+
+class _SingleEditResult {
+  const _SingleEditResult({
+    required this.newSource,
+    required this.newTarget,
+    required this.updateGlossary,
+    required this.updateVietPhrase,
+  });
+
+  final String newSource;
+  final String newTarget;
+  final bool updateGlossary;
+  final bool updateVietPhrase;
+}
+
+class _SingleEditDialogContent extends StatefulWidget {
+  const _SingleEditDialogContent({
+    required this.row,
+    required this.lang,
+    required this.canSaveNotifier,
+    required this.onChanged,
+  });
+
+  final GlossarySyncRow row;
+  final String lang;
+  final ValueNotifier<bool> canSaveNotifier;
+  final ValueChanged<_SingleEditResult> onChanged;
+
+  @override
+  State<_SingleEditDialogContent> createState() =>
+      _SingleEditDialogContentState();
+}
+
+class _SingleEditDialogContentState extends State<_SingleEditDialogContent> {
+  late final TextEditingController _sourceController;
+  late final TextEditingController _targetController;
+  bool _updateGlossary = true;
+  bool _updateVietPhrase = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _sourceController = TextEditingController(text: widget.row.source);
+    _targetController = TextEditingController(text: widget.row.target);
+    _notify();
+  }
+
+  void _notify() {
+    final newSource = _sourceController.text.trim();
+    final newTarget = _targetController.text.trim();
+    widget.canSaveNotifier.value =
+        newSource.isNotEmpty &&
+        newTarget.isNotEmpty &&
+        (_updateGlossary || _updateVietPhrase);
+    widget.onChanged(
+      _SingleEditResult(
+        newSource: newSource,
+        newTarget: newTarget,
+        updateGlossary: _updateGlossary,
+        updateVietPhrase: _updateVietPhrase,
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _sourceController.dispose();
+    _targetController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextField(
+          controller: _sourceController,
+          decoration: const InputDecoration(labelText: 'Từ nguồn'),
+          onChanged: (_) => _notify(),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _targetController,
+          decoration: const InputDecoration(labelText: 'Nghĩa tiếng Việt'),
+          onChanged: (_) => _notify(),
+        ),
+        const SizedBox(height: 16),
+        const Text(
+          'Áp dụng thay đổi vào:',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        CheckboxListTile(
+          value: _updateGlossary,
+          title: Text('Cập nhật Global Glossary (${widget.lang})'),
+          controlAffinity: ListTileControlAffinity.leading,
+          onChanged: (v) => setState(() {
+            _updateGlossary = v ?? false;
+            _notify();
+          }),
+        ),
+        CheckboxListTile(
+          value: _updateVietPhrase,
+          title: const Text('Cập nhật VietPhrase cục bộ'),
+          controlAffinity: ListTileControlAffinity.leading,
+          onChanged: (v) => setState(() {
+            _updateVietPhrase = v ?? false;
+            _notify();
+          }),
+        ),
+      ],
+    );
+  }
+}
+
+class _BulkEditResult {
+  const _BulkEditResult({
+    required this.isReplaceMode,
+    required this.newTarget,
+    required this.findText,
+    required this.replaceText,
+    required this.updateGlossary,
+    required this.updateVietPhrase,
+  });
+
+  final bool isReplaceMode;
+  final String newTarget;
+  final String findText;
+  final String replaceText;
+  final bool updateGlossary;
+  final bool updateVietPhrase;
+}
+
+class _BulkEditDialogContent extends StatefulWidget {
+  const _BulkEditDialogContent({
+    required this.lang,
+    required this.canApplyNotifier,
+    required this.onChanged,
+  });
+
+  final String lang;
+  final ValueNotifier<bool> canApplyNotifier;
+  final ValueChanged<_BulkEditResult> onChanged;
+
+  @override
+  State<_BulkEditDialogContent> createState() => _BulkEditDialogContentState();
+}
+
+class _BulkEditDialogContentState extends State<_BulkEditDialogContent> {
+  late final TextEditingController _newTargetController;
+  late final TextEditingController _findTextController;
+  late final TextEditingController _replaceTextController;
+  bool _isReplaceMode = false;
+  bool _updateGlossary = true;
+  bool _updateVietPhrase = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _newTargetController = TextEditingController();
+    _findTextController = TextEditingController();
+    _replaceTextController = TextEditingController();
+    _notify();
+  }
+
+  void _notify() {
+    final textOk = !_isReplaceMode
+        ? _newTargetController.text.trim().isNotEmpty
+        : _findTextController.text.isNotEmpty;
+    widget.canApplyNotifier.value =
+        (_updateGlossary || _updateVietPhrase) && textOk;
+    widget.onChanged(
+      _BulkEditResult(
+        isReplaceMode: _isReplaceMode,
+        newTarget: _newTargetController.text.trim(),
+        findText: _findTextController.text,
+        replaceText: _replaceTextController.text,
+        updateGlossary: _updateGlossary,
+        updateVietPhrase: _updateVietPhrase,
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _newTargetController.dispose();
+    _findTextController.dispose();
+    _replaceTextController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SegmentedButton<bool>(
+          segments: const [
+            ButtonSegment(value: false, label: Text('Đặt nghĩa mới')),
+            ButtonSegment(value: true, label: Text('Thay thế chuỗi')),
+          ],
+          selected: {_isReplaceMode},
+          onSelectionChanged: (v) => setState(() {
+            _isReplaceMode = v.first;
+            _notify();
+          }),
+        ),
+        const SizedBox(height: 16),
+        if (!_isReplaceMode)
+          TextField(
+            controller: _newTargetController,
+            decoration: const InputDecoration(
+              labelText: 'Nghĩa mới cho tất cả mục',
+              hintText: 'Nhập nghĩa tiếng Việt mới',
+            ),
+            onChanged: (_) => _notify(),
+          )
+        else ...[
+          TextField(
+            controller: _findTextController,
+            decoration: const InputDecoration(
+              labelText: 'Chuỗi cần tìm trong nghĩa',
+              hintText: 'Cần tìm...',
+            ),
+            onChanged: (_) => _notify(),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _replaceTextController,
+            decoration: const InputDecoration(
+              labelText: 'Thay thế bằng',
+              hintText: 'Thay thế...',
+            ),
+            onChanged: (_) => _notify(),
+          ),
+        ],
+        const SizedBox(height: 16),
+        const Text(
+          'Áp dụng thay đổi vào:',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        CheckboxListTile(
+          value: _updateGlossary,
+          title: Text('Cập nhật Global Glossary (${widget.lang})'),
+          controlAffinity: ListTileControlAffinity.leading,
+          onChanged: (v) => setState(() {
+            _updateGlossary = v ?? false;
+            _notify();
+          }),
+        ),
+        CheckboxListTile(
+          value: _updateVietPhrase,
+          title: const Text('Cập nhật VietPhrase cục bộ'),
+          controlAffinity: ListTileControlAffinity.leading,
+          onChanged: (v) => setState(() {
+            _updateVietPhrase = v ?? false;
+            _notify();
+          }),
+        ),
+      ],
+    );
+  }
+}
+
