@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../clipboard/application/clipboard_reader_controller.dart';
 import '../../settings/settings_provider.dart';
 import '../application/lookup_controller.dart';
 import '../application/translation_controller.dart';
+import '../application/translation_rules_provider.dart';
 import '../domain/token.dart';
+import '../domain/translation_rule.dart';
 import '../domain/translation_engine.dart';
 import 'token_text_view.dart';
 
-/// Kết quả dịch: tabs [VietPhrase một nghĩa | VietPhrase (đa nghĩa) | Google Dịch]
-/// trên cùng một token list — đổi tab chỉ đổi cách hiển thị, không dịch lại.
+/// Kết quả dịch: một nghĩa, đa nghĩa, hậu xử lý và Google Dịch tùy chọn.
 class ResultPane extends ConsumerStatefulWidget {
   const ResultPane({super.key});
 
@@ -28,13 +29,14 @@ class _ResultPaneState extends ConsumerState<ResultPane>
   String? _gtText;
 
   bool get _multiMeaning => _tabController.index == 1;
-  bool get _gtTabActive => _gtTabOpen && _tabController.index == 2;
+  bool get _postTabActive => _tabController.index == 2;
+  bool get _gtTabActive => _gtTabOpen && _tabController.index == 3;
 
   @override
   void initState() {
     super.initState();
     // Đa nghĩa là tab mặc định.
-    _tabController = _makeController(length: 2, initialIndex: 1);
+    _tabController = _makeController(length: 3, initialIndex: 1);
   }
 
   TabController _makeController({
@@ -57,11 +59,11 @@ class _ResultPaneState extends ConsumerState<ResultPane>
       final old = _tabController;
       setState(() {
         _gtTabOpen = true;
-        _tabController = _makeController(length: 3, initialIndex: 2);
+        _tabController = _makeController(length: 4, initialIndex: 3);
       });
       old.dispose();
     } else {
-      _tabController.animateTo(2);
+      _tabController.animateTo(3);
     }
     await _fetchGoogleTranslate();
   }
@@ -121,6 +123,7 @@ class _ResultPaneState extends ConsumerState<ResultPane>
                 tabs: [
                   const Tab(text: 'VietPhrase một nghĩa'),
                   const Tab(text: 'VietPhrase (đa nghĩa)'),
+                  const Tab(text: 'Hậu xử lý'),
                   if (_gtTabOpen) const Tab(text: 'Google Dịch'),
                 ],
               ),
@@ -134,6 +137,8 @@ class _ResultPaneState extends ConsumerState<ResultPane>
         ),
         if (_gtTabActive)
           Expanded(child: _buildGoogleTranslateView(context))
+        else if (_postTabActive)
+          Expanded(child: _buildPostProcessingView(context, state))
         else if (!state.hasResult)
           const Expanded(
             child: Center(child: Text('Kết quả dịch sẽ hiện ở đây')),
@@ -147,6 +152,84 @@ class _ResultPaneState extends ConsumerState<ResultPane>
             ),
           ),
       ],
+    );
+  }
+
+  Widget _buildPostProcessingView(
+    BuildContext context,
+    TranslationState state,
+  ) {
+    final settings = ref.watch(settingsProvider);
+    if (!settings.postProcessingEnabled) {
+      return const Center(
+        child: Text('Bật “Hậu xử lý bằng regex” trong Cài đặt để sử dụng.'),
+      );
+    }
+    if (!state.hasResult) {
+      return const Center(child: Text('Kết quả hậu xử lý sẽ hiện ở đây'));
+    }
+    final file = ref.watch(postProcessingRuleFileProvider(state.mode));
+    return file.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (error, _) => Center(child: Text('Không đọc được rule: $error')),
+      data: (ruleFile) {
+        final input = TokenTextView.plainText(
+          state.tokens,
+          (token) => token.display,
+          keepSpecialQuotes: settings.keepSpecialQuotes,
+        );
+        final result = TranslationRuleEngine(
+          postProcessingRules: ruleFile.document.rules,
+        ).applyPostProcessing(input, disabledGroups: ruleFile.disabledGroups);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+              child: Row(
+                children: [
+                  Text(
+                    '${ruleFile.document.rules.length} rule · '
+                    '${result.matches.length} rule khớp',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.copy, size: 18),
+                    tooltip: 'Copy kết quả hậu xử lý',
+                    onPressed: () {
+                      writeAppClipboard(ref, result.text);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Đã copy kết quả hậu xử lý'),
+                          duration: Duration(seconds: 1),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+            if (ruleFile.document.errors.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Text(
+                  '${ruleFile.document.errors.length} rule lỗi đã bị bỏ qua',
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(12),
+                child: SelectableText(
+                  result.text,
+                  style: settings.paneTextStyleFor(PaneId.vietPhrase),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -174,7 +257,7 @@ class _ResultPaneState extends ConsumerState<ResultPane>
                 onPressed: _gtText == null
                     ? null
                     : () {
-                        Clipboard.setData(ClipboardData(text: _gtText!));
+                        writeAppClipboard(ref, _gtText!);
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
                             content: Text('Đã copy bản dịch Google'),

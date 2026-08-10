@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../features/translation/domain/translation_engine.dart';
 import '../translation/domain/lookup_dictionary_type.dart';
 import '../translation/domain/online_lookup_source.dart';
+import '../translation/domain/translation_rule.dart';
 import '../dictionary/domain/dict_type.dart';
 import '../repair/domain/jp_repair_pipeline.dart';
 
@@ -138,6 +139,12 @@ class AppSettings {
   /// Names thắng cụm VietPhrase dài hơn tại cùng vị trí (UserDict vẫn cao nhất).
   final bool prioritizeNames;
 
+  /// Phạm vi từ điển được phép lấp placeholder `{0}` của Luật Nhân.
+  final PersonRuleScope personRuleScope;
+
+  /// Hiện tab kết quả hậu xử lý và áp file regex của ngôn ngữ hiện tại.
+  final bool postProcessingEnabled;
+
   /// Mode Nhật: gộp run số kanji không match thành số Ả Rập (三百二十五 → 325).
   final bool joinKanjiNumerals;
 
@@ -220,6 +227,9 @@ class AppSettings {
   /// Tự động đồng bộ (kéo) từ điển chung từ server lúc khởi động. Mặc định tắt.
   final bool autoSyncDictionary;
 
+  /// Windows: nghe clipboard CJK và đăng ký Ctrl+Shift+V toàn hệ thống.
+  final bool clipboardReaderEnabled;
+
   /// Thư mục `Glossary/` của AI_Translation_Bridge. Chỉ dùng khi đăng nhập
   /// quản trị: cho phép đẩy mục đang sửa sang `Global Glossary.json` JP/CN.
   final String glossaryDir;
@@ -229,6 +239,8 @@ class AppSettings {
     required this.defaultMode,
     this.translationAlgorithm = TranslationAlgorithm.leftToRight,
     this.prioritizeNames = false,
+    this.personRuleScope = PersonRuleScope.off,
+    this.postProcessingEnabled = false,
     this.joinKanjiNumerals = true,
     this.normalizeHalfwidthKana = true,
     this.convertTraditionalToSimplified = true,
@@ -257,6 +269,7 @@ class AppSettings {
     this.onlineLookupSources = OnlineLookupSource.values,
     this.autoCheckUpdates = true,
     this.autoSyncDictionary = false,
+    this.clipboardReaderEnabled = false,
     this.glossaryDir = defaultGlossaryDir,
   });
 
@@ -271,8 +284,8 @@ class AppSettings {
   /// Từ điển popup đã chọn cho [mode].
   List<LookupDictionaryType> popupDictionaryTypesFor(TranslationMode mode) =>
       mode == TranslationMode.japanese
-          ? popupDictionaryTypesJa
-          : popupDictionaryTypesZh;
+      ? popupDictionaryTypesJa
+      : popupDictionaryTypesZh;
 
   double get ttsSpeechRate => ttsSpeechRateJa;
   List<LookupDictionaryType> get popupDictionaryTypes => popupDictionaryTypesJa;
@@ -290,6 +303,8 @@ class AppSettings {
     TranslationMode? defaultMode,
     TranslationAlgorithm? translationAlgorithm,
     bool? prioritizeNames,
+    PersonRuleScope? personRuleScope,
+    bool? postProcessingEnabled,
     bool? joinKanjiNumerals,
     bool? normalizeHalfwidthKana,
     bool? convertTraditionalToSimplified,
@@ -318,12 +333,15 @@ class AppSettings {
     List<OnlineLookupSource>? onlineLookupSources,
     bool? autoCheckUpdates,
     bool? autoSyncDictionary,
+    bool? clipboardReaderEnabled,
     String? glossaryDir,
   }) => AppSettings(
     dictPaths: dictPaths ?? this.dictPaths,
     defaultMode: defaultMode ?? this.defaultMode,
     translationAlgorithm: translationAlgorithm ?? this.translationAlgorithm,
     prioritizeNames: prioritizeNames ?? this.prioritizeNames,
+    personRuleScope: personRuleScope ?? this.personRuleScope,
+    postProcessingEnabled: postProcessingEnabled ?? this.postProcessingEnabled,
     joinKanjiNumerals: joinKanjiNumerals ?? this.joinKanjiNumerals,
     normalizeHalfwidthKana:
         normalizeHalfwidthKana ?? this.normalizeHalfwidthKana,
@@ -358,6 +376,8 @@ class AppSettings {
     onlineLookupSources: onlineLookupSources ?? this.onlineLookupSources,
     autoCheckUpdates: autoCheckUpdates ?? this.autoCheckUpdates,
     autoSyncDictionary: autoSyncDictionary ?? this.autoSyncDictionary,
+    clipboardReaderEnabled:
+        clipboardReaderEnabled ?? this.clipboardReaderEnabled,
     glossaryDir: glossaryDir ?? this.glossaryDir,
   );
 
@@ -384,6 +404,8 @@ class SettingsNotifier extends Notifier<AppSettings> {
   static const _modeKey = 'defaultMode';
   static const _algorithmKey = 'translationAlgorithm';
   static const _prioritizeNamesKey = 'prioritizeNames';
+  static const _personRuleScopeKey = 'translate.personRuleScope';
+  static const _postProcessingEnabledKey = 'translate.postProcessingEnabled';
   static const _joinKanjiNumeralsKey = 'translate.joinKanjiNumerals';
   static const _normalizeHalfwidthKanaKey = 'translate.normalizeHalfwidthKana';
   static const _trad2SimpKey = 'translate.convertTraditionalToSimplified';
@@ -409,6 +431,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
   static const _onlineLookupSourcesKey = 'lookup.onlineSources';
   static const _autoCheckUpdatesKey = 'update.autoCheckUpdates';
   static const _autoSyncDictionaryKey = 'dictionarySync.autoSync';
+  static const _clipboardReaderEnabledKey = 'clipboard.readerEnabled';
   static const _glossaryDirKey = 'glossary.dir';
   static String _fontSizeKey(PaneId id) => 'paneFont.${id.name}.size';
   static String _fontFamilyKey(PaneId id) => 'paneFont.${id.name}.family';
@@ -444,6 +467,12 @@ class SettingsNotifier extends Notifier<AppSettings> {
           )] ??
           TranslationAlgorithm.leftToRight,
       prioritizeNames: prefs.getBool(_prioritizeNamesKey) ?? false,
+      personRuleScope:
+          PersonRuleScope.values.asNameMap()[prefs.getString(
+            _personRuleScopeKey,
+          )] ??
+          PersonRuleScope.off,
+      postProcessingEnabled: prefs.getBool(_postProcessingEnabledKey) ?? false,
       joinKanjiNumerals: prefs.getBool(_joinKanjiNumeralsKey) ?? true,
       normalizeHalfwidthKana: prefs.getBool(_normalizeHalfwidthKanaKey) ?? true,
       convertTraditionalToSimplified: prefs.getBool(_trad2SimpKey) ?? true,
@@ -534,6 +563,8 @@ class SettingsNotifier extends Notifier<AppSettings> {
       }(),
       autoCheckUpdates: prefs.getBool(_autoCheckUpdatesKey) ?? true,
       autoSyncDictionary: prefs.getBool(_autoSyncDictionaryKey) ?? false,
+      clipboardReaderEnabled:
+          prefs.getBool(_clipboardReaderEnabledKey) ?? false,
       glossaryDir: prefs.getString(_glossaryDirKey) ?? defaultGlossaryDir,
     );
   }
@@ -670,6 +701,18 @@ class SettingsNotifier extends Notifier<AppSettings> {
     state = state.copyWith(prioritizeNames: value);
   }
 
+  Future<void> setPersonRuleScope(PersonRuleScope value) async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    await prefs.setString(_personRuleScopeKey, value.name);
+    state = state.copyWith(personRuleScope: value);
+  }
+
+  Future<void> setPostProcessingEnabled(bool value) async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    await prefs.setBool(_postProcessingEnabledKey, value);
+    state = state.copyWith(postProcessingEnabled: value);
+  }
+
   Future<void> setJoinKanjiNumerals(bool value) async {
     final prefs = ref.read(sharedPreferencesProvider);
     await prefs.setBool(_joinKanjiNumeralsKey, value);
@@ -763,6 +806,12 @@ class SettingsNotifier extends Notifier<AppSettings> {
     final prefs = ref.read(sharedPreferencesProvider);
     await prefs.setBool(_autoSyncDictionaryKey, value);
     state = state.copyWith(autoSyncDictionary: value);
+  }
+
+  Future<void> setClipboardReaderEnabled(bool value) async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    await prefs.setBool(_clipboardReaderEnabledKey, value);
+    state = state.copyWith(clipboardReaderEnabled: value);
   }
 
   Future<void> setGlossaryDir(String value) async {

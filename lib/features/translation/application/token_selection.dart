@@ -161,6 +161,11 @@ class TokenSelectionNotifier extends Notifier<TokenSelection?> {
     );
   }
 
+  /// Chọn đúng một khoảng cho trước (bảng "Kiểm tra" bấm vào một cụm chưa
+  /// dịch) — không tra lại cụm theo từ điển như [selectAtSourceOffset].
+  void selectRange(int start, int end, String word) =>
+      _apply(start, end, word, TokenSelectionOrigin.source);
+
   /// Bỏ active/highlight hiện tại mà không thay đổi nội dung tra cứu đã tải.
   void clear() => state = null;
 

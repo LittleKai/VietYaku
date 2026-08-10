@@ -25,6 +25,8 @@ class AppPaths {
   Directory get dictionariesDir =>
       Directory(p.join(support.path, 'dictionaries'));
 
+  Directory get rulesDir => Directory(p.join(support.path, 'rules'));
+
   /// [variant] tách cache của cùng một file nguồn khi nội dung parse ra khác
   /// nhau (bộ dict Trung đã quy phồn→giản dùng variant riêng).
   String cacheFileFor(String sourcePath, {String variant = ''}) {
@@ -37,6 +39,7 @@ class AppPaths {
     final paths = AppPaths(await _supportDir());
     await paths.cacheDir.create(recursive: true);
     await paths.dictionariesDir.create(recursive: true);
+    await paths.rulesDir.create(recursive: true);
     await paths._migrateFromAppData();
     return paths;
   }

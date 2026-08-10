@@ -1,8 +1,15 @@
 #include "flutter_window.h"
 
 #include <optional>
+#include <variant>
+
+#include <flutter/standard_method_codec.h>
 
 #include "flutter/generated_plugin_registrant.h"
+
+namespace {
+constexpr int kClipboardHotkeyId = 0x5659;
+}  // namespace
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
@@ -25,6 +32,28 @@ bool FlutterWindow::OnCreate() {
     return false;
   }
   RegisterPlugins(flutter_controller_->engine());
+  windows_bridge_channel_ =
+      std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+          flutter_controller_->engine()->messenger(),
+          "vietyaku/windows_bridge",
+          &flutter::StandardMethodCodec::GetInstance());
+  windows_bridge_channel_->SetMethodCallHandler(
+      [this](const auto& call, auto result) {
+        if (call.method_name() != "setEnabled") {
+          result->NotImplemented();
+          return;
+        }
+        const auto* enabled = std::get_if<bool>(call.arguments());
+        if (enabled == nullptr) {
+          result->Error("invalid-arguments", "setEnabled expects a bool");
+          return;
+        }
+        SetClipboardBridgeEnabled(*enabled);
+        flutter::EncodableMap response;
+        response[flutter::EncodableValue("hotkeyRegistered")] =
+            flutter::EncodableValue(hotkey_registered_);
+        result->Success(flutter::EncodableValue(response));
+      });
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
@@ -40,11 +69,39 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
+  SetClipboardBridgeEnabled(false);
+  windows_bridge_channel_.reset();
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }
 
   Win32Window::OnDestroy();
+}
+
+void FlutterWindow::SetClipboardBridgeEnabled(bool enabled) {
+  const HWND window = GetHandle();
+  if (window == nullptr) {
+    return;
+  }
+  if (enabled) {
+    if (!clipboard_listener_registered_) {
+      clipboard_listener_registered_ = AddClipboardFormatListener(window) != 0;
+    }
+    if (!hotkey_registered_) {
+      hotkey_registered_ =
+          RegisterHotKey(window, kClipboardHotkeyId,
+                         MOD_CONTROL | MOD_SHIFT | MOD_NOREPEAT, 'V') != 0;
+    }
+  } else {
+    if (clipboard_listener_registered_) {
+      RemoveClipboardFormatListener(window);
+      clipboard_listener_registered_ = false;
+    }
+    if (hotkey_registered_) {
+      UnregisterHotKey(window, kClipboardHotkeyId);
+      hotkey_registered_ = false;
+    }
+  }
 }
 
 LRESULT
@@ -62,6 +119,21 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
   }
 
   switch (message) {
+    case WM_CLIPBOARDUPDATE:
+      if (clipboard_listener_registered_ && windows_bridge_channel_) {
+        windows_bridge_channel_->InvokeMethod(
+            "clipboardChanged",
+            std::make_unique<flutter::EncodableValue>());
+      }
+      break;
+    case WM_HOTKEY:
+      if (static_cast<int>(wparam) == kClipboardHotkeyId &&
+          windows_bridge_channel_) {
+        windows_bridge_channel_->InvokeMethod(
+            "hotkeyPressed", std::make_unique<flutter::EncodableValue>());
+        return 0;
+      }
+      break;
     case WM_FONTCHANGE:
       flutter_controller_->engine()->ReloadSystemFonts();
       break;

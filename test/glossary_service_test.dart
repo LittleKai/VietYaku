@@ -136,4 +136,19 @@ void main() {
     expect(text.contains('\r\n  "name": "Global Glossary",'), isTrue);
     expect(text.contains('菜畑小鳥'), isTrue, reason: 'không escape non-ASCII');
   });
+
+  test('removeAll xóa đúng mục theo source key không phân biệt hoa thường', () async {
+    final service = GlossaryService(root.path);
+    await service.upsert(
+      TranslationMode.japanese,
+      source: '箸尾拓海',
+      target: 'Hashio Takumi',
+    );
+    expect((await service.readAll(TranslationMode.japanese)).length, 2);
+
+    await service.removeAll(TranslationMode.japanese, ['菜畑小鳥']);
+    final terms = await service.readAll(TranslationMode.japanese);
+    expect(terms.length, 1);
+    expect(terms.single.source, '箸尾拓海');
+  });
 }

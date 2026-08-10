@@ -48,7 +48,10 @@ data/jp/MaziiDict.db-shm
 .env
 .flutter-plugins
 .packages
-data/
+data/*
+!data/cn/
+data/cn/*
+!data/cn/LuatNhan.txt
 
 # CodeGraph files
 .codegraph/*

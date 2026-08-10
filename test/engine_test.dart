@@ -3,6 +3,7 @@ import 'package:vietyaku/features/dictionary/domain/dict_type.dart';
 import 'package:vietyaku/features/dictionary/domain/phrase_dictionary.dart';
 import 'package:vietyaku/features/translation/domain/token.dart';
 import 'package:vietyaku/features/translation/domain/translation_engine.dart';
+import 'package:vietyaku/features/translation/domain/translation_rule.dart';
 
 PhraseDictionary dict(DictType type, Map<String, String> entries) =>
     PhraseDictionary(type, entries);
@@ -325,6 +326,46 @@ void main() {
       expect(tokens[2].kind, TokenKind.unmatched);
       expect(tokens[3].kind, TokenKind.passthrough);
       expect(tokens[3].source, 'A');
+    });
+  });
+
+  group('TranslationEngine + Luật Nhân', () {
+    final ruleEngine = TranslationRuleEngine(
+      personRules: parsePersonRules(
+        '把{0}挡住=ngăn cản {0}\n{0}的父亲=phụ thân của {0}',
+      ).rules,
+    );
+    final pronouns = dict(DictType.pronouns, {'他': 'hắn'});
+
+    test('rule tạo một token động phủ toàn source đã match', () {
+      final engine = TranslationEngine(
+        dicts: const [],
+        ruleEngine: ruleEngine,
+        personRuleDicts: [pronouns],
+      );
+
+      final token = engine.translate('把他挡住').single;
+      expect(token.source, '把他挡住');
+      expect(token.display, 'ngăn cản hắn');
+      expect(token.kind, TokenKind.matched);
+    });
+
+    test('mục từ điển tĩnh thắng khi hòa độ dài', () {
+      final engine = TranslationEngine(
+        dicts: [
+          dict(DictType.vietPhrase, {'把他挡住': 'chặn hắn'}),
+        ],
+        ruleEngine: ruleEngine,
+        personRuleDicts: [pronouns],
+      );
+
+      expect(engine.translate('把他挡住').single.display, 'chặn hắn');
+    });
+
+    test('không truyền phạm vi thì Luật Nhân tắt', () {
+      final engine = TranslationEngine(dicts: const [], ruleEngine: ruleEngine);
+
+      expect(engine.translate('把他挡住'), hasLength(4));
     });
   });
 }

@@ -2,6 +2,7 @@ import '../../../core/cjk.dart';
 import '../../dictionary/domain/dict_type.dart';
 import '../../dictionary/domain/phrase_dictionary.dart';
 import 'token.dart';
+import 'translation_rule.dart';
 
 enum TranslationMode { japanese, chinese }
 
@@ -35,12 +36,16 @@ class TranslationEngine {
   final PhraseDictionary? hanVietFallback;
   final TranslationAlgorithm algorithm;
   final bool prioritizeNames;
+  final TranslationRuleEngine? ruleEngine;
+  final List<PhraseDictionary> personRuleDicts;
 
   const TranslationEngine({
     required this.dicts,
     this.hanVietFallback,
     this.algorithm = TranslationAlgorithm.leftToRight,
     this.prioritizeNames = false,
+    this.ruleEngine,
+    this.personRuleDicts = const [],
   });
 
   List<Token> translate(
@@ -82,6 +87,26 @@ class TranslationEngine {
 
   /// Match dài nhất tại [i], key kết thúc không vượt quá [limitEnd].
   _Match? _longestMatchAt(String text, int i, int limitEnd) {
+    final dictionaryMatch = _longestDictionaryMatchAt(text, i, limitEnd);
+    final personMatch = ruleEngine?.matchPersonRuleAt(
+      text,
+      i,
+      personRuleDicts,
+      limitEnd: limitEnd,
+    );
+    // Cụm tĩnh thắng khi hòa để giữ nguyên hành vi từ điển hiện có.
+    if (personMatch != null &&
+        (dictionaryMatch == null || personMatch.length > dictionaryMatch.len)) {
+      return (
+        len: personMatch.length,
+        dictType: DictType.vietPhrase,
+        value: personMatch.value,
+      );
+    }
+    return dictionaryMatch;
+  }
+
+  _Match? _longestDictionaryMatchAt(String text, int i, int limitEnd) {
     final firstUnit = text.codeUnitAt(i);
     if (prioritizeNames) {
       for (final dict in dicts) {

@@ -7,6 +7,7 @@ import '../../translation/domain/translation_engine.dart';
 import '../domain/shared_dictionary_entry.dart';
 
 class SharedDictionaryService {
+  static const _deleteSentinel = '\x7F__DELETE__';
   final AppPaths paths;
 
   SharedDictionaryService(this.paths);
@@ -44,7 +45,12 @@ class SharedDictionaryService {
     for (final kind in SharedDictionaryKind.values) {
       final ofKind = entries.where((entry) => entry.kind == kind).toList();
       if (ofKind.isEmpty) continue;
-      await _upsert(pendingFileFor(mode, kind), ofKind);
+      final pendingOfKind = ofKind.map((e) => e.isDelete ? SharedDictionaryEntry(
+        kind: e.kind,
+        source: e.source,
+        target: _deleteSentinel,
+      ) : e).toList();
+      await _applyEntries(pendingFileFor(mode, kind), pendingOfKind);
     }
     await applyDelta(mode, entries);
   }
@@ -57,11 +63,17 @@ class SharedDictionaryService {
       final values = await _read(pendingFileFor(mode, kind));
       result.addAll(
         values.entries.map(
-          (entry) => SharedDictionaryEntry(
-            kind: kind,
-            source: entry.key,
-            target: entry.value,
-          ),
+          (entry) => entry.value == _deleteSentinel
+              ? SharedDictionaryEntry(
+                  kind: kind,
+                  source: entry.key,
+                  operation: EntryOperation.delete,
+                )
+              : SharedDictionaryEntry(
+                  kind: kind,
+                  source: entry.key,
+                  target: entry.value,
+                ),
         ),
       );
     }
@@ -84,21 +96,25 @@ class SharedDictionaryService {
       final updates = entries.where((entry) => entry.kind == kind).toList();
       if (updates.isEmpty) continue;
 
-      changed += await _upsert(fileFor(mode, kind), updates);
+      changed += await _applyEntries(fileFor(mode, kind), updates);
     }
     return changed;
   }
 
-  static Future<int> _upsert(
+  static Future<int> _applyEntries(
     File file,
     Iterable<SharedDictionaryEntry> entries,
   ) async {
     final values = await _read(file);
     var changed = 0;
     for (final entry in entries) {
-      if (values[entry.source] == entry.target) continue;
-      values[entry.source] = entry.target;
-      changed++;
+      if (entry.isDelete) {
+        if (values.remove(entry.source) != null) changed++;
+      } else {
+        if (values[entry.source] == entry.target) continue;
+        values[entry.source] = entry.target;
+        changed++;
+      }
     }
     if (changed > 0) await _write(file, values);
     return changed;
@@ -123,6 +139,9 @@ class SharedDictionaryService {
   static Future<void> _write(File file, Map<String, String> values) async {
     await file.parent.create(recursive: true);
     final lines = values.entries.map((entry) => '${entry.key}=${entry.value}');
-    await file.writeAsString('\uFEFF${lines.join('\r\n')}\r\n');
+    final content = '\uFEFF${lines.join('\r\n')}\r\n';
+    final tmpFile = File('${file.path}.tmp');
+    await tmpFile.writeAsString(content, flush: true);
+    await tmpFile.rename(file.path);
   }
 }

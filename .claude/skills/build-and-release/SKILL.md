@@ -26,8 +26,39 @@ Skill này tự động hóa quy trình: build Windows → tạo GitHub Release 
 Hỏi user:
 - **Version**: tag mới (ví dụ `v1.0.0`). Nếu user không chỉ định, đọc version từ `pubspec.yaml` và đề xuất.
 - **Release title**: tên hiển thị trên GitHub (mặc định: `VietYaku <version>`)
-- **Release notes**: nội dung phiên bản. Tự động đọc danh sách các commit gần nhất (`rtk git log` từ release tag trước hoặc các commit gần nhất), tổng hợp thành danh sách thay đổi hướng tới người dùng. 
-  - ⚠️ **Quy tắc bắt buộc**: Tuyệt đối **TRÁNH nhắc đến các phần liên quan đến code**, tên file, tên class, tên hàm, refactoring hay kỹ thuật lập trình. Chỉ mô tả các tính năng mới, cải tiến giao diện hoặc sửa lỗi dưới góc độ trải nghiệm người dùng (ví dụ: "Cải thiện hiển thị âm Hán Việt", "Tối ưu hóa tốc độ nạp từ điển").
+- **Release notes**: nội dung phiên bản, tổng hợp **TOÀN BỘ** các commit kể từ release tag trước đó.
+
+  #### Cách thu thập commit:
+  1. Tìm tag release gần nhất: `rtk git tag --sort=-creatordate -n1`
+  2. Lấy tất cả commits từ tag đó đến HEAD: `rtk git log <tag_trước>..HEAD --oneline`
+  3. Nếu có uncommitted changes (`rtk git diff --stat`), cũng tính vào nội dung release.
+  4. Đọc nội dung chi tiết nếu cần: `rtk git log <tag_trước>..HEAD --format="%h %s"`
+
+  #### Cấu trúc release notes (viết bằng tiếng Việt):
+
+  ```markdown
+  ## Có gì mới
+
+  ### ✨ Tính năng mới
+  - Mô tả tính năng 1
+  - Mô tả tính năng 2
+
+  ### 🔧 Cải tiến
+  - Mô tả cải tiến 1
+  - Mô tả cải tiến 2
+
+  ### 🐛 Sửa lỗi
+  - Mô tả lỗi đã sửa 1
+  - Mô tả lỗi đã sửa 2
+  ```
+
+  #### Quy tắc viết nội dung:
+  - ⚠️ **Bắt buộc**: Tuyệt đối **TRÁNH nhắc đến các phần liên quan đến code**, tên file, tên class, tên hàm, refactoring hay kỹ thuật lập trình.
+  - Chỉ mô tả dưới **góc độ trải nghiệm người dùng** (ví dụ: "Cải thiện hiển thị âm Hán Việt", "Tối ưu hóa tốc độ nạp từ điển").
+  - Gộp nhiều commit liên quan thành **1 bullet duy nhất** nếu cùng nói về một tính năng/cải tiến.
+  - Bỏ qua các commit thuần kỹ thuật (refactor, chore, cleanup) nếu chúng không ảnh hưởng tới người dùng.
+  - Nếu một section không có nội dung, **bỏ section đó đi** (không để trống).
+  - Viết ngắn gọn, rõ ràng, mỗi bullet 1-2 dòng.
 - **Prerelease?**: có đánh dấu là prerelease không (mặc định: không)
 - **Build targets**: Windows (mặc định). <!-- [DISABLED-ANDROID] APK, Windows, hoặc cả hai (mặc định: cả hai) -->
 

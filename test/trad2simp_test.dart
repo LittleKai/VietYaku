@@ -72,6 +72,22 @@ void main() {
         expect(table.convert(once), once, reason: sample);
       }
     });
+
+    test('chữ vốn đã giản thể không bị quy', () async {
+      final table = Trad2SimpTable.parse(
+        await rootBundle.loadString('assets/mappings/trad2simp.tsv'),
+      );
+      // Vài mục cedict gõ sai cột giản thể (`鷹爪翻子拳 / 鹰爪翻自拳`,
+      // `哈根達斯 / 哈跟达斯`) từng sinh ra 子→自, 根→跟, 斯→四, 三→叁, 哈→加…
+      // — quy theo đó là phá nát những chữ thường gặp nhất của tiếng Trung.
+      const samples = [
+        '小子', '弟子', '公子', '斯坦', '三阶', '哈姆', '灵根', '言语',
+        '座位', '份量', '甚至', '俱全', '磁场', '坦白', '繁殖', '黏土',
+      ];
+      for (final sample in samples) {
+        expect(table.convert(sample), sample, reason: sample);
+      }
+    });
   });
 
   group('normalizeKeysToSimplified', () {

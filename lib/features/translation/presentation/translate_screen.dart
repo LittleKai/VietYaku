@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../analysis/presentation/coverage_report_dialog.dart';
 import '../../dictionary/application/dictionaries_provider.dart';
 import '../../settings/settings_provider.dart';
 import '../application/translation_controller.dart';
@@ -179,6 +180,9 @@ class _MenuBar extends ConsumerWidget {
       translationControllerProvider.select((s) => s.mode),
     );
     final dictsLoading = ref.watch(dictionariesProvider).isLoading;
+    final hasTokens = ref.watch(
+      translationControllerProvider.select((s) => s.tokens.isNotEmpty),
+    );
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     final isJapanese = mode == TranslationMode.japanese;
@@ -290,6 +294,25 @@ class _MenuBar extends ConsumerWidget {
                 style: FilledButton.styleFrom(
                   backgroundColor: pasteBtnBg,
                   foregroundColor: Colors.white,
+                  visualDensity: VisualDensity.compact,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.fact_check_outlined, size: 16),
+                label: const Text('Kiểm tra', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                onPressed: dictsLoading || !hasTokens
+                    ? null
+                    : () => showCoverageReportDialog(context),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF00838F),
+                  side: BorderSide(
+                    color: const Color(0xFF00838F).withValues(alpha: 0.5),
+                  ),
                   visualDensity: VisualDensity.compact,
                   padding: const EdgeInsets.symmetric(
                     horizontal: 14,

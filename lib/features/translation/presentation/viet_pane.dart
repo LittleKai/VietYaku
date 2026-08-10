@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../clipboard/application/clipboard_reader_controller.dart';
 import '../../settings/settings_provider.dart';
 import '../application/viet_draft.dart';
 
@@ -36,7 +36,7 @@ class VietPane extends ConsumerWidget {
                 icon: const Icon(Icons.copy, size: 18),
                 tooltip: 'Copy bản dịch Việt',
                 onPressed: () {
-                  Clipboard.setData(ClipboardData(text: controller.text));
+                  writeAppClipboard(ref, controller.text);
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text('Đã copy bản dịch Việt'),

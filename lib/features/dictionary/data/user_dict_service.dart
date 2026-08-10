@@ -25,6 +25,11 @@ class UserDictService {
   Future<void> upsertUserName(String key, String value) =>
       _upsert(userNamesFile, key, value);
 
+  /// Ghi nhiều tên riêng một lượt (bảng ứng viên tên riêng) — một lần đọc/ghi
+  /// file thay vì mỗi mục một lần.
+  Future<void> upsertUserNames(Map<String, String> entries) =>
+      _upsertAll(userNamesFile, entries);
+
   /// Từ điển tích lũy từ các lần tra online, mỗi ngôn ngữ một file.
   File onlineDictFile(TranslationMode mode) =>
       File(p.join(paths.dictionariesDir.path, 'OnlineDict_${mode.name}.txt'));
@@ -35,7 +40,11 @@ class UserDictService {
     String value,
   ) => _upsert(onlineDictFile(mode), key, value);
 
-  static Future<void> _upsert(File file, String key, String value) async {
+  static Future<void> _upsert(File file, String key, String value) =>
+      _upsertAll(file, {key: value});
+
+  static Future<void> _upsertAll(File file, Map<String, String> entries) async {
+    if (entries.isEmpty) return;
     final lines = <String>[];
     if (file.existsSync()) {
       var text = await file.readAsString();
@@ -49,13 +58,14 @@ class UserDictService {
         if (line.isNotEmpty) lines.add(line);
       }
     }
-    final prefix = '$key=';
-    final index = lines.indexWhere((l) => l.startsWith(prefix));
-    final entry = '$key=$value';
-    if (index >= 0) {
-      lines[index] = entry;
-    } else {
-      lines.add(entry);
+    for (final e in entries.entries) {
+      final index = lines.indexWhere((l) => l.startsWith('${e.key}='));
+      final entry = '${e.key}=${e.value}';
+      if (index >= 0) {
+        lines[index] = entry;
+      } else {
+        lines.add(entry);
+      }
     }
     await file.parent.create(recursive: true);
     await file.writeAsString('﻿${lines.join('\r\n')}\r\n');

@@ -23,6 +23,8 @@ void main(List<String> args) {
 
   // trad -> {simp: số lần gặp}
   final counts = <String, Map<String, int>>{};
+  // Số lần ký tự đứng NGUYÊN VẸN ở cột giản thể — đã là giản thể thì không quy.
+  final selfCounts = <String, int>{};
   var entries = 0;
   var skippedLength = 0;
 
@@ -42,9 +44,16 @@ void main(List<String> args) {
     for (var i = 0; i < trad.length; i++) {
       final t = trad.codeUnitAt(i);
       final s = simp.codeUnitAt(i);
-      if (t == s) continue;
       // Bỏ surrogate: ký tự ngoài BMP ghép theo code unit là vô nghĩa.
       if (_isSurrogate(t) || _isSurrogate(s)) continue;
+      if (t == s) {
+        selfCounts.update(
+          String.fromCharCode(t),
+          (value) => value + 1,
+          ifAbsent: () => 1,
+        );
+        continue;
+      }
       counts
           .putIfAbsent(String.fromCharCode(t), () => <String, int>{})
           .update(
@@ -58,10 +67,19 @@ void main(List<String> args) {
   final table = <String, String>{};
   final weight = <String, int>{};
   var ambiguous = 0;
+  var alreadySimplified = 0;
   for (final entry in counts.entries) {
     final byCount = entry.value.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
     if (byCount.length > 1) ambiguous++;
+    // Ký tự cedict để nguyên ở cột giản thể nhiều hơn số lần đổi thì nó vốn đã
+    // là giản thể: cặp kia sinh từ vài mục cedict gõ sai cột (`鷹爪翻子拳 /
+    // 鹰爪翻自拳` cho ra `子→自`, `哈根達斯 / 哈跟达斯` cho ra `根→跟`). Quy theo
+    // cặp rác đó là phá nát chữ thường gặp nhất.
+    if (byCount.first.value <= (selfCounts[entry.key] ?? 0)) {
+      alreadySimplified++;
+      continue;
+    }
     table[entry.key] = byCount.first.key;
     weight[entry.key] = byCount.first.value;
   }
@@ -102,6 +120,7 @@ void main(List<String> args) {
     )
     ..writeln('Ký tự phồn thể       : ${keys.length}')
     ..writeln('Có nhiều giản thể    : $ambiguous (lấy bản hay gặp nhất)')
+    ..writeln('Bỏ vì vốn đã giản thể: $alreadySimplified')
     ..writeln('Bỏ mắt xích rác      : ${dropped.length} (${dropped.join()})')
     ..writeln('Đã ghi assets/mappings/trad2simp.tsv');
 }

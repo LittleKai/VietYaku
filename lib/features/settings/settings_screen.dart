@@ -6,7 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../core/tts_service.dart';
+import '../../shared/widgets/feature_help_button.dart';
 import '../../shared/widgets/settings_layout.dart';
+import '../clipboard/application/clipboard_reader_controller.dart';
 import '../dictionary_sync/application/dictionary_sync_controller.dart';
 import '../glossary/data/glossary_service.dart';
 import '../glossary/presentation/glossary_sync_screen.dart';
@@ -15,6 +17,8 @@ import '../repair/presentation/repair_screen.dart';
 import '../translation/application/translation_controller.dart';
 import '../translation/domain/translation_engine.dart';
 import '../translation/domain/online_lookup_source.dart';
+import '../translation/domain/translation_rule.dart';
+import '../translation/presentation/translation_rule_tester_dialog.dart';
 import '../update/application/update_controller.dart';
 import '../update/presentation/update_dialog.dart';
 import 'settings_provider.dart';
@@ -85,8 +89,67 @@ class SettingsScreen extends ConsumerWidget {
                   value: settings.prioritizeNames,
                   onChanged: notifier.setPrioritizeNames,
                 ),
+                SettingsControlRow(
+                  title: 'Luật Nhân',
+                  description:
+                      'Mode Trung: chọn từ điển được phép lấp {0}; cụm dài hơn thắng, mục từ điển tĩnh thắng khi hòa.',
+                  controlWidth: 430,
+                  control: DropdownMenu<PersonRuleScope>(
+                    expandedInsets: EdgeInsets.zero,
+                    initialSelection: settings.personRuleScope,
+                    onSelected: (value) {
+                      if (value != null) notifier.setPersonRuleScope(value);
+                    },
+                    dropdownMenuEntries: const [
+                      DropdownMenuEntry(
+                        value: PersonRuleScope.off,
+                        label: 'Tắt',
+                      ),
+                      DropdownMenuEntry(
+                        value: PersonRuleScope.pronouns,
+                        label: 'Pronouns',
+                      ),
+                      DropdownMenuEntry(
+                        value: PersonRuleScope.pronounsAndNames,
+                        label: 'Pronouns + Names',
+                      ),
+                      DropdownMenuEntry(
+                        value: PersonRuleScope.pronounsNamesAndVietPhrase,
+                        label: 'Pronouns + Names + VietPhrase',
+                      ),
+                    ],
+                  ),
+                ),
+                SettingsSwitchRow(
+                  title: 'Hậu xử lý bằng regex',
+                  description:
+                      'Áp tuần tự file rule theo ngôn ngữ trong tab Hậu xử lý.',
+                  value: settings.postProcessingEnabled,
+                  onChanged: notifier.setPostProcessingEnabled,
+                ),
+                SettingsControlRow(
+                  title: 'Quản lý và thử rule',
+                  description:
+                      'Soạn regex, xem lỗi và thử cả regex lẫn Luật Nhân trước khi dùng.',
+                  controlWidth: 230,
+                  control: FilledButton.tonalIcon(
+                    onPressed: () =>
+                        showTranslationRuleTesterDialog(context, ref),
+                    icon: const Icon(Icons.science_outlined),
+                    label: const Text('Mở rule tester'),
+                  ),
+                ),
               ],
             ),
+            if (Platform.isWindows)
+              const SettingsSection(
+                icon: Icons.content_paste_go_outlined,
+                accentColor: Color(0xFF6A1B9A),
+                title: 'Clipboard reader',
+                description:
+                    'Tự động nhận văn bản CJK từ ứng dụng khác và dịch mà không cần chuyển cửa sổ.',
+                children: [_ClipboardReaderSetting()],
+              ),
             const SettingsSection(
               icon: Icons.travel_explore_outlined,
               accentColor: Color(0xFF1565C0),
@@ -310,6 +373,39 @@ class SettingsScreen extends ConsumerWidget {
   }
 }
 
+class _ClipboardReaderSetting extends ConsumerWidget {
+  const _ClipboardReaderSetting();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final enabled = ref.watch(
+      settingsProvider.select((settings) => settings.clipboardReaderEnabled),
+    );
+    final status = ref.watch(clipboardReaderControllerProvider);
+    final detail = status.lastMessage == null
+        ? 'Chỉ nhận nội dung có chữ Hán/Kana; chống lặp và bỏ qua clipboard do VietYaku tự ghi. Hotkey toàn hệ thống: Ctrl+Shift+V.'
+        : 'Ctrl+Shift+V · ${status.lastMessage}';
+    return SettingsSwitchRow(
+      title: 'Theo dõi clipboard + global hotkey',
+      description: detail,
+      value: enabled,
+      help: const FeatureHelpButton(
+        title: 'Clipboard reader + global hotkey',
+        summary:
+            'Đọc nhanh văn bản Nhật/Trung từ ứng dụng khác mà không cần Alt+Tab.',
+        accentColor: Color(0xFF6A1B9A),
+        points: [
+          'Chỉ nhận clipboard có chữ Hán hoặc Kana; nội dung Latin/Việt thuần sẽ bị bỏ qua.',
+          'Debounce và hash chống xử lý lặp; clipboard do chính VietYaku ghi được bỏ qua.',
+          'Ctrl+Shift+V hoạt động toàn hệ thống: đọc clipboard, dịch và đưa VietYaku lên trước.',
+          'Có thể kết hợp PowerToys Text Extractor: OCR vào clipboard rồi để VietYaku tự nhận.',
+        ],
+      ),
+      onChanged: ref.read(settingsProvider.notifier).setClipboardReaderEnabled,
+    );
+  }
+}
+
 class _PopupDictionarySetting extends ConsumerWidget {
   const _PopupDictionarySetting({required this.mode});
 
@@ -323,7 +419,9 @@ class _PopupDictionarySetting extends ConsumerWidget {
       ),
     );
     final available = availablePopupDictionariesFor(mode);
-    final label = mode == TranslationMode.japanese ? 'tiếng Nhật' : 'tiếng Trung';
+    final label = mode == TranslationMode.japanese
+        ? 'tiếng Nhật'
+        : 'tiếng Trung';
     final defaultDesc = mode == TranslationMode.chinese
         ? 'Chỉ chọn được 1 từ điển. Mặc định là Lạc Việt.'
         : 'Chỉ chọn được 1 từ điển. Mặc định không chọn (tắt popup).';
@@ -407,7 +505,9 @@ class _TtsSpeedSetting extends ConsumerWidget {
     );
     final notifier = ref.read(settingsProvider.notifier);
     final ratePct = (rate * 100).round();
-    final label = mode == TranslationMode.japanese ? 'tiếng Nhật' : 'tiếng Trung';
+    final label = mode == TranslationMode.japanese
+        ? 'tiếng Nhật'
+        : 'tiếng Trung';
 
     return SettingsControlRow(
       title: 'Tốc độ đọc ($label)',

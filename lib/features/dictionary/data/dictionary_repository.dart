@@ -3,8 +3,10 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import '../../../core/app_paths.dart';
+import '../../dictionary_search/domain/dictionary_search.dart';
 import '../../translation/domain/trad2simp_table.dart';
 import '../../translation/domain/translation_engine.dart';
+import '../../translation/domain/translation_rule.dart';
 import '../domain/dict_type.dart';
 import '../domain/phrase_dictionary.dart';
 import 'dictionary_loader.dart';
@@ -31,6 +33,11 @@ class LoadedDictionaries {
   /// Phát âm kana từ SudachiDict (data/jp/SudachiReadings.txt, chỉ mode Nhật;
   /// rỗng khi thiếu file). Dùng làm fallback phát âm trong ô Nghĩa.
   final PhraseDictionary sudachiReadings;
+  final TranslationRuleEngine ruleEngine;
+
+  /// Các lớp từ điển chưa merge, theo thứ tự overlay cao → thấp. Search Center
+  /// dùng danh sách này để chỉ ra mục nào đang thắng mà không đụng hot path.
+  final List<DictionarySearchLayer> searchLayers;
 
   /// fromCache + thời gian load từng dict (log/hiển thị).
   final Map<DictType, ({bool fromCache, int elapsedMs})> stats;
@@ -51,12 +58,15 @@ class LoadedDictionaries {
     required this.zhVi,
     PhraseDictionary? onlineDict,
     PhraseDictionary? sudachiReadings,
+    TranslationRuleEngine? ruleEngine,
+    this.searchLayers = const [],
     required this.stats,
   }) : mazii = mazii ?? PhraseDictionary(DictType.mazii, const {}),
        onlineDict =
            onlineDict ?? PhraseDictionary(DictType.onlineDict, const {}),
        sudachiReadings =
-           sudachiReadings ?? PhraseDictionary(DictType.jaVi, const {});
+           sudachiReadings ?? PhraseDictionary(DictType.jaVi, const {}),
+       ruleEngine = ruleEngine ?? const TranslationRuleEngine();
 
   /// Engine với thứ tự ưu tiên UserDict > Names > VietPhrase.
   TranslationEngine get engine => engineWith();
@@ -65,12 +75,27 @@ class LoadedDictionaries {
   TranslationEngine engineWith({
     TranslationAlgorithm algorithm = TranslationAlgorithm.leftToRight,
     bool prioritizeNames = false,
+    PersonRuleScope personRuleScope = PersonRuleScope.off,
   }) => TranslationEngine(
     dicts: [userDict, names, vietPhrase],
     hanVietFallback: chinesePhienAm,
     algorithm: algorithm,
     prioritizeNames: prioritizeNames,
+    ruleEngine: ruleEngine,
+    personRuleDicts: personRuleDictsFor(personRuleScope),
   );
+
+  List<PhraseDictionary> personRuleDictsFor(PersonRuleScope scope) =>
+      switch (scope) {
+        PersonRuleScope.off => const [],
+        PersonRuleScope.pronouns => [pronouns],
+        PersonRuleScope.pronounsAndNames => [pronouns, names],
+        PersonRuleScope.pronounsNamesAndVietPhrase => [
+          pronouns,
+          names,
+          vietPhrase,
+        ],
+      };
 
   /// Engine phiên âm Hán Việt toàn văn (tab Hán Việt).
   TranslationEngine get hanVietEngine =>
@@ -168,6 +193,14 @@ class DictionaryRepository {
       loadPath(DictType.onlineDict, onlineDictPath(mode)),
     ]);
 
+    final personRuleFile = File(
+      p.join(p.dirname(dictPaths[DictType.vietPhrase]!), 'LuatNhan.txt'),
+    );
+    final personRuleSource = await personRuleFile.exists()
+        ? await personRuleFile.readAsString()
+        : '';
+    final personRules = parsePersonRules(personRuleSource);
+
     var names = results[1].dictionary;
     final userNames = results[12].dictionary;
     if (!userNames.isEmpty) {
@@ -215,6 +248,75 @@ class DictionaryRepository {
       zhVi: results[11].dictionary,
       onlineDict: results[18].dictionary,
       sudachiReadings: results[16].dictionary,
+      ruleEngine: TranslationRuleEngine(personRules: personRules.rules),
+      searchLayers: [
+        DictionarySearchLayer(
+          id: 'userDict',
+          label: 'UserDict',
+          type: DictType.userDict,
+          entries: results[0].dictionary.entries,
+        ),
+        DictionarySearchLayer(
+          id: 'userNames',
+          label: 'UserNames (overlay)',
+          type: DictType.names,
+          entries: results[12].dictionary.entries,
+        ),
+        DictionarySearchLayer(
+          id: 'names',
+          label: 'Names gốc',
+          type: DictType.names,
+          entries: results[1].dictionary.entries,
+        ),
+        DictionarySearchLayer(
+          id: 'sharedVietPhrase',
+          label: 'VietPhrase chung',
+          type: DictType.vietPhrase,
+          entries: results[13].dictionary.entries,
+        ),
+        DictionarySearchLayer(
+          id: 'vietPhrase',
+          label: 'VietPhrase gốc',
+          type: DictType.vietPhrase,
+          entries: results[2].dictionary.entries,
+        ),
+        DictionarySearchLayer(
+          id: 'sudachiVariants',
+          label: 'Biến thể Sudachi',
+          type: DictType.vietPhrase,
+          entries: results[15].dictionary.entries,
+        ),
+        DictionarySearchLayer(
+          id: 'sharedLacViet',
+          label: 'Lạc Việt chung',
+          type: DictType.lacViet,
+          entries: results[14].dictionary.entries,
+        ),
+        DictionarySearchLayer(
+          id: 'lacViet',
+          label: 'Lạc Việt gốc',
+          type: DictType.lacViet,
+          entries: results[3].dictionary.entries,
+        ),
+        for (final item in <(String, String, int)>[
+          ('mazii', 'Mazii offline', 17),
+          ('chinesePhienAm', 'Phiên âm Hán Việt', 4),
+          ('pronouns', 'Đại từ', 5),
+          ('babylon', 'Babylon', 6),
+          ('thieuChuu', 'Thiều Chửu', 7),
+          ('cedict', 'CEDICT', 8),
+          ('chinesePhienAmEnglish', 'Phiên âm Anh', 9),
+          ('jaVi', 'Nhật Việt', 10),
+          ('zhVi', 'Trung Việt', 11),
+          ('onlineDict', 'Online đã lưu', 18),
+        ])
+          DictionarySearchLayer(
+            id: item.$1,
+            label: item.$2,
+            type: results[item.$3].dictionary.type,
+            entries: results[item.$3].dictionary.entries,
+          ),
+      ],
       stats: {
         for (final r in results.take(12))
           r.dictionary.type: (fromCache: r.fromCache, elapsedMs: r.elapsedMs),

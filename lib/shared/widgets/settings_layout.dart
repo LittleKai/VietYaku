@@ -336,12 +336,14 @@ class SettingsSwitchRow extends StatelessWidget {
     required this.description,
     required this.value,
     required this.onChanged,
+    this.help,
   });
 
   final String title;
   final String description;
   final bool value;
   final ValueChanged<bool> onChanged;
+  final Widget? help;
 
   @override
   Widget build(BuildContext context) {
@@ -355,6 +357,7 @@ class SettingsSwitchRow extends StatelessWidget {
             Expanded(
               child: _SettingsCopy(title: title, description: description),
             ),
+            if (help != null) ...[const SizedBox(width: 8), help!],
             const SizedBox(width: 16),
             Switch(value: value, onChanged: onChanged),
           ],

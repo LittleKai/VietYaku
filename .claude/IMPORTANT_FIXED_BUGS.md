@@ -1,6 +1,6 @@
 # Important Fixed Bugs
 
-**Last Updated:** 2026-07-20
+**Last Updated:** 2026-08-09
 
 ---
 
@@ -13,6 +13,13 @@ Record only high-impact, hard-to-detect, or likely-to-recur bugs. Do not record 
 ---
 
 ## Fixed Bugs
+
+### 2026-08-09 - `trad2simp.tsv` quy nhầm chữ VỐN ĐÃ giản thể (子→自, 三→叁, 斯→四…)
+- **Symptom:** Màn Glossary ↔ VietPhrase, mode Trung, tab "Không trùng": bấm Cập nhật xong từ vẫn nằm nguyên trong danh sách, bấm bao nhiêu lần cũng không biến mất (98 mục kẹt vĩnh viễn). Không lỗi, không cảnh báo. Tra online cho các từ chứa những chữ này cũng trả kết quả rác.
+- **Root Cause:** `cedict_ts.u8` có vài mục gõ sai cột giản thể (`鷹爪翻子拳 / 鹰爪翻自拳`, `哈根達斯 / 哈跟达斯`). Generator cũ chỉ đếm vị trí trad≠simp, nên với chữ vốn đã là giản thể, cặp rác duy nhất đó trở thành ứng viên DUY NHẤT và được chọn: `子→自` (1 lần so với 1.123 lần 子 đứng nguyên ở cột giản thể), `斯→四` (1/733), `三→叁` (1/361), `言→讠`, `座→坐`, `哈→加`, `根→跟`, `坦→谈`, `磁→铁`, `份→分`, `殖→植`, `黏→粘`, `甚→什`, `俱→具`… Mode Trung quy CẢ văn bản lẫn key dict nên tra vẫn khớp nhau ⇒ dịch trông vẫn "chạy", chỉ có 48k key bị bóp méo và va nhau (mất mục), còn màn glossary thì so source glossary thô (`小子`) với key dict đã bị quy (`小自`) ⇒ luôn báo "không trùng"; áp dụng xong lưu `小子` rồi lại bị quy thành `小自` ⇒ mục không bao giờ thành "trùng" được.
+- **Fix:** Generator đếm thêm `selfCounts` (số lần ký tự đứng NGUYÊN VẸN ở cột giản thể); nếu cặp hay gặp nhất còn nhẹ ký hơn `selfCounts` thì bỏ hẳn ký tự đó khỏi bảng — 103 ký tự bị loại, bảng 2.538 → 2.455. Thêm `glossary_sync_controller` quy `term.source` phồn→giản trước khi đối chiếu (4 mục còn lại là source phồn thể thật). Sau fix: VietPhrase CN 690.006 → 680.777 key, chỉ 13.413 key bị quy (trước là 61.541 — phần lớn là quy bậy).
+- **Do Not Repeat:** Bảng sinh tự động từ dữ liệu ngoài phải so tần suất với "phương án không đổi", không được lấy đa số của riêng nhánh đổi — một dòng gõ sai đủ để phá chữ thường gặp nhất. Test `chữ vốn đã giản thể không bị quy` trong `test/trad2simp_test.dart` chốt lại điều này. Không sửa tay `assets/mappings/*.tsv`, luôn `dart run tool/build_trad2simp.dart`.
+- **Related Files:** `tool/build_trad2simp.dart`, `assets/mappings/trad2simp.tsv`, `lib/features/glossary/application/glossary_sync_controller.dart`, `test/trad2simp_test.dart`
 
 ### 2026-08-07 - `trad2simp.tsv` chứa cặp ngược chiều, dịch Trung tự biến giản thể thành phồn thể
 - **Symptom:** Raw `席尔` (giản thể) qua mode Trung lại tra thành `席爾`, khớp nhầm mục phồn thể trong VietPhrase (`席爾=Llyr`) thay vì các mục `席尔…` đúng. Không lỗi, không cảnh báo — chỉ sai nghĩa.

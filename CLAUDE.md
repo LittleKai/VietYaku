@@ -94,6 +94,28 @@ Specific files user mentioned  → Only if needed for implementation
 
 ---
 
+## 🔒 SECURITY RULES
+
+- Tuyệt đối **không** ghi mật khẩu, JWT admin, hay bất kỳ credential thật nào vào file bị Git theo dõi — kể cả `lib/`, `test/`, fixture, comment, hay `.md`. Trong code/docs chỉ dùng placeholder (`<JWT>`, `admin@example`).
+- Phiên admin (`dictionary_sync`): SharedPreferences chỉ lưu `username + JWT`, **không bao giờ lưu mật khẩu**; logout/401 phải xóa phiên. Giữ nguyên hợp đồng này khi sửa `dictionary_sync_controller`.
+- Không `debugPrint`/log token, header `Authorization`, hay response đăng nhập — kể cả khi debug tạm; xóa log trước khi kết thúc task.
+- URL server đặt qua `--dart-define=LITTLEKAI_SERVER_URL=...`, không hardcode URL production vào source.
+- `.env` và `data/userdata/` đã nằm trong `.gitignore` — không gỡ, không commit dữ liệu người dùng thật (từ điển cá nhân, OnlineDict, cache `.vydc`).
+- Giữ nguyên quyết định đã chốt: **không dùng API trả phí / API cần key**. Nếu một nguồn online mới bắt đăng ký key → loại, đừng nhúng key vào app.
+
+---
+
+## 🧪 TEST POLICY
+
+- Mọi tính năng mới hoặc sửa lỗi **logic** trong `lib/features/*/domain/`, `lib/features/*/data/`, hoặc `lib/core/` bắt buộc phải có unit test tương ứng trong `test/` phủ case đó trước khi kết thúc session.
+- Với bug fix: viết test tái hiện bug **trước**, rồi mới sửa.
+- Đụng repair/parser: ngoài `flutter test`, phải chạy `dart run tool/export_jp.dart` để verify trên dữ liệu thật (bất biến VALUE KHÔNG ĐỔI 1 BYTE).
+- Đụng `app_theme.dart`: invariant đang được khoá bởi `test/app_theme_test.dart` — sửa theme phải cập nhật/không phá test này.
+- Thay đổi thuần `presentation/` (bố cục, màu, cỡ chữ) không bắt buộc test; verify tay và ghi vào SMOKE_TEST_CHECKLIST nếu là luồng chính.
+- `flutter analyze` phải sạch trước khi kết thúc task.
+
+---
+
 ## 🗂️ Project Quick Reference
 
 **Tech Stack:** Flutter 3.44.2 (Dart ^3.12) · Windows desktop · Riverpod 2 (manual providers) · Material 3
@@ -128,6 +150,7 @@ VietYaku/
     ├── PROJECT_SUMMARY.md          # Detailed project state & architecture
     ├── CONVENTIONS.md              # Coding standards & patterns
     ├── IMPORTANT_FIXED_BUGS.md     # Important fixed bugs to avoid repeating
+    ├── SMOKE_TEST_CHECKLIST.md     # Kiểm tra tay trên exe/APK trước khi release
     └── SETUP_REPORT.md             # Initial setup snapshot
 ```
 

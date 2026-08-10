@@ -104,8 +104,9 @@ class DictionarySyncApi {
   Future<void> publish(
     String token,
     TranslationMode mode,
-    SharedDictionaryEntry entry,
-  ) async {
+    SharedDictionaryEntry entry, {
+    String reason = '',
+  }) async {
     final response = await client
         .post(
           _uri('/glossary/sync'),
@@ -116,6 +117,7 @@ class DictionarySyncApi {
           body: jsonEncode({
             'language': mode.name,
             'items': [entry.toJson()],
+            if (reason.isNotEmpty) 'reason': reason,
           }),
         )
         .timeout(const Duration(seconds: 15));

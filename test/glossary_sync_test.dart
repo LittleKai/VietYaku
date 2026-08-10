@@ -63,7 +63,7 @@ void main() {
       expect(result.map((r) => r.source), ['菜畑小鳥', '白鳥沙羅']);
     });
 
-    test('Có trùng: chỉ giữ mục bên kia đã có nhưng khác giá trị (bỏ qua mục giống hệt)', () {
+    test('Khác nghĩa (Có trùng): chỉ giữ mục bên kia đã có nhưng khác giá trị (bỏ qua mục giống hệt)', () {
       final result = filterGlossarySyncRows(
         rows,
         duplicateFilter: DuplicateFilter.duplicated,
@@ -71,6 +71,25 @@ void main() {
       );
       expect(result.map((r) => r.source), ['箸尾拓海']);
       expect(result.single.isIdentical, isFalse);
+    });
+
+    test('Giống hệt: chỉ giữ mục đã có ở cả 2 bên và giá trị y hệt', () {
+      final result = filterGlossarySyncRows(
+        rows,
+        duplicateFilter: DuplicateFilter.identical,
+        createdByAiOnly: false,
+      );
+      expect(result.map((r) => r.source), ['田中']);
+      expect(result.single.isIdentical, isTrue);
+    });
+
+    test('Tất cả: giữ toàn bộ các mục bất kể trùng hay giống hệt', () {
+      final result = filterGlossarySyncRows(
+        rows,
+        duplicateFilter: DuplicateFilter.all,
+        createdByAiOnly: false,
+      );
+      expect(result.length, 4);
     });
 
     test('created_by = A.I lọc bỏ user/migration', () {

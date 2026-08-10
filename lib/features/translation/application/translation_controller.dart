@@ -86,6 +86,7 @@ class TranslationController extends Notifier<TranslationState> {
     final engine = dicts.engineWith(
       algorithm: settings.translationAlgorithm,
       prioritizeNames: settings.prioritizeNames,
+      personRuleScope: settings.personRuleScope,
     );
     final sw = Stopwatch()..start();
     var lookupText = text;

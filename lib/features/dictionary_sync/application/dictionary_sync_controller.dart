@@ -150,6 +150,29 @@ class DictionarySyncController extends Notifier<DictionarySyncState> {
     );
   }
 
+  Future<void> stageLocalDelete({
+    required TranslationMode mode,
+    required SharedDictionaryKind kind,
+    required String source,
+  }) async {
+    if (!state.isAdmin) return;
+    final entry = SharedDictionaryEntry(
+      kind: kind,
+      source: source,
+      operation: EntryOperation.delete,
+    );
+    final paths = await ref.read(appPathsProvider.future);
+    final service = SharedDictionaryService(paths);
+    await service.stageLocalEdit(mode, entry);
+    await _reloadCurrentTranslation();
+    final dictionaryName = kind == SharedDictionaryKind.vietPhrase
+        ? 'VietPhrase'
+        : 'Lạc Việt';
+    state = state.copyWith(
+      message: 'Đã xóa khỏi $dictionaryName. Bấm Update để gửi lên server.',
+    );
+  }
+
   /// Lưu nhiều sửa đổi cùng lúc (màn đồng bộ Glossary ↔ VietPhrase). Ghi file
   /// một lần rồi nạp lại từ điển một lần, không auto-publish như
   /// [stageLocalEdit] — số lượng lớn nên để admin tự bấm Update.

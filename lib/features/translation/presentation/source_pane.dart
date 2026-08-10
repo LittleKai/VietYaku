@@ -22,6 +22,20 @@ import 'online_lookup_dialog.dart';
 /// Nội dung ô Nguồn đang gõ (nút Dịch trên menu bar đọc giá trị này).
 final sourceDraftProvider = StateProvider<String>((ref) => '');
 
+/// Yêu cầu cuộn ô Nguồn tới [offset]; [seq] tăng dần để hai lần yêu cầu cùng
+/// một vị trí vẫn kích hoạt cuộn.
+typedef SourceScrollRequest = ({int offset, int seq});
+
+final sourceScrollRequestProvider = StateProvider<SourceScrollRequest?>(
+  (ref) => null,
+);
+
+/// Đặt yêu cầu cuộn ô Nguồn tới [offset] (bảng "Kiểm tra" bấm vào một cụm).
+void requestSourceScroll(WidgetRef ref, int offset) {
+  final notifier = ref.read(sourceScrollRequestProvider.notifier);
+  notifier.state = (offset: offset, seq: (notifier.state?.seq ?? 0) + 1);
+}
+
 /// TextEditingController tô nổi đỏ cụm đang chọn (click) và cụm đang rê chuột
 /// (hover) + tô đậm tất cả các từ có trong từ điển.
 class _HighlightTextEditingController extends TextEditingController {
@@ -177,6 +191,10 @@ class _SourcePaneState extends ConsumerState<SourcePane> {
   final _fieldKey = GlobalKey();
   int _lastCaret = -1;
 
+  /// Bề rộng khung soạn thảo của lần build gần nhất — cần để dựng TextPainter
+  /// đúng metrics khi cuộn tới một offset.
+  double? _lastEditorWidth;
+
   static const _padding = 12.0;
 
   @override
@@ -224,6 +242,36 @@ class _SourcePaneState extends ConsumerState<SourcePane> {
       panelHeight: constraints.maxHeight,
       lineTop: lineTop,
       lineBottom: lineTop + lineHeight,
+    );
+  }
+
+  /// Cuộn để [offset] lọt vào khung nhìn, đặt ở khoảng 1/3 trên (giống cách
+  /// `_popupPlacement` đo dòng: TextPainter cùng style + cùng bề rộng).
+  void _scrollToOffset(int offset, TextStyle style) {
+    final width = _lastEditorWidth;
+    if (width == null || !_scrollController.hasClients) return;
+    final text = _controller.text;
+    if (text.isEmpty) return;
+    final painter = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: Directionality.of(context),
+    )..layout(maxWidth: math.max(1.0, width - 2 * _padding));
+    final dy = painter
+        .getOffsetForCaret(
+          TextPosition(offset: offset.clamp(0, text.length)),
+          Rect.fromLTWH(0, 0, 1, style.fontSize ?? 14),
+        )
+        .dy;
+    painter.dispose();
+    final position = _scrollController.position;
+    final target = (dy + _padding - position.viewportDimension / 3).clamp(
+      0.0,
+      position.maxScrollExtent,
+    );
+    _scrollController.animateTo(
+      target,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOut,
     );
   }
 
@@ -454,6 +502,11 @@ class _SourcePaneState extends ConsumerState<SourcePane> {
       _controller.setTokens(next);
     });
 
+    // Bảng "Kiểm tra" bấm vào một cụm chưa dịch → cuộn tới chỗ nó xuất hiện.
+    ref.listen(sourceScrollRequestProvider, (previous, next) {
+      if (next != null) _scrollToOffset(next.offset, style);
+    });
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -469,6 +522,7 @@ class _SourcePaneState extends ConsumerState<SourcePane> {
               ),
               child: LayoutBuilder(
                 builder: (context, constraints) {
+                  _lastEditorWidth = constraints.maxWidth;
                   final placement = popupSections.isEmpty
                       ? null
                       : _popupPlacement(context, constraints, style, selection);

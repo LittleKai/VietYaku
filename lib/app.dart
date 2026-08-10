@@ -6,7 +6,9 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'core/theme/app_theme.dart';
+import 'features/clipboard/application/clipboard_reader_controller.dart';
 import 'features/dictionary_sync/application/dictionary_sync_controller.dart';
+import 'features/dictionary_search/presentation/dictionary_search_screen.dart';
 import 'features/epub_converter/presentation/epub_converter_screen.dart';
 import 'features/settings/appearance_screen.dart';
 import 'features/settings/settings_provider.dart';
@@ -65,9 +67,11 @@ class _HomeShellState extends ConsumerState<HomeShell> {
             windowManager.maximize();
           }
         });
-        PackageInfo.fromPlatform().then((info) {
-          windowManager.setTitle('VietYaku v${info.version}');
-        }).catchError((_) {});
+        PackageInfo.fromPlatform()
+            .then((info) {
+              windowManager.setTitle('VietYaku v${info.version}');
+            })
+            .catchError((_) {});
       }
       final settings = ref.read(settingsProvider);
       if (settings.autoCheckUpdates) {
@@ -93,6 +97,9 @@ class _HomeShellState extends ConsumerState<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
+    // Khởi tạo bridge Windows ngay khi app chạy; setting quyết định có đăng ký
+    // WM_CLIPBOARDUPDATE + Ctrl+Shift+V hay không.
+    ref.watch(clipboardReaderControllerProvider);
     ref.listen(updateControllerProvider.select((s) => s.phase), (
       previous,
       next,
@@ -145,6 +152,19 @@ class _HomeShellState extends ConsumerState<HomeShell> {
                         ),
                         NavigationRailDestination(
                           icon: _NavIcon(
+                            icon: Icons.manage_search_outlined,
+                            color: Color(0xFF5E35B1),
+                          ),
+                          selectedIcon: _NavIcon(
+                            icon: Icons.manage_search,
+                            color: Color(0xFF5E35B1),
+                            selected: true,
+                          ),
+                          label: Text('Tìm kiếm'),
+                          padding: EdgeInsets.symmetric(vertical: 4),
+                        ),
+                        NavigationRailDestination(
+                          icon: _NavIcon(
                             icon: Icons.palette_outlined,
                             color: Color(0xFF7B1FA2),
                           ),
@@ -191,6 +211,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
                       index: _selectedIndex,
                       children: const [
                         TranslateScreen(),
+                        DictionarySearchScreen(),
                         AppearanceScreen(),
                         SettingsScreen(),
                         EpubConverterScreen(),
@@ -292,9 +313,12 @@ class _SidebarHeader extends StatelessWidget {
                       if (version.isNotEmpty)
                         Text(
                           'v$version',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          ),
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant,
+                              ),
                         ),
                     ],
                   ),
