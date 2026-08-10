@@ -272,14 +272,11 @@ class _SidebarHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final brand = ClipRRect(
-      borderRadius: BorderRadius.circular(10),
-      child: Image.asset(
-        'assets/branding/app_icon.png',
-        width: 36,
-        height: 36,
-        filterQuality: FilterQuality.high,
-      ),
+    final brand = Image.asset(
+      'assets/branding/app_icon.png',
+      width: 36,
+      height: 36,
+      filterQuality: FilterQuality.high,
     );
 
     if (!extended) {
