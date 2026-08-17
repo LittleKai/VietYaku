@@ -40,6 +40,19 @@ final _asciiRomaji = RegExp(r"^[A-Za-z][A-Za-z' \-]*$");
 String unescapeLacViet(String value) =>
     value.replaceAll(r'\n', '\n').replaceAll(r'\t', '\t');
 
+final _slashSeparator = RegExp(r' *\/ *');
+
+/// Chuẩn hóa nghĩa người dùng gõ tay về đúng format value LacViet: xuống dòng/
+/// tab thật → literal `\n`, `\t` (value phải nằm gọn 1 dòng), dấu `/` ngăn cách
+/// nghĩa → `; ` (LacViet dùng `; `, chỉ VietPhrase mới dùng `/`).
+/// Escape trước rồi mới đổi `/` để khoảng trắng quanh dấu không nuốt xuống dòng.
+String escapeLacVietMeaning(String text) => text
+    .replaceAll('\r\n', '\n')
+    .replaceAll('\r', '\n')
+    .replaceAll('\t', r'\t')
+    .replaceAll('\n', r'\n')
+    .replaceAll(_slashSeparator, '; ');
+
 final _curlyBrace = RegExp(r'\{([^}]+)\}');
 // U+3040–U+30FF: hiragana + katakana (gồm cả ー U+30FC, ・ U+30FB).
 final _kanaOnly = RegExp(r'^[぀-ヿ\s]+$');

@@ -57,4 +57,37 @@ void main() {
       expect(unescapeLacViet('giác ngộ; quyết tâm'), 'giác ngộ; quyết tâm');
     });
   });
+
+  group('escapeLacVietMeaning', () {
+    test(r'newline/tab thật đổi lại thành literal \n\t', () {
+      expect(
+        escapeLacVietMeaning('\t- phí tổn\n\t- nhờ vào'),
+        r'\t- phí tổn\n\t- nhờ vào',
+      );
+    });
+
+    test('CRLF cũng thành một literal \\n', () {
+      expect(escapeLacVietMeaning('a\r\nb'), r'a\nb');
+    });
+
+    test(r'dấu / ngăn cách nghĩa đổi thành "; "', () {
+      expect(
+        escapeLacVietMeaning('chiếm cứ/chiếm lấy/chiếm đóng'),
+        'chiếm cứ; chiếm lấy; chiếm đóng',
+      );
+    });
+
+    test('khoảng trắng quanh dấu / bị gộp vào "; "', () {
+      expect(escapeLacVietMeaning('phản / trả lại'), 'phản; trả lại');
+    });
+
+    test('dấu / không nuốt xuống dòng liền kề', () {
+      expect(escapeLacVietMeaning('a/\n\tb'), r'a; \n\tb');
+    });
+
+    test('round-trip: unescape rồi escape trả về đúng value gốc', () {
+      const raw = r'\n\t1. dịch; phiên dịch\n\t2. người dịch';
+      expect(escapeLacVietMeaning(unescapeLacViet(raw)), raw);
+    });
+  });
 }

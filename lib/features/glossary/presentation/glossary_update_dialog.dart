@@ -4,18 +4,24 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/widgets/app_dialog.dart';
 import '../../settings/settings_provider.dart';
 import '../../translation/application/translation_controller.dart';
+import '../../translation/domain/vietphrase_value.dart';
+import '../application/glossary_sync_controller.dart';
 import '../data/glossary_service.dart';
 import '../domain/glossary_term.dart';
 
 const _glossaryAccent = Color(0xFF6A1B9A);
 
-/// Nghĩa ghi vào glossary: chỉ lấy nghĩa đầu của chuỗi `nghĩa1/nghĩa2` — mục
-/// glossary là một thuật ngữ duy nhất, không phải danh sách nghĩa.
-String glossaryTargetOf(String meaning) => meaning.split('/').first.trim();
+/// Nghĩa ghi vào glossary: gom tất cả các cách dịch của các tầng nghĩa,
+/// lọc sạch marker số và từ loại, nối bằng dấu `/`.
+/// VD: `(n)/ký ức/hồi ức/(2)/(v)/nhớ lại` -> `ký ức/hồi ức/nhớ lại`.
+String glossaryTargetOf(String meaning) => allVietPhraseMeaningsClean(meaning);
 
 /// Xác nhận rồi ghi [source] vào `Global Glossary.json` của ngôn ngữ đang dịch.
 /// Dialog hiện thông tin mục từ đang có trong glossary (nếu có) trước khi ghi.
-Future<void> showGlossaryUpdateDialog(
+///
+/// Trả về `true` khi file glossary THỰC SỰ được ghi — dialog gọi nó (Sửa vào
+/// VietPhrase) dựa vào đây để nạp lại trạng thái glossary đang hiển thị.
+Future<bool> showGlossaryUpdateDialog(
   BuildContext context,
   WidgetRef ref, {
   required String source,
@@ -27,18 +33,18 @@ Future<void> showGlossaryUpdateDialog(
   final target = glossaryTargetOf(meaning);
   if (source.isEmpty || target.isEmpty) {
     _showMessage(context, 'Cần cả từ nguồn và nghĩa để cập nhật glossary.');
-    return;
+    return false;
   }
 
   final GlossaryTerm? existing;
   try {
     existing = await service.find(mode, source);
   } catch (_) {
-    if (!context.mounted) return;
+    if (!context.mounted) return false;
     _showMessage(context, 'Không đọc được Global Glossary $lang.');
-    return;
+    return false;
   }
-  if (!context.mounted) return;
+  if (!context.mounted) return false;
 
   final confirmed = await showAppDialog<bool>(
     context: context,
@@ -68,17 +74,26 @@ Future<void> showGlossaryUpdateDialog(
       ),
     ],
   );
-  if (confirmed != true || !context.mounted) return;
+  if (confirmed != true || !context.mounted) return false;
+  if (existing != null && existing.target.trim() == target.trim()) return false;
 
   try {
     await service.upsert(mode, source: source, target: target);
   } catch (_) {
-    if (!context.mounted) return;
+    if (!context.mounted) return false;
     _showMessage(context, 'Không ghi được Global Glossary $lang.');
-    return;
+    return false;
   }
-  if (!context.mounted) return;
+  // Bảng đồng bộ hàng loạt đang mở phải bỏ mục vừa xử lý (cả hai chiều).
+  ref.invalidate(
+    glossarySyncRowsProvider(GlossarySyncDirection.glossaryToVietPhrase),
+  );
+  ref.invalidate(
+    glossarySyncRowsProvider(GlossarySyncDirection.vietPhraseToGlossary),
+  );
+  if (!context.mounted) return true;
   _showMessage(context, 'Đã cập nhật Global Glossary $lang: $source → $target');
+  return true;
 }
 
 void _showMessage(BuildContext context, String message) {
@@ -125,12 +140,7 @@ class _GlossaryPreview extends StatelessWidget {
         _row(context, 'target', term?.target ?? '—', newValue: target),
         _row(context, 'kind', term?.kind ?? 'proper_noun'),
         _row(context, 'notes', (term?.notes ?? '').isEmpty ? '—' : term!.notes),
-        _row(
-          context,
-          'created_by',
-          term?.createdBy ?? '—',
-          newValue: 'user',
-        ),
+        _row(context, 'created_by', term?.createdBy ?? '—', newValue: 'user'),
         _row(
           context,
           'date_added',

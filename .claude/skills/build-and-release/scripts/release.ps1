@@ -203,34 +203,62 @@ Write-Success "Tag pushed"
 
 Write-Step "Creating GitHub Release"
 
+# --- Create or Get GitHub Release ---
+
+Write-Step "Creating or updating GitHub Release"
+
 $Headers = @{
     "Authorization" = "Bearer $Token"
     "Accept"        = "application/vnd.github+json"
     "X-GitHub-Api-Version" = "2022-11-28"
 }
 
-$ReleaseBody = @{
-    tag_name         = $TagVersion
-    name             = $Title
-    body             = $Notes
-    draft            = [bool]$Draft
-    prerelease       = [bool]$Prerelease
-    generate_release_notes = $false
-} | ConvertTo-Json -Depth 3
+$ReleaseId = $null
+$HtmlUrl = $null
+$ExistingAssets = @()
 
-$ApiUrl = "https://api.github.com/repos/$Owner/$Repo/releases"
-
+# Check if release already exists for this tag
+$GetReleaseUrl = "https://api.github.com/repos/$Owner/$Repo/releases/tags/$TagVersion"
 try {
-    $Response = Invoke-RestMethod -Uri $ApiUrl -Method POST -Headers $Headers `
-        -Body $ReleaseBody -ContentType "application/json; charset=utf-8"
-    $ReleaseId = $Response.id
-    $HtmlUrl = $Response.html_url
-    Write-Success "Release created: $HtmlUrl"
+    $ExistingRelease = Invoke-RestMethod -Uri $GetReleaseUrl -Method GET -Headers $Headers
+    $ReleaseId = $ExistingRelease.id
+    $HtmlUrl = $ExistingRelease.html_url
+    $ExistingAssets = $ExistingRelease.assets
+    Write-Host "Found existing release $TagVersion (ID: $ReleaseId)" -ForegroundColor Yellow
+
+    # Update release notes if provided
+    if ($Notes) {
+        $PatchBody = @{
+            body = $Notes
+        } | ConvertTo-Json -Depth 3
+        Invoke-RestMethod -Uri "https://api.github.com/repos/$Owner/$Repo/releases/$ReleaseId" -Method PATCH -Headers $Headers -Body $PatchBody -ContentType "application/json; charset=utf-8" | Out-Null
+        Write-Success "Updated release notes"
+    }
 } catch {
-    $StatusCode = $_.Exception.Response.StatusCode.Value__
-    $ErrorBody = $_.ErrorDetails.Message
-    Write-Err "GitHub API error ($StatusCode): $ErrorBody"
-    exit 1
+    # Release does not exist, create new one
+    $ReleaseBody = @{
+        tag_name         = $TagVersion
+        name             = $Title
+        body             = $Notes
+        draft            = [bool]$Draft
+        prerelease       = [bool]$Prerelease
+        generate_release_notes = $false
+    } | ConvertTo-Json -Depth 3
+
+    $ApiUrl = "https://api.github.com/repos/$Owner/$Repo/releases"
+
+    try {
+        $Response = Invoke-RestMethod -Uri $ApiUrl -Method POST -Headers $Headers `
+            -Body $ReleaseBody -ContentType "application/json; charset=utf-8"
+        $ReleaseId = $Response.id
+        $HtmlUrl = $Response.html_url
+        Write-Success "Release created: $HtmlUrl"
+    } catch {
+        $StatusCode = $_.Exception.Response.StatusCode.Value__
+        $ErrorBody = $_.ErrorDetails.Message
+        Write-Err "GitHub API error ($StatusCode): $ErrorBody"
+        exit 1
+    }
 }
 
 # --- Upload assets ---
@@ -243,6 +271,21 @@ foreach ($Artifact in $Artifacts) {
     $FileName = $Artifact.Name
     $FilePath = $Artifact.FullName
     $FileSize = [math]::Round($Artifact.Length / 1MB, 2)
+
+    # Delete existing asset with same name if present
+    if ($ExistingAssets) {
+        foreach ($Asset in $ExistingAssets) {
+            if ($Asset.name -eq $FileName) {
+                Write-Host "Deleting old asset: $FileName (ID: $($Asset.id))..." -NoNewline
+                try {
+                    Invoke-RestMethod -Uri "https://api.github.com/repos/$Owner/$Repo/releases/assets/$($Asset.id)" -Method DELETE -Headers $Headers
+                    Write-Host " [OK]" -ForegroundColor Green
+                } catch {
+                    Write-Host " [FAILED]" -ForegroundColor Red
+                }
+            }
+        }
+    }
 
     Write-Host "Uploading: $FileName ($FileSize MB)..." -NoNewline
 

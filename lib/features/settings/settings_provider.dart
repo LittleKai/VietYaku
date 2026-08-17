@@ -9,6 +9,7 @@ import '../../features/translation/domain/translation_engine.dart';
 import '../translation/domain/lookup_dictionary_type.dart';
 import '../translation/domain/online_lookup_source.dart';
 import '../translation/domain/translation_rule.dart';
+import '../translation/domain/vietphrase_value.dart';
 import '../dictionary/domain/dict_type.dart';
 import '../repair/domain/jp_repair_pipeline.dart';
 
@@ -202,6 +203,9 @@ class AppSettings {
   /// Tab đa nghĩa: bọc `[ ]` cả cụm có trong từ điển mà chỉ có 1 nghĩa.
   final bool bracketSingleMeaning;
 
+  /// Kiểu hiển thị VietPhrase đa nghĩa trong tab đa nghĩa.
+  final MultiMeaningDisplayMode multiMeaningDisplayMode;
+
   /// Giữ nguyên ngoặc kép CJK đặc biệt 『』《》〈〉〝〞〟 khi hiển thị
   /// (false → chuyển thành `"`). 「」 luôn chuyển thành `"`.
   final bool keepSpecialQuotes;
@@ -234,6 +238,12 @@ class AppSettings {
   /// quản trị: cho phép đẩy mục đang sửa sang `Global Glossary.json` JP/CN.
   final String glossaryDir;
 
+  /// Tự động cập nhật Glossary khi bấm "Lưu từ" (nếu từ đã có trong Glossary).
+  final bool autoUpdateGlossaryOnSave;
+
+  /// Hiển thị thông báo Toast/SnackBar khi tự động cập nhật Glossary.
+  final bool notifyOnGlossaryAutoUpdate;
+
   const AppSettings({
     required this.dictPaths,
     required this.defaultMode,
@@ -259,6 +269,7 @@ class AppSettings {
     this.rightSplitRatio = 0.6,
     this.katakanaColor = 0xFF2E7D32,
     this.bracketSingleMeaning = true,
+    this.multiMeaningDisplayMode = MultiMeaningDisplayMode.visualHierarchy,
     this.keepSpecialQuotes = true,
     this.ttsVoiceJa = '',
     this.ttsVoiceZh = '',
@@ -271,6 +282,8 @@ class AppSettings {
     this.autoSyncDictionary = false,
     this.clipboardReaderEnabled = false,
     this.glossaryDir = defaultGlossaryDir,
+    this.autoUpdateGlossaryOnSave = true,
+    this.notifyOnGlossaryAutoUpdate = true,
   });
 
   /// Voice đã chọn cho [mode] ('' = tự động).
@@ -323,6 +336,7 @@ class AppSettings {
     double? rightSplitRatio,
     int? katakanaColor,
     bool? bracketSingleMeaning,
+    MultiMeaningDisplayMode? multiMeaningDisplayMode,
     bool? keepSpecialQuotes,
     String? ttsVoiceJa,
     String? ttsVoiceZh,
@@ -335,6 +349,8 @@ class AppSettings {
     bool? autoSyncDictionary,
     bool? clipboardReaderEnabled,
     String? glossaryDir,
+    bool? autoUpdateGlossaryOnSave,
+    bool? notifyOnGlossaryAutoUpdate,
   }) => AppSettings(
     dictPaths: dictPaths ?? this.dictPaths,
     defaultMode: defaultMode ?? this.defaultMode,
@@ -364,6 +380,8 @@ class AppSettings {
     rightSplitRatio: rightSplitRatio ?? this.rightSplitRatio,
     katakanaColor: katakanaColor ?? this.katakanaColor,
     bracketSingleMeaning: bracketSingleMeaning ?? this.bracketSingleMeaning,
+    multiMeaningDisplayMode:
+        multiMeaningDisplayMode ?? this.multiMeaningDisplayMode,
     keepSpecialQuotes: keepSpecialQuotes ?? this.keepSpecialQuotes,
     ttsVoiceJa: ttsVoiceJa ?? this.ttsVoiceJa,
     ttsVoiceZh: ttsVoiceZh ?? this.ttsVoiceZh,
@@ -379,6 +397,10 @@ class AppSettings {
     clipboardReaderEnabled:
         clipboardReaderEnabled ?? this.clipboardReaderEnabled,
     glossaryDir: glossaryDir ?? this.glossaryDir,
+    autoUpdateGlossaryOnSave:
+        autoUpdateGlossaryOnSave ?? this.autoUpdateGlossaryOnSave,
+    notifyOnGlossaryAutoUpdate:
+        notifyOnGlossaryAutoUpdate ?? this.notifyOnGlossaryAutoUpdate,
   );
 
   static AppSettings defaults() => AppSettings(
@@ -419,6 +441,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
   static const _rightSplitRatioKey = 'layout.rightSplitRatio';
   static const _katakanaColorKey = 'katakanaColor';
   static const _bracketSingleMeaningKey = 'display.bracketSingle';
+  static const _multiMeaningDisplayModeKey = 'display.multiMeaningMode';
   static const _keepSpecialQuotesKey = 'display.keepSpecialQuotes';
   static const _ttsVoiceJaKey = 'tts.voice.ja';
   static const _ttsVoiceZhKey = 'tts.voice.zh';
@@ -433,6 +456,8 @@ class SettingsNotifier extends Notifier<AppSettings> {
   static const _autoSyncDictionaryKey = 'dictionarySync.autoSync';
   static const _clipboardReaderEnabledKey = 'clipboard.readerEnabled';
   static const _glossaryDirKey = 'glossary.dir';
+  static const _autoUpdateGlossaryOnSaveKey = 'glossary.autoUpdateOnSave';
+  static const _notifyOnGlossaryAutoUpdateKey = 'glossary.notifyOnAutoUpdate';
   static String _fontSizeKey(PaneId id) => 'paneFont.${id.name}.size';
   static String _fontFamilyKey(PaneId id) => 'paneFont.${id.name}.family';
   static const _uiFontScaleKey = 'ui.fontScale';
@@ -518,6 +543,9 @@ class SettingsNotifier extends Notifier<AppSettings> {
       rightSplitRatio: prefs.getDouble(_rightSplitRatioKey) ?? 0.6,
       katakanaColor: prefs.getInt(_katakanaColorKey) ?? 0xFF2E7D32,
       bracketSingleMeaning: prefs.getBool(_bracketSingleMeaningKey) ?? true,
+      multiMeaningDisplayMode: MultiMeaningDisplayMode.fromKey(
+        prefs.getString(_multiMeaningDisplayModeKey),
+      ),
       keepSpecialQuotes: prefs.getBool(_keepSpecialQuotesKey) ?? true,
       ttsVoiceJa: prefs.getString(_ttsVoiceJaKey) ?? '',
       ttsVoiceZh: prefs.getString(_ttsVoiceZhKey) ?? '',
@@ -566,7 +594,23 @@ class SettingsNotifier extends Notifier<AppSettings> {
       clipboardReaderEnabled:
           prefs.getBool(_clipboardReaderEnabledKey) ?? false,
       glossaryDir: prefs.getString(_glossaryDirKey) ?? defaultGlossaryDir,
+      autoUpdateGlossaryOnSave:
+          prefs.getBool(_autoUpdateGlossaryOnSaveKey) ?? true,
+      notifyOnGlossaryAutoUpdate:
+          prefs.getBool(_notifyOnGlossaryAutoUpdateKey) ?? true,
     );
+  }
+
+  Future<void> setAutoUpdateGlossaryOnSave(bool value) async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    await prefs.setBool(_autoUpdateGlossaryOnSaveKey, value);
+    state = state.copyWith(autoUpdateGlossaryOnSave: value);
+  }
+
+  Future<void> setNotifyOnGlossaryAutoUpdate(bool value) async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    await prefs.setBool(_notifyOnGlossaryAutoUpdateKey, value);
+    state = state.copyWith(notifyOnGlossaryAutoUpdate: value);
   }
 
   Future<void> setTtsVoice(TranslationMode mode, String voiceKey) async {
@@ -643,6 +687,12 @@ class SettingsNotifier extends Notifier<AppSettings> {
     final prefs = ref.read(sharedPreferencesProvider);
     await prefs.setBool(_bracketSingleMeaningKey, value);
     state = state.copyWith(bracketSingleMeaning: value);
+  }
+
+  Future<void> setMultiMeaningDisplayMode(MultiMeaningDisplayMode mode) async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    await prefs.setString(_multiMeaningDisplayModeKey, mode.key);
+    state = state.copyWith(multiMeaningDisplayMode: mode);
   }
 
   Future<void> setKeepSpecialQuotes(bool value) async {

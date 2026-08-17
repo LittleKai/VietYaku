@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../shared/widgets/app_dialog.dart';
 import '../../shared/widgets/settings_layout.dart';
+import '../translation/domain/vietphrase_value.dart';
 import 'settings_provider.dart';
 
 class AppearanceScreen extends ConsumerWidget {
@@ -237,6 +238,28 @@ class AppearanceScreen extends ConsumerWidget {
           title: 'Hiển thị bản dịch',
           description: 'Quy tắc trình bày VietPhrase đa nghĩa và dấu câu CJK.',
           children: [
+            SettingsControlRow(
+              title: 'Kiểu hiển thị VietPhrase đa nghĩa',
+              description: settings.multiMeaningDisplayMode.description,
+              controlWidth: 320,
+              control: DropdownMenu<MultiMeaningDisplayMode>(
+                key: ValueKey(settings.multiMeaningDisplayMode),
+                initialSelection: settings.multiMeaningDisplayMode,
+                expandedInsets: EdgeInsets.zero,
+                onSelected: (value) {
+                  if (value != null) {
+                    notifier.setMultiMeaningDisplayMode(value);
+                  }
+                },
+                dropdownMenuEntries: [
+                  for (final mode in MultiMeaningDisplayMode.values)
+                    DropdownMenuEntry<MultiMeaningDisplayMode>(
+                      value: mode,
+                      label: mode.label,
+                    ),
+                ],
+              ),
+            ),
             SettingsSwitchRow(
               title: 'Bọc ngoặc vuông khi chỉ có một nghĩa',
               description:

@@ -17,6 +17,7 @@ import '../application/token_selection.dart';
 import '../application/viet_draft.dart';
 import '../domain/secondary_phrase.dart';
 import '../domain/token.dart';
+import '../domain/vietphrase_value.dart';
 import 'lacviet_panel.dart' show meaningLabelColor;
 import 'online_lookup_dialog.dart';
 
@@ -255,7 +256,22 @@ class TokenTextView extends ConsumerStatefulWidget {
 
   static String _capitalize(String text) {
     if (text.isEmpty) return text;
-    for (var i = 0; i < text.length; i++) {
+    var startIdx = 0;
+    while (startIdx < text.length &&
+        (_capitalizeTransparent.contains(text[startIdx]) ||
+            RegExp(r'[\s①-⑳]').hasMatch(text[startIdx]))) {
+      if (text[startIdx] == '(' &&
+          RegExp(r'^\([a-zA-Z]+\)\s*').hasMatch(text.substring(startIdx))) {
+        break;
+      }
+      startIdx++;
+    }
+    final remaining = text.substring(startIdx);
+    final posMatch = RegExp(r'^\([a-zA-Z]+\)\s*').firstMatch(remaining);
+    if (posMatch != null) {
+      startIdx += posMatch.end;
+    }
+    for (var i = startIdx; i < text.length; i++) {
       final char = text[i];
       if (RegExp(r'[a-zA-ZÀ-ỹÀ-Ỹ]').hasMatch(char)) {
         return text.substring(0, i) +
@@ -266,6 +282,52 @@ class TokenTextView extends ConsumerStatefulWidget {
     }
     return text;
   }
+
+  static bool _hasCapitalAtStart(String text) {
+    if (text.isEmpty) return false;
+    var startIdx = 0;
+    while (startIdx < text.length &&
+        (_capitalizeTransparent.contains(text[startIdx]) ||
+            RegExp(r'[\s①-⑳]').hasMatch(text[startIdx]))) {
+      if (text[startIdx] == '(' &&
+          RegExp(r'^\([a-zA-Z]+\)\s*').hasMatch(text.substring(startIdx))) {
+        break;
+      }
+      startIdx++;
+    }
+    final remaining = text.substring(startIdx);
+    final posMatch = RegExp(r'^\([a-zA-Z]+\)\s*').firstMatch(remaining);
+    if (posMatch != null) {
+      startIdx += posMatch.end;
+    }
+    for (var i = startIdx; i < text.length; i++) {
+      final char = text[i];
+      if (RegExp(r'[a-zA-ZÀ-ỹÀ-Ỹ]').hasMatch(char)) {
+        return char == char.toUpperCase() && char != char.toLowerCase();
+      }
+    }
+    return false;
+  }
+}
+
+/// Key từ điển của vùng bôi đen ở ô kết quả: nối `source` của MỌI token
+/// không-passthrough nằm trong khoảng từ token đầu tới token cuối được chọn.
+///
+/// Token có nghĩa rỗng (VD `了=` trong VietPhrase) bị bỏ khỏi phần hiển thị nên
+/// không bao giờ nằm trong vùng chọn, nhưng vẫn thuộc văn bản nguồn — bôi đen
+/// "kích động ra hỏa khí" phải cho key `激出了火气`, không phải `激出火气`.
+String selectionSourceKey(List<Token> paragraph, List<Token> selected) {
+  if (selected.isEmpty) return '';
+  final start = selected.first.sourceStart;
+  final last = selected.last;
+  final end = last.sourceStart + last.source.length;
+  final sb = StringBuffer();
+  for (final token in paragraph) {
+    if (token.kind == TokenKind.passthrough) continue;
+    if (token.sourceStart < start || token.sourceStart >= end) continue;
+    sb.write(token.source);
+  }
+  return sb.toString();
 }
 
 /// Viết hoa chữ cái đầu của mỗi từ (tách theo khoảng trắng). Dùng để tạo
@@ -323,12 +385,14 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
   }
 
   /// Nghĩa tại vị trí [rel] trong text hiển thị của token: chế độ đa nghĩa
-  /// "[a/b/c]" → lấy đúng nghĩa dưới con trỏ; một nghĩa → cả text.
+  /// "[a/b/c]", "[① A ‖ ② B]", "[A ²]" → lấy đúng nghĩa dưới con trỏ; một nghĩa → cả text.
   static String _meaningAt(String text, int rel) {
+    if (text.isEmpty) return '';
+    const delimiters = {'/', '‖', '|'};
     var start = 0;
     var end = text.length;
     for (var i = 0; i < text.length; i++) {
-      if (text[i] != '/') continue;
+      if (!delimiters.contains(text[i])) continue;
       if (i < rel) {
         start = i + 1;
       } else {
@@ -336,16 +400,308 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
         break;
       }
     }
-    return text
-        .substring(start, end)
+    var piece = text.substring(start, end);
+    return piece
+        .replaceAll(RegExp(r'^[\[\(\s①-⑳\d\.]+'), '')
+        .replaceAll(RegExp(r'\[[A-Za-zÀ-ỹ]+\]\s*'), '')
+        .replaceAll(RegExp(r'\([A-Za-z]+\)\s*'), '')
+        .replaceAll(RegExp(r'[⁰¹²³⁴⁵⁶⁷⁸⁹⁺]+'), '')
         .replaceAll('[', '')
         .replaceAll(']', '')
         .trim();
   }
 
+  static Color _tierAccentColor(int index, ColorScheme scheme) {
+    final isDark = scheme.brightness == Brightness.dark;
+    switch (index % 5) {
+      case 0:
+        return scheme.primary;
+      case 1:
+        return isDark ? const Color(0xFF26A69A) : const Color(0xFF00897B); // Teal / Emerald
+      case 2:
+        return isDark ? const Color(0xFFFFB74D) : const Color(0xFFE65100); // Amber / Orange
+      case 3:
+        return isDark ? const Color(0xFFCE93D8) : const Color(0xFF7B1FA2); // Purple / Violet
+      case 4:
+        return isDark ? const Color(0xFFF48FB1) : const Color(0xFFC2185B); // Rose
+      default:
+        return scheme.primary;
+    }
+  }
+
+  InlineSpan _buildTokenSpan({
+    required Token token,
+    required String text,
+    required TextStyle baseStyle,
+    required ColorScheme scheme,
+    required AppSemanticColors sem,
+    required bool isSelected,
+    required MultiMeaningDisplayMode multiMeaningMode,
+  }) {
+    if (token.kind != TokenKind.matched ||
+        token.rawValue == null ||
+        widget.paneId != PaneId.vietPhrase) {
+      return TextSpan(text: text, style: baseStyle);
+    }
+
+    final raw = token.rawValue!;
+    final meanings = parseVietPhraseValue(raw);
+    if (meanings.isEmpty) return TextSpan(text: text, style: baseStyle);
+
+    final totalAlternatives = meanings.fold<int>(
+      0,
+      (count, meaning) => count + meaning.alternatives.length,
+    );
+
+    if (multiMeaningMode == MultiMeaningDisplayMode.classic) {
+      return TextSpan(text: text, style: baseStyle);
+    }
+
+    final hasBracket = text.startsWith('[') && text.endsWith(']');
+    if (!hasBracket && totalAlternatives <= 1) {
+      if (meanings.first.partOfSpeech != VietPhrasePartOfSpeech.none) {
+        final posLabel = '(${meanings.first.partOfSpeech.code}) ';
+        if (text.startsWith(posLabel)) {
+          final rest = text.substring(posLabel.length);
+          final posColor = isSelected ? sem.highlight : scheme.primary;
+          return TextSpan(
+            style: baseStyle,
+            children: [
+              TextSpan(
+                text: posLabel,
+                style: baseStyle.copyWith(
+                  color: posColor,
+                  fontSize: (baseStyle.fontSize ?? 14) * 0.75,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                ),
+              ),
+              TextSpan(text: rest),
+            ],
+          );
+        }
+      }
+      return TextSpan(text: text, style: baseStyle);
+    }
+
+    final bracketColor = isSelected
+        ? sem.highlight.withValues(alpha: 0.55)
+        : scheme.onSurfaceVariant.withValues(alpha: 0.55);
+    final bracketStyle = baseStyle.copyWith(
+      color: bracketColor,
+      fontWeight: FontWeight.normal,
+    );
+
+    final shouldCapitalize = TokenTextView._hasCapitalAtStart(text);
+    final innerSpans = <InlineSpan>[];
+
+    switch (multiMeaningMode) {
+      case MultiMeaningDisplayMode.visualHierarchy:
+        for (var meaningIdx = 0; meaningIdx < meanings.length; meaningIdx++) {
+          final meaning = meanings[meaningIdx];
+          final isFirstTier = meaningIdx == 0;
+          final tierAccent = _tierAccentColor(meaningIdx, scheme);
+
+          // Tầng 1: màu chuẩn (hoặc đỏ khi active)
+          // Tầng 2 trở đi: MÀU SẮC RIÊNG BIỆT (Teal, Amber, Purple...) cả khi active lẫn inactive
+          final tierColor = isSelected
+              ? (isFirstTier ? sem.highlight : tierAccent)
+              : (isFirstTier
+                  ? (baseStyle.color ?? scheme.onSurface)
+                  : tierAccent);
+
+          final tierWeight = isSelected
+              ? (isFirstTier ? FontWeight.bold : FontWeight.w600)
+              : (baseStyle.fontWeight ?? FontWeight.normal);
+
+          // 1. Nhãn từ loại kiểu mũ: (n), (v)...
+          if (meaning.partOfSpeech != VietPhrasePartOfSpeech.none) {
+            final posTag = '(${meaning.partOfSpeech.code}) ';
+            final posColor = isSelected
+                ? (isFirstTier ? sem.highlight : tierAccent)
+                : (isFirstTier ? scheme.primary : tierAccent);
+
+            innerSpans.add(
+              TextSpan(
+                text: posTag,
+                style: baseStyle.copyWith(
+                  color: posColor,
+                  fontSize: (baseStyle.fontSize ?? 14) * 0.75,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                ),
+              ),
+            );
+          }
+
+          // 2. Các biến thể trong tầng nghĩa này
+          for (var altIdx = 0; altIdx < meaning.alternatives.length; altIdx++) {
+            final rawAlt = meaning.alternatives[altIdx];
+            final altText = (isFirstTier && altIdx == 0 && shouldCapitalize)
+                ? TokenTextView._capitalize(rawAlt)
+                : rawAlt;
+
+            innerSpans.add(
+              TextSpan(
+                text: altText,
+                style: baseStyle.copyWith(
+                  color: tierColor,
+                  fontWeight: tierWeight,
+                ),
+              ),
+            );
+
+            if (altIdx + 1 < meaning.alternatives.length) {
+              innerSpans.add(
+                TextSpan(
+                  text: '/',
+                  style: baseStyle.copyWith(
+                    color: isSelected
+                        ? sem.highlight.withValues(alpha: 0.45)
+                        : scheme.outlineVariant.withValues(alpha: 0.8),
+                    fontWeight: FontWeight.normal,
+                  ),
+                ),
+              );
+            }
+          }
+
+          // Dấu gạch chéo ngăn giữa các tầng nghĩa
+          if (meaningIdx + 1 < meanings.length) {
+            innerSpans.add(
+              TextSpan(
+                text: '/',
+                style: baseStyle.copyWith(
+                  color: isSelected
+                      ? sem.highlight.withValues(alpha: 0.45)
+                      : scheme.outlineVariant.withValues(alpha: 0.8),
+                  fontWeight: FontWeight.normal,
+                ),
+              ),
+            );
+          }
+        }
+        break;
+
+      case MultiMeaningDisplayMode.tieredNumbered:
+        final hasMultipleTiers = meanings.length >= 2;
+        for (var meaningIdx = 0; meaningIdx < meanings.length; meaningIdx++) {
+          final meaning = meanings[meaningIdx];
+          final isFirstTier = meaningIdx == 0;
+          final tierAccent = _tierAccentColor(meaningIdx, scheme);
+
+          final tierColor = isSelected
+              ? (isFirstTier ? sem.highlight : tierAccent)
+              : (isFirstTier
+                  ? (baseStyle.color ?? scheme.onSurface)
+                  : tierAccent);
+
+          final tierWeight = isSelected
+              ? (isFirstTier ? FontWeight.bold : FontWeight.w600)
+              : (baseStyle.fontWeight ?? FontWeight.normal);
+
+          // 1. Ký hiệu số phân tầng ①, ②... (nếu từ có >= 2 tầng nghĩa)
+          if (hasMultipleTiers) {
+            final numCircle = '${circledNumber(meaningIdx + 1)} ';
+            innerSpans.add(
+              TextSpan(
+                text: numCircle,
+                style: baseStyle.copyWith(
+                  color: isSelected && isFirstTier ? sem.highlight : tierAccent,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            );
+          }
+
+          // 2. Nhãn từ loại kiểu mũ: (n), (v)...
+          if (meaning.partOfSpeech != VietPhrasePartOfSpeech.none) {
+            final posTag = '(${meaning.partOfSpeech.code}) ';
+            innerSpans.add(
+              TextSpan(
+                text: posTag,
+                style: baseStyle.copyWith(
+                  color: isSelected && isFirstTier
+                      ? sem.highlight
+                      : tierAccent.withValues(alpha: 0.95),
+                  fontSize: (baseStyle.fontSize ?? 14) * 0.75,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                ),
+              ),
+            );
+          }
+
+          // 3. Các biến thể trong tầng này
+          for (var altIdx = 0; altIdx < meaning.alternatives.length; altIdx++) {
+            final rawAlt = meaning.alternatives[altIdx];
+            final altText = (isFirstTier && altIdx == 0 && shouldCapitalize)
+                ? TokenTextView._capitalize(rawAlt)
+                : rawAlt;
+
+            innerSpans.add(
+              TextSpan(
+                text: altText,
+                style: baseStyle.copyWith(
+                  color: tierColor,
+                  fontWeight: tierWeight,
+                ),
+              ),
+            );
+
+            if (altIdx + 1 < meaning.alternatives.length) {
+              innerSpans.add(
+                TextSpan(
+                  text: '/',
+                  style: baseStyle.copyWith(
+                    color: isSelected
+                        ? sem.highlight.withValues(alpha: 0.45)
+                        : scheme.outlineVariant.withValues(alpha: 0.8),
+                    fontWeight: FontWeight.normal,
+                  ),
+                ),
+              );
+            }
+          }
+
+          // Dấu phân cách phân tầng ‖
+          if (meaningIdx + 1 < meanings.length) {
+            innerSpans.add(
+              TextSpan(
+                text: ' ‖ ',
+                style: baseStyle.copyWith(
+                  color: isSelected
+                      ? sem.highlight.withValues(alpha: 0.5)
+                      : scheme.outline.withValues(alpha: 0.5),
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            );
+          }
+        }
+        break;
+
+      case MultiMeaningDisplayMode.classic:
+        final inner = hasBracket ? text.substring(1, text.length - 1) : text;
+        innerSpans.add(TextSpan(text: inner, style: baseStyle));
+        break;
+    }
+
+    if (hasBracket) {
+      return TextSpan(
+        style: baseStyle,
+        children: [
+          TextSpan(text: '[', style: bracketStyle),
+          ...innerSpans,
+          TextSpan(text: ']', style: bracketStyle),
+        ],
+      );
+    } else {
+      return TextSpan(style: baseStyle, children: innerSpans);
+    }
+  }
+
   Widget _contextMenu(
     EditableTextState editableTextState,
     List<(int, int, Token)> ranges,
+    List<Token> paragraph,
   ) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _ignoreCollapsedSelection = false;
@@ -411,7 +767,7 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
       for (final (start, end, token) in ranges)
         if (start < sel.end && sel.start < end) token,
     ];
-    final key = selectedTokens.map((t) => t.source).join();
+    final key = selectionSourceKey(paragraph, selectedTokens);
     final word = key.isNotEmpty ? key : sel.textInside(value.text).trim();
     if (word.isEmpty) {
       return AdaptiveTextSelectionToolbar.buttonItems(
@@ -554,6 +910,9 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
     final keepQuotes = ref.watch(
       settingsProvider.select((s) => s.keepSpecialQuotes),
     );
+    final multiMeaningMode = ref.watch(
+      settingsProvider.select((s) => s.multiMeaningDisplayMode),
+    );
     final paras = TokenTextView.paragraphs(widget.tokens);
     // Đánh dấu cụm từ điển phụ (chỉ ô VietPhrase): sát khoảng cách / in nghiêng.
     final secondaryDisplay = widget.paneId == PaneId.vietPhrase
@@ -594,7 +953,22 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
                 phrase != null) {
               style = style.copyWith(fontStyle: FontStyle.italic);
             }
-            spans.add(TextSpan(text: text, style: style));
+            final isTokenSelected =
+                selection != null &&
+                token.kind != TokenKind.passthrough &&
+                token.sourceStart < selection.end &&
+                selection.start < token.sourceStart + token.source.length;
+
+            final tokenSpan = _buildTokenSpan(
+              token: token,
+              text: text,
+              baseStyle: style,
+              scheme: scheme,
+              sem: sem,
+              isSelected: isTokenSelected,
+              multiMeaningMode: multiMeaningMode,
+            );
+            spans.add(tokenSpan);
             if (token.kind != TokenKind.passthrough) {
               ranges.add((offset, offset + text.length, token));
             }
@@ -637,7 +1011,7 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
                 }
               },
               contextMenuBuilder: (context, editableTextState) =>
-                  _contextMenu(editableTextState, ranges),
+                  _contextMenu(editableTextState, ranges, paras[index]),
             ),
           );
         },

@@ -90,9 +90,11 @@ class GlossaryService {
       }
     }
     payload['terms'] = terms;
+    final file = fileFor(mode);
+    _payloadCache[file.path] = payload;
 
     final text = const JsonEncoder.withIndent('  ').convert(payload);
-    await fileFor(mode).writeAsString(
+    await file.writeAsString(
       text.replaceAll('\n', '\r\n'),
       encoding: utf8,
       flush: true,
@@ -122,9 +124,11 @@ class GlossaryService {
       ),
     );
     payload['terms'] = terms;
+    final file = fileFor(mode);
+    _payloadCache[file.path] = payload;
 
     final text = const JsonEncoder.withIndent('  ').convert(payload);
-    await fileFor(mode).writeAsString(
+    await file.writeAsString(
       text.replaceAll('\n', '\r\n'),
       encoding: utf8,
       flush: true,
@@ -138,11 +142,26 @@ class GlossaryService {
     return '${now.year}-$month-$day';
   }
 
+  static final Map<String, Map<String, dynamic>> _payloadCache = {};
+
+  /// Xóa cache trong bộ nhớ (dùng khi settings đổi đường dẫn hoặc reset).
+  static void clearCache() => _payloadCache.clear();
+
   Future<Map<String, dynamic>?> _readPayload(TranslationMode mode) async {
     final file = fileFor(mode);
+    final path = file.path;
+    if (_payloadCache.containsKey(path)) {
+      return _payloadCache[path];
+    }
     if (!file.existsSync()) return null;
-    final decoded = jsonDecode(await file.readAsString(encoding: utf8));
-    return decoded is Map<String, dynamic> ? decoded : null;
+    try {
+      final decoded = jsonDecode(await file.readAsString(encoding: utf8));
+      if (decoded is Map<String, dynamic>) {
+        _payloadCache[path] = decoded;
+        return decoded;
+      }
+    } catch (_) {}
+    return null;
   }
 
   static List<Map<String, dynamic>> _termsOf(Map<String, dynamic> payload) {

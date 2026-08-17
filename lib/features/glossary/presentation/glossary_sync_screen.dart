@@ -299,9 +299,11 @@ class _DirectionTabState extends ConsumerState<_DirectionTab>
     canSaveNotifier.disposeAfterRouteAnimation();
 
     if (saved != true || resultData == null) return;
-    final newSource = resultData!.newSource;
-    final newTarget = resultData!.newTarget;
+    final newSource = resultData!.newSource.trim();
+    final newTarget = resultData!.newTarget.trim();
     if (newSource.isEmpty || newTarget.isEmpty) return;
+
+    if (newSource == row.source.trim() && newTarget == row.target.trim()) return;
 
     setState(() => _applying = true);
     try {

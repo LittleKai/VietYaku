@@ -7,7 +7,7 @@ Lý do phải chạy trên bản build: đường dẫn dữ liệu đổi giữ
 
 ## Trước khi test
 
-- [ ] `flutter analyze` sạch và `flutter test` pass (268 tests)
+- [ ] `flutter analyze` sạch và `flutter test` pass (306 tests)
 - [ ] Build: `flutter build windows --release` → chạy `build\windows\x64\runner\Release\vietyaku.exe` **độc lập** (mở từ Explorer, không qua IDE)
 - [ ] Test một lần trên máy/thư mục **chưa có `userdata/`** để bắt lỗi khởi động lần đầu (seed từ điển, tạo thư mục)
 
@@ -16,7 +16,7 @@ Lý do phải chạy trên bản build: đường dẫn dữ liệu đổi giữ
 - [ ] **Dịch Nhật + clipboard:** dán một đoạn tiếng Nhật → Dịch → tab VietPhrase đa nghĩa hiện bản dịch; bật Clipboard reader, copy CJK từ app khác và thử `Ctrl+Shift+V` → ô Nguồn cập nhật + dịch đúng, copy từ chính VietYaku không tự kích hoạt lại
 - [ ] **Đổi mode Trung + rule:** chuyển sang Tiếng Trung → dán đoạn **phồn thể** → Dịch → ra tiếng Việt đúng (ô Nguồn giữ nguyên); Cài đặt → chọn Luật Nhân `Pronouns`, tester với `把他挡住` phải ra `ngăn cản hắn`; thêm một regex, bật hậu xử lý và kiểm tra tab Hậu xử lý + nút Copy
 - [ ] **Tra nghĩa + Search Center:** nháy chuột vào một cụm ở ô Nguồn → ô Nghĩa hiện các mục từ điển; mở Tìm kiếm, thử exact/wildcard key và full-text nghĩa → kết quả đúng lớp overlay đang thắng
-- [ ] **Sửa từ điển + preview:** chuột phải một token → dialog hiện base/shared/new + số lần tác động; nhập key lỗi phải bị chặn; lưu UserDict → **bản dịch tự đổi ngay**, không cần bấm Dịch Lại
+- [ ] **Sửa từ điển + preview:** chuột phải một token → dialog hiện base/shared/new + số lần tác động; với VietPhrase, thêm nghĩa 2/3, chọn thử từ loại rồi lưu và kiểm tra tab một nghĩa có nhãn loại; nhập key lỗi phải bị chặn; lưu UserDict → **bản dịch tự đổi ngay**, không cần bấm Dịch Lại
 - [ ] **Tra online:** bấm nút tra online ở ô Nghĩa → các nguồn đang bật trả kết quả; đóng dialog rồi tra lại cùng từ → lần này hiện offline ngay (đã lưu vào `OnlineDict_<mode>.txt`)
 - [ ] **EPUB:** mở tab EPUB → chọn một file `.epub` → xem trước → xuất DOCX → mở file ra kiểm tra có nội dung và ảnh nhúng thật
 - [ ] **Cập nhật:** Cài đặt → "Kiểm tra ngay" → trả về đúng phiên bản mới nhất trên GitHub Releases (hoặc báo đã mới nhất), không văng

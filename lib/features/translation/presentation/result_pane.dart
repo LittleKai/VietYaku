@@ -124,6 +124,9 @@ class _ResultPaneState extends ConsumerState<ResultPane>
     final bracketSingle = ref.watch(
       settingsProvider.select((s) => s.bracketSingleMeaning),
     );
+    final multiMeaningMode = ref.watch(
+      settingsProvider.select((s) => s.multiMeaningDisplayMode),
+    );
 
     final activeTabs = <_ResultTabType>[
       _ResultTabType.singleMeaning,
@@ -147,8 +150,11 @@ class _ResultPaneState extends ConsumerState<ResultPane>
 
     final isMultiMeaning = activeTab == _ResultTabType.multiMeaning;
     final String Function(Token) textOf = isMultiMeaning
-        ? (t) => t.displayAllWith(bracketSingle: bracketSingle)
-        : (t) => t.display;
+        ? (t) => t.displayAllWith(
+            bracketSingle: bracketSingle,
+            mode: multiMeaningMode,
+          )
+        : (t) => t.displayWithPartOfSpeech;
 
     // Đổi đoạn nguồn khi tab Google Dịch đang mở → dịch lại online.
     ref.listen(translationControllerProvider.select((s) => s.sourceText), (
@@ -166,9 +172,7 @@ class _ResultPaneState extends ConsumerState<ResultPane>
             Expanded(
               child: TabBar(
                 controller: _tabController,
-                tabs: [
-                  for (final tab in activeTabs) Tab(text: tab.label),
-                ],
+                tabs: [for (final tab in activeTabs) Tab(text: tab.label)],
               ),
             ),
             IconButton(

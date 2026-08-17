@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vietyaku/core/cjk.dart';
 import 'package:vietyaku/features/translation/domain/token.dart';
+import 'package:vietyaku/features/translation/domain/vietphrase_value.dart';
 import 'package:vietyaku/features/translation/presentation/token_text_view.dart';
 
 void main() {
@@ -99,6 +100,104 @@ void main() {
       ];
       final out = TokenTextView.plainText(tokens, (t) => t.display);
       expect(out, 'Nói: " đi thôi. " Hắn');
+    });
+    test('từ đa nghĩa có từ loại ở đầu dòng viết hoa đúng từ chứ không viết hoa nhãn (n)', () {
+      final tokens = [
+        const Token(
+          source: '記憶',
+          sourceStart: 0,
+          kind: TokenKind.matched,
+          rawValue: '(n)/ký ức/hồi ức/(2)/(v)/nhớ lại',
+        ),
+      ];
+      final out = TokenTextView.plainText(
+        tokens,
+        (t) => t.displayAllWith(),
+      );
+      expect(out, '[(n) Ký ức/hồi ức/(v) nhớ lại]');
+    });
+  });
+
+  group('selectionSourceKey — key của vùng bôi đen ở ô kết quả', () {
+    // 激出了火气: 了 có value rỗng (`了=` trong VietPhrase) nên không hiển thị,
+    // vùng chọn chỉ chứa 激出 và 火气.
+    const jiChu = Token(
+      source: '激出',
+      sourceStart: 0,
+      kind: TokenKind.matched,
+      rawValue: 'kích động ra',
+    );
+    const le = Token(
+      source: '了',
+      sourceStart: 2,
+      kind: TokenKind.matched,
+      rawValue: '',
+    );
+    const huoQi = Token(
+      source: '火气',
+      sourceStart: 3,
+      kind: TokenKind.matched,
+      rawValue: 'hỏa khí',
+    );
+    const after = Token(
+      source: '他',
+      sourceStart: 5,
+      kind: TokenKind.matched,
+      rawValue: 'hắn',
+    );
+    const paragraph = [jiChu, le, huoQi, after];
+
+    test('token nghĩa rỗng nằm giữa vẫn vào key', () {
+      expect(selectionSourceKey(paragraph, [jiChu, huoQi]), '激出了火气');
+    });
+
+    test('token nghĩa rỗng ngoài vùng chọn không vào key', () {
+      expect(selectionSourceKey(paragraph, [jiChu]), '激出');
+      expect(selectionSourceKey(paragraph, [huoQi, after]), '火气他');
+    });
+
+    test('bỏ qua passthrough giữa hai token được chọn', () {
+      const comma = Token(
+        source: '、',
+        sourceStart: 2,
+        kind: TokenKind.passthrough,
+      );
+      const withComma = [jiChu, comma, huoQi];
+      expect(selectionSourceKey(withComma, [jiChu, huoQi]), '激出火气');
+    });
+
+    test('không chọn gì → key rỗng', () {
+      expect(selectionSourceKey(paragraph, const []), '');
+    });
+  });
+
+  group('MultiMeaningDisplayMode in Token.displayAllWith', () {
+    const multiTier = Token(
+      source: '記憶',
+      sourceStart: 0,
+      kind: TokenKind.matched,
+      rawValue: '(n)/ký ức/hồi ức/(2)/(v)/nhớ lại',
+    );
+
+    test('Phân cấp màu sắc (visualHierarchy - default)', () {
+      expect(
+        multiTier.displayAllWith(mode: MultiMeaningDisplayMode.visualHierarchy),
+        '[(n) ký ức/hồi ức/(v) nhớ lại]',
+      );
+    });
+
+    test('Đánh số phân tầng (tieredNumbered)', () {
+      expect(
+        multiTier.displayAllWith(mode: MultiMeaningDisplayMode.tieredNumbered),
+        '[① (n) ký ức/hồi ức ‖ ② (v) nhớ lại]',
+      );
+    });
+
+    test('Cổ điển (classic)', () {
+      expect(
+        multiTier.displayAllWith(mode: MultiMeaningDisplayMode.classic),
+        '[(n) ký ức/hồi ức/(v) nhớ lại]',
+      );
     });
   });
 }

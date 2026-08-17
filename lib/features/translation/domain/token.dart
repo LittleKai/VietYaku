@@ -1,4 +1,5 @@
 import '../../dictionary/domain/dict_type.dart';
+import 'vietphrase_value.dart';
 
 enum TokenKind {
   /// Match được trong từ điển cụm (UserDict/Names/VietPhrase).
@@ -16,9 +17,7 @@ enum TokenKind {
 
 /// Nghĩa đầu tiên của value `nghĩa1/nghĩa2/...`.
 String firstMeaning(String value) {
-  final slash = value.indexOf('/');
-  final first = slash < 0 ? value : value.substring(0, slash);
-  return first.trim();
+  return firstVietPhraseMeaning(value);
 }
 
 class Token {
@@ -47,19 +46,48 @@ class Token {
   /// Văn bản hiển thị ở kết quả dịch (một nghĩa).
   String get display => meaning ?? source;
 
-  /// Hiển thị đa nghĩa kiểu QuickTranslator: >1 nghĩa → `[nghĩa1/nghĩa2]`.
-  /// [bracketSingle] bọc ngoặc vuông cả cụm chỉ có 1 nghĩa.
-  String displayAllWith({bool bracketSingle = false}) {
+  /// Tab VietPhrase một nghĩa: thêm nhãn từ loại gọn nếu nghĩa có phân loại.
+  String get displayWithPartOfSpeech {
     final raw = rawValue;
     if (raw == null) return source;
-    final parts = raw
-        .split('/')
-        .map((s) => s.trim())
-        .where((s) => s.isNotEmpty)
-        .toList();
-    if (parts.isEmpty) return source;
-    if (parts.length == 1 && !bracketSingle) return parts.first;
-    return '[${parts.join('/')}]';
+    final meanings = parseVietPhraseValue(raw);
+    return meanings.isEmpty ? '' : meanings.first.displayPrimaryText;
+  }
+
+  /// Hiển thị đa nghĩa theo mode cấu hình:
+  /// [bracketSingle] bọc ngoặc vuông cả cụm chỉ có 1 nghĩa.
+  /// [mode] quy định kiểu hiển thị (phân cấp màu sắc, đánh số phân tầng, gọn gàng chỉ số, cổ điển).
+  String displayAllWith({
+    bool bracketSingle = false,
+    MultiMeaningDisplayMode mode = MultiMeaningDisplayMode.visualHierarchy,
+  }) {
+    final raw = rawValue;
+    if (raw == null) return source;
+    final meanings = parseVietPhraseValue(raw);
+    if (meanings.isEmpty) return source;
+    final alternativeCount = meanings.fold<int>(
+      0,
+      (count, meaning) => count + meaning.alternatives.length,
+    );
+    if (alternativeCount == 1 && !bracketSingle) return meanings.first.displayText;
+
+    switch (mode) {
+      case MultiMeaningDisplayMode.tieredNumbered:
+        if (meanings.length >= 2) {
+          final parts = <String>[];
+          for (var i = 0; i < meanings.length; i++) {
+            final numCircle = circledNumber(i + 1);
+            parts.add('$numCircle ${meanings[i].displayText}');
+          }
+          return '[${parts.join(' ‖ ')}]';
+        }
+        return '[${meanings.first.displayText}]';
+
+      case MultiMeaningDisplayMode.visualHierarchy:
+      case MultiMeaningDisplayMode.classic:
+        final parts = meanings.map((meaning) => meaning.displayText).toList();
+        return '[${parts.join('/')}]';
+    }
   }
 
   String get displayAll => displayAllWith();

@@ -1,6 +1,6 @@
 # Important Fixed Bugs
 
-**Last Updated:** 2026-08-10
+**Last Updated:** 2026-08-13
 
 ---
 
@@ -13,6 +13,13 @@ Record only high-impact, hard-to-detect, or likely-to-recur bugs. Do not record 
 ---
 
 ## Fixed Bugs
+
+### 2026-08-13 - Bôi đen ở ô kết quả cho key THIẾU token có nghĩa rỗng (`激出了火气` → `激出火气`)
+- **Symptom:** Ô VietPhrase bôi đen "kích động ra hỏa khí" rồi chuột phải → "Sửa vào VietPhrase": ô Từ nguồn chỉ hiện `激出火气`, trong khi ô Nguồn là `激出了火气`. Không lỗi, không cảnh báo — key sai được lưu/publish thẳng vào từ điển chung và không bao giờ khớp lại văn bản.
+- **Root Cause:** `TokenTextView._pieces` bỏ hẳn token có text hiển thị rỗng (`了=` trong VietPhrase CN, `的` ở nhiều bộ) để không tạo khoảng trống thừa; token bị bỏ cũng không vào `ranges`, nên `_contextMenu` ghép key bằng `selectedTokens.map((t) => t.source).join()` mất luôn phần nguồn của nó. Cùng đường này còn cấp `word` cho "Tra online" và "Thêm vào Names".
+- **Fix:** `selectionSourceKey(paragraph, selected)` — lấy biên `[first.sourceStart, last.sourceStart + last.source.length)` từ vùng chọn rồi nối `source` của MỌI token không-passthrough của đoạn nằm trong biên đó (token nghĩa rỗng ở giữa được đưa vào lại; passthrough vẫn bị loại để dấu câu không lọt vào key).
+- **Do Not Repeat:** Key từ điển KHÔNG được suy ra từ danh sách token đã lọc để hiển thị — phần hiển thị và phần nguồn là hai tập khác nhau. Thêm bất kỳ luật lọc/ghép hiển thị mới nào ở `_pieces` thì phải kiểm lại đường sinh key ở `_contextMenu`.
+- **Related Files:** `lib/features/translation/presentation/token_text_view.dart`, `test/token_display_rules_test.dart`
 
 ### 2026-08-10 - Disposing `TextEditingController` or `ValueNotifier` in dialog method after `await showAppDialog` causes crash
 - **Symptom:** Exception thrown when interacting with dialogs in `glossary_sync_screen.dart`: `A TextEditingController was used after being disposed. Once you have called dispose() on a TextEditingController, it can no longer be used. The relevant error-causing widget was: TextField at glossary_sync_screen.dart:326:15`.

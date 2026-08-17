@@ -145,6 +145,13 @@ class _TranslationRuleTesterDialogState
       });
       return;
     }
+    final isUnchanged = _rulesController.text.trim() == widget.initialSource.trim() &&
+        _disabledGroups.length == widget.initialDisabledGroups.length &&
+        _disabledGroups.containsAll(widget.initialDisabledGroups);
+    if (isUnchanged) {
+      Navigator.pop(context);
+      return;
+    }
     setState(() => _saving = true);
     await widget.repository.savePostProcessing(
       widget.mode,
