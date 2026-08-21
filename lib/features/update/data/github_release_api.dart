@@ -58,7 +58,10 @@ class GitHubRelease {
   final List<ReleaseAsset> assets;
 }
 
-/// Asset ZIP Windows do skill build-and-release đóng gói: `VietYaku-<version>-windows-x64.zip`.
+/// Asset ZIP Windows do skill build-and-release đóng gói. Trên GitHub Release
+/// tên là `VietYaku-windows-x64.zip`; bản trên Backblaze B2 (link tải cho web)
+/// mang thêm version — `VietYaku-windows-x64-v<version>.zip`. Khớp theo mẫu
+/// "có `windows` + đuôi `.zip`" nên cả hai kiểu tên đều nhận ra được.
 ReleaseAsset? findWindowsAsset(List<ReleaseAsset> assets) {
   for (final asset in assets) {
     final lower = asset.name.toLowerCase();

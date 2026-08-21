@@ -196,6 +196,7 @@ class _ResultPaneState extends ConsumerState<ResultPane>
               tokens: state.tokens,
               textOf: textOf,
               paneId: PaneId.vietPhrase,
+              multiMeaning: isMultiMeaning,
             ),
           ),
       ],

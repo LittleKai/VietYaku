@@ -7,6 +7,7 @@
     - Create git tag and push
     - Create GitHub Release via REST API
     - Upload Windows ZIP to release
+    - Upload Windows ZIP + version.json to Backblaze B2 (web download link on /studio/vietyaku)
 
 .PARAMETER Version
     Version/tag string (e.g. "v1.0.0" or "1.0.0").
@@ -25,6 +26,9 @@
 
 .PARAMETER SkipBuild
     Skip build step and use existing artifacts in build/release/.
+
+.PARAMETER SkipB2
+    Skip the Backblaze B2 upload step (GitHub Release only).
 #>
 
 param(
@@ -39,7 +43,9 @@ param(
 
     [switch]$Draft,
 
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+
+    [switch]$SkipB2
 )
 
 $ErrorActionPreference = "Stop"
@@ -312,6 +318,31 @@ foreach ($Artifact in $Artifacts) {
     }
 }
 
+# --- Upload to Backblaze B2 (web download link) ---
+
+$B2Ok = $false
+
+if ($SkipB2) {
+    Write-Host ""
+    Write-Host "[SKIP] B2 upload skipped (-SkipB2). Web download link on /studio/vietyaku stays on the previous version." -ForegroundColor Yellow
+} else {
+    Write-Step "Uploading to Backblaze B2"
+
+    $WinZip = $Artifacts | Where-Object { $_.Name -like "*windows*.zip" } | Select-Object -First 1
+    if (-not $WinZip) {
+        Write-Err "No Windows ZIP found in build/release/ - skipping B2 upload."
+    } else {
+        $UploadScript = Join-Path $PSScriptRoot "upload-b2.ps1"
+        & $UploadScript -Version $SemVer -ZipPath $WinZip.FullName -Title $Title -Notes $Notes -ReleaseUrl $HtmlUrl
+        if ($LASTEXITCODE -eq 0) {
+            $B2Ok = $true
+        } else {
+            Write-Err "B2 upload failed. GitHub Release is already published - rerun the upload alone with:"
+            Write-Host "  powershell -ExecutionPolicy Bypass -File `".claude\skills\build-and-release\scripts\upload-b2.ps1`" -Version `"$SemVer`"" -ForegroundColor Yellow
+        }
+    }
+}
+
 # --- Done ---
 
 Write-Host ""
@@ -321,6 +352,9 @@ Write-Host "========================================" -ForegroundColor Green
 Write-Host ""
 Write-Host "GitHub Release : $HtmlUrl" -ForegroundColor Yellow
 Write-Host "Tag            : $TagVersion"
+if ($B2Ok) {
+    Write-Host "Studio page    : https://giaiphapsangtao.com/studio/vietyaku" -ForegroundColor Yellow
+}
 Write-Host ""
 
 Write-Host "Artifacts:" -ForegroundColor Yellow

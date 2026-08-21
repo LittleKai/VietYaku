@@ -47,11 +47,16 @@ class TokenTextView extends ConsumerStatefulWidget {
     required this.tokens,
     required this.textOf,
     required this.paneId,
+    this.multiMeaning = false,
   });
 
   final List<Token> tokens;
   final String Function(Token) textOf;
   final PaneId paneId;
+
+  /// Tab đa nghĩa: span được dựng lại từ `rawValue` (phân tầng, đánh số…).
+  /// Tắt → giữ nguyên chuỗi của [textOf], chỉ tô màu nhãn từ loại.
+  final bool multiMeaning;
 
   @override
   ConsumerState<TokenTextView> createState() => _TokenTextViewState();
@@ -429,6 +434,39 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
     }
   }
 
+  /// Giữ nguyên [text], chỉ tô màu nhãn từ loại `(n) ` ở đầu nếu có.
+  InlineSpan _posLabelSpan({
+    required String text,
+    required VietPhraseMeaning meaning,
+    required TextStyle baseStyle,
+    required ColorScheme scheme,
+    required AppSemanticColors sem,
+    required bool isSelected,
+  }) {
+    if (meaning.partOfSpeech == VietPhrasePartOfSpeech.none) {
+      return TextSpan(text: text, style: baseStyle);
+    }
+    final posLabel = '(${meaning.partOfSpeech.code}) ';
+    if (!text.startsWith(posLabel)) {
+      return TextSpan(text: text, style: baseStyle);
+    }
+    final posColor = isSelected ? sem.highlight : scheme.primary;
+    return TextSpan(
+      style: baseStyle,
+      children: [
+        TextSpan(
+          text: posLabel,
+          style: baseStyle.copyWith(
+            color: posColor,
+            fontSize: (baseStyle.fontSize ?? 14) * 0.75,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+          ),
+        ),
+        TextSpan(text: text.substring(posLabel.length)),
+      ],
+    );
+  }
+
   InlineSpan _buildTokenSpan({
     required Token token,
     required String text,
@@ -457,30 +495,29 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
       return TextSpan(text: text, style: baseStyle);
     }
 
+    // Tab "một nghĩa": [text] chỉ chứa nghĩa đầu — KHÔNG dựng lại span từ
+    // rawValue (sẽ hiện thừa các tầng nghĩa còn lại), chỉ tô nhãn từ loại.
+    if (!widget.multiMeaning) {
+      return _posLabelSpan(
+        text: text,
+        meaning: meanings.first,
+        baseStyle: baseStyle,
+        scheme: scheme,
+        sem: sem,
+        isSelected: isSelected,
+      );
+    }
+
     final hasBracket = text.startsWith('[') && text.endsWith(']');
     if (!hasBracket && totalAlternatives <= 1) {
-      if (meanings.first.partOfSpeech != VietPhrasePartOfSpeech.none) {
-        final posLabel = '(${meanings.first.partOfSpeech.code}) ';
-        if (text.startsWith(posLabel)) {
-          final rest = text.substring(posLabel.length);
-          final posColor = isSelected ? sem.highlight : scheme.primary;
-          return TextSpan(
-            style: baseStyle,
-            children: [
-              TextSpan(
-                text: posLabel,
-                style: baseStyle.copyWith(
-                  color: posColor,
-                  fontSize: (baseStyle.fontSize ?? 14) * 0.75,
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                ),
-              ),
-              TextSpan(text: rest),
-            ],
-          );
-        }
-      }
-      return TextSpan(text: text, style: baseStyle);
+      return _posLabelSpan(
+        text: text,
+        meaning: meanings.first,
+        baseStyle: baseStyle,
+        scheme: scheme,
+        sem: sem,
+        isSelected: isSelected,
+      );
     }
 
     final bracketColor = isSelected
@@ -969,10 +1006,17 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
               multiMeaningMode: multiMeaningMode,
             );
             spans.add(tokenSpan);
+            // Độ dài PHẢI đo trên text thật sự render: _buildTokenSpan có thể
+            // dựng lại nội dung từ rawValue (nhãn từ loại, ①, ‖, dấu /) nên
+            // dài ngắn khác `text`. Dùng `text.length` sẽ làm caret lệch dần
+            // theo từng cụm, càng về cuối đoạn càng lệch nhiều.
+            final renderedLength = tokenSpan
+                .toPlainText(includeSemanticsLabels: false)
+                .length;
             if (token.kind != TokenKind.passthrough) {
-              ranges.add((offset, offset + text.length, token));
+              ranges.add((offset, offset + renderedLength, token));
             }
-            offset += text.length;
+            offset += renderedLength;
             if (i + 1 < pieces.length &&
                 TokenTextView._needSpaceBetween(text, pieces[i + 1].text)) {
               // Sát khoảng cách: bỏ space giữa hai mảnh cùng một cụm phụ.
