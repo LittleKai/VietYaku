@@ -1,33 +1,9 @@
-### 1. Bổ sung Sơ đồ phụ thuộc State & Data (State Dependency Graph)
+Những gì thật sự thấy
 
-  • Vấn đề: Dự án dùng Riverpod 3.x với nhiều Provider phụ thuộc lẫn nhau (app_providers, retrieval_providers, notebook_providers) và    
-  3 cơ sở dữ liệu SQLite (app.db, user_data.db, notebook.db).
-  • Gợi ý cải thiện: Bổ sung một sơ đồ ngắn (Mermaid hoặc ASCII) trong PROJECT_SUMMARY.md thể hiện luồng:
-  UI ➔ Riverpod Provider ➔ Repository ➔ SQLite Store
-  • Tác dụng: AI nhìn vào sơ đồ sẽ không bao giờ quên việc phải invalidate provider nào sau khi cập nhật dữ liệu, tránh lỗi UI không     
-  tự refresh.
-  ──────
-  ### 2. Thêm quy định "Không ghi dữ liệu nhạy cảm vào Git" (Security Policy)
+1. Ổ C ở 10,2% và đang giảm đều. 23,73 GB (12:31) → 22,76 GB (21:49) — mất ~1 GB trong 9 giờ. WORKFLOW.md cảnh báo dưới 10% gây đủ loại lỗi trông chẳng liên quan gì tới đĩa. Đây là thứ đáng theo dõi nhất, và chỉ nhìn thấy được nhờ so với snapshot cũ — một con số 10,2% đứng một mình thì vô nghĩa.
 
-  • Vấn đề: Dự án có tích hợp Google OAuth, OpenRouter, DeepSeek API Keys.
-  • Gợi ý cải thiện: Thêm 1 dòng nhắc nhở ngắn vào CLAUDE.md:
-  │ 🔒 Security Rules: Tuyệt đối không bao giờ ghi API Key, Client Secret hoặc Refresh Token vào bất kỳ file code, mock test hay tài     
-  │ liệu markdown nào bị Git theo dõi. API Keys luôn qua flutter_secure_storage.
-  ──────
-  ### 3. Tạo Checklist kiểm thử nhanh (.claude/SMOKE_TEST_CHECKLIST.md)
-  • Vấn đề: Trong Known Issues có mục "Run the manual smoke test on the release exe". Khi chuẩn bị release, người dùng hoặc AI phải tự   
-  nhớ cần test những gì.
-  • Gợi ý cải thiện: Tạo một file ngắn .claude/SMOKE_TEST_CHECKLIST.md gồm 5-7 bước kiểm tra nhanh bằng tay trước khi xuất bản file .    
-  exe:
-      [ ] Mở app .exe độc lập (không qua IDE).
-      [ ] Tìm kiếm 1 từ khóa ➔ Xem chi tiết entry.
-      [ ] Tạo 1 note mới trong Sổ tay kèm ảnh đính kèm.
-      [ ] Tạo 1 Ticket ngày ➔ Hoàn tất ➔ Mở lại.
-      [ ] Thử Export Backup zip ➔ Import lại xem app có yêu cầu Restart đúng luồng không.
+2. Bản vá OS mới nhất là 2025-11-18 — khoảng 9 tháng không có hotfix nào, trong khi Defender vẫn cập nhật bình thường (signatureAgeDays = 0). Đáng hỏi, nhưng tôi không kết luận: Get-HotFix không liệt kê đầy đủ mọi loại cập nhật trên Windows 10 đời mới.
 
-  ──────
-  ### 4. Quy định nguyên tắc TDD (Viết test kèm tính năng)
+3. Microsoft-Windows-TPM-WMI 1801 × 4 — "Secure Boot CA/keys need to be updated". Đây là chứng chỉ Secure Boot tới hạn thay — có thật, đáng ghi, và sẽ gặp lại trên nhiều máy khác trong 2026.
 
-  • Gợi ý cải thiện: Thêm quy tắc vào CLAUDE.md:
-  │ 🧪 Test Policy: Mọi tính năng mới hoặc sửa lỗi logic trong lib/services/ hoặc lib/data/ bắt buộc phải có Unit Test tương ứng trong   
-  │ test/ phủ case đó trước khi kết thúc session.
+4. DistributedCOM 10010 × 82 — GameBar PresenceWriter không đăng ký kịp. Số lượng lớn dễ làm hoảng, nhưng đây là nhiễu quen thuộc của Windows 10, gần như chắc chắn vô hại.

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../../core/platform_features.dart';
 import '../../core/tts_service.dart';
 import '../../shared/widgets/feature_help_button.dart';
 import '../../shared/widgets/settings_layout.dart';
@@ -188,6 +189,22 @@ class SettingsScreen extends ConsumerWidget {
               description: 'Kiểm tra và tải bản mới từ GitHub Releases.',
               children: [_UpdateSettings()],
             ),
+            const SettingsSection(
+              icon: Icons.info_outline,
+              accentColor: Color(0xFF00897B),
+              title: 'Thông tin & Nguồn gốc',
+              description:
+                  'VietYaku được tham khảo từ QuickConverter của diễn đàn Tàng Thư Viện, cải tiến với thêm nhiều bộ từ điển, thuật toán và tích hợp thêm tiếng Nhật.',
+              children: [
+                SettingsControlRow(
+                  title: 'Kế thừa & Cải tiến từ QuickConverter',
+                  description:
+                      'Ứng dụng được tham khảo từ công cụ QuickConverter (Tàng Thư Viện), kế thừa nguyên lý VietPhrase đồng thời nâng cấp nhiều thuật toán quét linh hoạt, bổ sung nhiều bộ từ điển phong phú và tích hợp dịch tiếng Nhật ngoại tuyến.',
+                  controlWidth: 0,
+                  control: SizedBox.shrink(),
+                ),
+              ],
+            ),
           ],
         ),
         SettingsTab(
@@ -299,7 +316,7 @@ class SettingsScreen extends ConsumerWidget {
                 _TtsVoiceSetting(mode: TranslationMode.japanese),
               ],
             ),
-            if (!Platform.isAndroid)
+            if (PlatformFeatures.dictionaryRepair)
               SettingsSection(
                 icon: Icons.handyman_outlined,
                 accentColor: const Color(0xFFEF6C00),
@@ -822,7 +839,9 @@ class _DictionarySyncSettingsState
                   ],
                 ),
         ),
-        if (sync.isAdmin) ...[
+        // Glossary nằm trong thư mục dự án AI_Translation_Bridge trên máy
+        // Windows — trên mobile không có gì để trỏ tới.
+        if (sync.isAdmin && PlatformFeatures.glossarySync) ...[
           const _GlossaryDirSetting(),
           const _GlossarySyncSetting(),
         ],

@@ -247,7 +247,9 @@ class _SourcePaneState extends ConsumerState<SourcePane> {
 
   /// Cuộn để [offset] lọt vào khung nhìn, đặt ở khoảng 1/3 trên (giống cách
   /// `_popupPlacement` đo dòng: TextPainter cùng style + cùng bề rộng).
-  void _scrollToOffset(int offset, TextStyle style) {
+  /// [ifNeeded] = bỏ qua khi dòng đã nằm trọn trong khung nhìn (tránh giật màn
+  /// hình mỗi lần bấm từ ở ô VietPhrase).
+  void _scrollToOffset(int offset, TextStyle style, {bool ifNeeded = false}) {
     final width = _lastEditorWidth;
     if (width == null || !_scrollController.hasClients) return;
     final text = _controller.text;
@@ -256,15 +258,22 @@ class _SourcePaneState extends ConsumerState<SourcePane> {
       text: TextSpan(text: text, style: style),
       textDirection: Directionality.of(context),
     )..layout(maxWidth: math.max(1.0, width - 2 * _padding));
-    final dy = painter
-        .getOffsetForCaret(
-          TextPosition(offset: offset.clamp(0, text.length)),
-          Rect.fromLTWH(0, 0, 1, style.fontSize ?? 14),
-        )
-        .dy;
+    final caretPrototype = Rect.fromLTWH(0, 0, 1, style.fontSize ?? 14);
+    final caretPosition = TextPosition(offset: offset.clamp(0, text.length));
+    final lineTop =
+        painter.getOffsetForCaret(caretPosition, caretPrototype).dy + _padding;
+    final lineHeight = painter.getFullHeightForCaret(
+      caretPosition,
+      caretPrototype,
+    );
     painter.dispose();
     final position = _scrollController.position;
-    final target = (dy + _padding - position.viewportDimension / 3).clamp(
+    if (ifNeeded &&
+        lineTop >= position.pixels &&
+        lineTop + lineHeight <= position.pixels + position.viewportDimension) {
+      return;
+    }
+    final target = (lineTop - position.viewportDimension / 3).clamp(
       0.0,
       position.maxScrollExtent,
     );
@@ -469,8 +478,7 @@ class _SourcePaneState extends ConsumerState<SourcePane> {
     final popupTypes = ref.watch(
       settingsProvider.select((s) => s.popupDictionaryTypesFor(mode)),
     );
-    final popupSections =
-        selection?.origin == TokenSelectionOrigin.source && result != null
+    final popupSections = selection != null && result != null
         ? result.sections
               .where((section) => popupTypes.contains(section.dictionaryType))
               .toList(growable: false)
@@ -481,6 +489,12 @@ class _SourcePaneState extends ConsumerState<SourcePane> {
       _controller.setHighlight(
         next == null ? null : TextRange(start: next.start, end: next.end),
       );
+      // Active từ ở ô khác (VietPhrase / Hán Việt) → cuộn ô Nguồn tới cụm đó
+      // để thấy chỗ tô đỏ và popup tra nhanh neo đúng dòng. Bấm ngay trong ô
+      // Nguồn thì TextField tự lo caret, không cuộn thêm.
+      if (next != null && next.origin == TokenSelectionOrigin.result) {
+        _scrollToOffset(next.start, style, ifNeeded: true);
+      }
     });
 
     // Đồng bộ text khi dịch được kích hoạt từ ngoài (Dán & Dịch trên menu bar).

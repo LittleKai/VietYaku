@@ -68,24 +68,115 @@ class AppPaths {
     }
   }
 
-  /// Copy bộ từ điển bundle (assets `data/**`) sang `<support>/data` nếu file
-  /// đích chưa tồn tại (idempotent). Dùng trên mobile — đường dẫn dev tuyệt đối
-  /// không có trên máy. Trả về đường dẫn thư mục `data` để gán `defaultDataDir`.
-  static Future<String> seedBundledData() async {
+  /// Nền tảng không có bộ từ điển sẵn trên đĩa → phải chép từ assets ra.
+  static bool get needsAssetSeeding => Platform.isAndroid || Platform.isIOS;
+
+  /// Thư mục gốc chứa `jp/` và `cn/` trên mobile (`<support>/data`). Gán vào
+  /// `defaultDataDir` trong `main()`; KHÔNG chép gì — việc chép do
+  /// [seedLanguagePack] làm sau, theo từng ngôn ngữ.
+  static Future<String> mobileDataRoot() async {
     final support = await getApplicationSupportDirectory();
-    final dataDir = Directory(p.join(support.path, 'data'));
-    final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
-    final assets = manifest.listAssets().where((a) => a.startsWith('data/'));
-    for (final asset in assets) {
-      // asset key dùng '/'; đổi sang separator nền tảng cho đường dẫn đích.
-      final dest = File(p.joinAll([support.path, ...p.posix.split(asset)]));
-      if (await dest.exists()) continue;
-      await dest.parent.create(recursive: true);
-      final bytes = await rootBundle.load(asset);
-      await dest.writeAsBytes(
-        bytes.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes),
-      );
-    }
-    return dataDir.path;
+    return p.join(support.path, 'data');
   }
+
+  /// Lọc asset key của một bộ ngôn ngữ (`jp` / `cn`) từ danh sách asset đầy đủ.
+  ///
+  /// Tách riêng để test được mà không cần AssetBundle thật. Sắp xếp để tiến độ
+  /// hiện ra ổn định giữa các lần chạy.
+  static List<String> assetKeysForLanguage(
+    Iterable<String> allAssets,
+    String lang,
+  ) {
+    final prefix = 'data/$lang/';
+    return allAssets.where((a) => a.startsWith(prefix)).toList()..sort();
+  }
+
+  /// Nội dung file đánh dấu đã seed xong. Đổi [signature] (phiên bản app) hoặc
+  /// đổi số file trong bộ → chữ ký lệch → seed lại.
+  static String seedMarkerContent(String signature, int assetCount) =>
+      '$signature|$assetCount';
+
+  static File _seedMarker(String dataRoot, String lang) =>
+      File(p.join(dataRoot, lang, '.seeded'));
+
+  /// Chép bộ từ điển của MỘT ngôn ngữ (assets `data/<lang>/**`) sang
+  /// `<support>/data/<lang>`.
+  ///
+  /// Idempotent: file đánh dấu `.seeded` mang chữ ký phiên bản app + số file;
+  /// khớp thì trả về ngay, không đụng đĩa. Chữ ký lệch (app vừa cập nhật, bộ
+  /// từ điển trong APK đổi) thì ghi đè lại toàn bộ.
+  ///
+  /// [onProgress] được gọi TRƯỚC mỗi file, để UI hiện tên file đang chép.
+  static Future<void> seedLanguagePack(
+    String lang, {
+    required String signature,
+    void Function(SeedProgress progress)? onProgress,
+  }) async {
+    final dataRoot = await mobileDataRoot();
+    final manifest = await AssetManifest.loadFromAssetBundle(rootBundle);
+    final assets = assetKeysForLanguage(manifest.listAssets(), lang);
+    if (assets.isEmpty) return;
+
+    final marker = _seedMarker(dataRoot, lang);
+    final expected = seedMarkerContent(signature, assets.length);
+    if (marker.existsSync() && marker.readAsStringSync() == expected) return;
+
+    final dir = Directory(p.join(dataRoot, lang));
+    await dir.create(recursive: true);
+    // Marker cũ phải biến mất TRƯỚC khi ghi: seed bị ngắt giữa chừng thì lần
+    // sau vẫn thấy "chưa seed" và làm lại, thay vì tin vào bộ file dở dang.
+    if (marker.existsSync()) await marker.delete();
+
+    var copied = 0;
+    for (var i = 0; i < assets.length; i++) {
+      final asset = assets[i];
+      onProgress?.call(
+        SeedProgress(
+          fileIndex: i + 1,
+          fileCount: assets.length,
+          fileName: p.posix.basename(asset),
+          bytesCopied: copied,
+        ),
+      );
+      // asset key dùng '/'; đổi sang separator nền tảng cho đường dẫn đích.
+      final dest = File(p.joinAll([dataRoot, ...p.posix.split(asset).skip(1)]));
+      final data = await rootBundle.load(asset);
+      final bytes = data.buffer.asUint8List(
+        data.offsetInBytes,
+        data.lengthInBytes,
+      );
+      await dest.writeAsBytes(bytes, flush: true);
+      copied += bytes.length;
+      // Bỏ tham chiếu ngay: file lớn nhất 41MB, giữ lại sẽ cộng dồn vào peak.
+      await Future<void>.delayed(Duration.zero);
+    }
+    await marker.writeAsString(expected, flush: true);
+    onProgress?.call(
+      SeedProgress(
+        fileIndex: assets.length,
+        fileCount: assets.length,
+        fileName: '',
+        bytesCopied: copied,
+      ),
+    );
+  }
+}
+
+/// Tiến độ chép bộ từ điển từ assets (chỉ mobile).
+class SeedProgress {
+  final int fileIndex;
+  final int fileCount;
+  final String fileName;
+  final int bytesCopied;
+
+  const SeedProgress({
+    required this.fileIndex,
+    required this.fileCount,
+    required this.fileName,
+    required this.bytesCopied,
+  });
+
+  double get fraction => fileCount == 0 ? 0 : fileIndex / fileCount;
+
+  bool get isDone => fileIndex >= fileCount && fileName.isEmpty;
 }

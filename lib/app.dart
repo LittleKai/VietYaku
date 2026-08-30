@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:window_manager/window_manager.dart';
 
+import 'core/platform_features.dart';
 import 'core/theme/app_theme.dart';
 import 'features/clipboard/application/clipboard_reader_controller.dart';
 import 'features/dictionary_sync/application/dictionary_sync_controller.dart';
@@ -29,7 +30,10 @@ class VietYakuApp extends ConsumerWidget {
     final fontScale = ref.watch(settingsProvider.select((s) => s.uiFontScale));
     final themeMode = ref.watch(settingsProvider.select((s) => s.themeMode));
     return MaterialApp(
-      title: 'VietYaku v1.0.5',
+      // Không kèm số phiên bản: chuỗi này hiện ở màn đa nhiệm Android và sẽ
+      // sai ngay khi app lên bản mới (thanh tiêu đề Windows do window_manager
+      // đặt lại theo PackageInfo trong initState).
+      title: 'VietYaku',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(fontFamily: fontFamily, fontScale: fontScale),
       darkTheme: AppTheme.dark(fontFamily: fontFamily, fontScale: fontScale),
@@ -109,137 +113,174 @@ class _HomeShellState extends ConsumerState<HomeShell> {
       }
     });
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final canExtend = constraints.maxWidth >= 920;
-        final extended = canExtend && _isExtended;
-        final disableAnimations = MediaQuery.disableAnimationsOf(context);
+    final destinations = homeDestinations();
+    // Danh sách chỉ đổi theo nền tảng (không đổi lúc chạy), nhưng vẫn kẹp lại
+    // để không bao giờ trỏ ra ngoài mảng.
+    final selectedIndex = _selectedIndex.clamp(0, destinations.length - 1);
+    final body = IndexedStack(
+      index: selectedIndex,
+      children: [for (final d in destinations) d.screen],
+    );
 
-        return Scaffold(
-          body: Stack(
-            children: [
-              Row(
-                children: [
-                  AnimatedContainer(
+    return PopScope(
+      // Android: nút Back ở tab phụ quay về tab Dịch thay vì thoát app.
+      canPop: selectedIndex == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) setState(() => _selectedIndex = 0);
+      },
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth < compactWidthBreakpoint) {
+            return Scaffold(
+              body: SafeArea(bottom: false, child: body),
+              bottomNavigationBar: NavigationBar(
+                selectedIndex: selectedIndex,
+                onDestinationSelected: (index) =>
+                    setState(() => _selectedIndex = index),
+                destinations: [
+                  for (final d in destinations)
+                    NavigationDestination(
+                      icon: _NavIcon(icon: d.icon, color: d.color),
+                      selectedIcon: _NavIcon(
+                        icon: d.selectedIcon,
+                        color: d.color,
+                        selected: true,
+                      ),
+                      label: d.label,
+                    ),
+                ],
+              ),
+            );
+          }
+
+          final canExtend = constraints.maxWidth >= 920;
+          final extended = canExtend && _isExtended;
+          final disableAnimations = MediaQuery.disableAnimationsOf(context);
+
+          return Scaffold(
+            body: Stack(
+              children: [
+                Row(
+                  children: [
+                    AnimatedContainer(
+                      duration: disableAnimations
+                          ? Duration.zero
+                          : const Duration(milliseconds: 200),
+                      curve: Curves.easeOutCubic,
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerLowest,
+                      child: NavigationRail(
+                        extended: extended,
+                        minWidth: 76,
+                        minExtendedWidth: 224,
+                        groupAlignment: -1,
+                        selectedIndex: selectedIndex,
+                        onDestinationSelected: (index) =>
+                            setState(() => _selectedIndex = index),
+                        labelType: extended
+                            ? null
+                            : NavigationRailLabelType.none,
+                        leading: _SidebarHeader(extended: extended),
+                        destinations: [
+                          for (final d in destinations)
+                            NavigationRailDestination(
+                              icon: _NavIcon(icon: d.icon, color: d.color),
+                              selectedIcon: _NavIcon(
+                                icon: d.selectedIcon,
+                                color: d.color,
+                                selected: true,
+                              ),
+                              label: Text(d.label),
+                              padding: const EdgeInsets.symmetric(vertical: 4),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const VerticalDivider(thickness: 1, width: 1),
+                    Expanded(child: body),
+                  ],
+                ),
+                if (canExtend)
+                  AnimatedPositioned(
                     duration: disableAnimations
                         ? Duration.zero
                         : const Duration(milliseconds: 200),
                     curve: Curves.easeOutCubic,
-                    color: Theme.of(context).colorScheme.surfaceContainerLowest,
-                    child: NavigationRail(
+                    left: (extended ? 224 : 76) - 12,
+                    top: 56,
+                    child: _SidebarToggleButton(
                       extended: extended,
-                      minWidth: 76,
-                      minExtendedWidth: 224,
-                      groupAlignment: -1,
-                      selectedIndex: _selectedIndex,
-                      onDestinationSelected: (index) =>
-                          setState(() => _selectedIndex = index),
-                      labelType: extended ? null : NavigationRailLabelType.none,
-                      leading: _SidebarHeader(extended: extended),
-                      destinations: const [
-                        NavigationRailDestination(
-                          icon: _NavIcon(
-                            icon: Icons.translate_outlined,
-                            color: Color(0xFF1565C0),
-                          ),
-                          selectedIcon: _NavIcon(
-                            icon: Icons.translate,
-                            color: Color(0xFF1565C0),
-                            selected: true,
-                          ),
-                          label: Text('Dịch'),
-                          padding: EdgeInsets.symmetric(vertical: 4),
-                        ),
-                        NavigationRailDestination(
-                          icon: _NavIcon(
-                            icon: Icons.manage_search_outlined,
-                            color: Color(0xFF5E35B1),
-                          ),
-                          selectedIcon: _NavIcon(
-                            icon: Icons.manage_search,
-                            color: Color(0xFF5E35B1),
-                            selected: true,
-                          ),
-                          label: Text('Tìm kiếm'),
-                          padding: EdgeInsets.symmetric(vertical: 4),
-                        ),
-                        NavigationRailDestination(
-                          icon: _NavIcon(
-                            icon: Icons.palette_outlined,
-                            color: Color(0xFF7B1FA2),
-                          ),
-                          selectedIcon: _NavIcon(
-                            icon: Icons.palette,
-                            color: Color(0xFF7B1FA2),
-                            selected: true,
-                          ),
-                          label: Text('Giao diện'),
-                          padding: EdgeInsets.symmetric(vertical: 4),
-                        ),
-                        NavigationRailDestination(
-                          icon: _NavIcon(
-                            icon: Icons.settings_outlined,
-                            color: Color(0xFFEF6C00),
-                          ),
-                          selectedIcon: _NavIcon(
-                            icon: Icons.settings,
-                            color: Color(0xFFEF6C00),
-                            selected: true,
-                          ),
-                          label: Text('Cài đặt'),
-                          padding: EdgeInsets.symmetric(vertical: 4),
-                        ),
-                        NavigationRailDestination(
-                          icon: _NavIcon(
-                            icon: Icons.auto_stories_outlined,
-                            color: Color(0xFF00897B),
-                          ),
-                          selectedIcon: _NavIcon(
-                            icon: Icons.auto_stories,
-                            color: Color(0xFF00897B),
-                            selected: true,
-                          ),
-                          label: Text('EPUB'),
-                          padding: EdgeInsets.symmetric(vertical: 4),
-                        ),
-                      ],
+                      onPressed: () =>
+                          setState(() => _isExtended = !_isExtended),
                     ),
                   ),
-                  const VerticalDivider(thickness: 1, width: 1),
-                  Expanded(
-                    child: IndexedStack(
-                      index: _selectedIndex,
-                      children: const [
-                        TranslateScreen(),
-                        DictionarySearchScreen(),
-                        AppearanceScreen(),
-                        SettingsScreen(),
-                        EpubConverterScreen(),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              if (canExtend)
-                AnimatedPositioned(
-                  duration: disableAnimations
-                      ? Duration.zero
-                      : const Duration(milliseconds: 200),
-                  curve: Curves.easeOutCubic,
-                  left: (extended ? 224 : 76) - 12,
-                  top: 56,
-                  child: _SidebarToggleButton(
-                    extended: extended,
-                    onPressed: () => setState(() => _isExtended = !_isExtended),
-                  ),
-                ),
-            ],
-          ),
-        );
-      },
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 }
+
+/// Một mục điều hướng chính. Dùng chung cho NavigationRail (rộng) và
+/// NavigationBar (hẹp) để hai bố cục không lệch nhau.
+class HomeDestination {
+  final String label;
+  final IconData icon;
+  final IconData selectedIcon;
+  final Color color;
+  final Widget screen;
+
+  const HomeDestination({
+    required this.label,
+    required this.icon,
+    required this.selectedIcon,
+    required this.color,
+    required this.screen,
+  });
+}
+
+/// Các tab chính, đã lọc theo nền tảng (EPUB chỉ có trên desktop).
+List<HomeDestination> homeDestinations() => [
+  const HomeDestination(
+    label: 'Dịch',
+    icon: Icons.translate_outlined,
+    selectedIcon: Icons.translate,
+    color: Color(0xFF1565C0),
+    screen: TranslateScreen(),
+  ),
+  const HomeDestination(
+    label: 'Tìm kiếm',
+    icon: Icons.manage_search_outlined,
+    selectedIcon: Icons.manage_search,
+    color: Color(0xFF5E35B1),
+    screen: DictionarySearchScreen(),
+  ),
+  const HomeDestination(
+    label: 'Giao diện',
+    icon: Icons.palette_outlined,
+    selectedIcon: Icons.palette,
+    color: Color(0xFF7B1FA2),
+    screen: AppearanceScreen(),
+  ),
+  const HomeDestination(
+    label: 'Cài đặt',
+    icon: Icons.settings_outlined,
+    selectedIcon: Icons.settings,
+    color: Color(0xFFEF6C00),
+    screen: SettingsScreen(),
+  ),
+  if (PlatformFeatures.epubConverter)
+    const HomeDestination(
+      label: 'EPUB',
+      icon: Icons.auto_stories_outlined,
+      selectedIcon: Icons.auto_stories,
+      color: Color(0xFF00897B),
+      screen: EpubConverterScreen(),
+    ),
+];
 
 class _NavIcon extends StatelessWidget {
   const _NavIcon({

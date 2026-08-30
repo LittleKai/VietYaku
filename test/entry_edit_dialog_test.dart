@@ -710,6 +710,281 @@ void main() {
       await tester.pump(const Duration(milliseconds: 600));
     },
   );
+
+  testWidgets(
+    'Đổi Từ nguồn thì ô Nghĩa nạp lại nghĩa của key mới (VietPhrase)',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final mockData = _createMock(
+        vietPhraseEntries: {'水晶宫': 'thủy tinh cung', '水晶': 'thủy tinh'},
+      );
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          dictionariesProvider.overrideWith(
+            () => MockDictionariesNotifier(mockData),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.read(currentModeProvider.notifier).state =
+          TranslationMode.chinese;
+      await container.read(dictionariesProvider.future);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: Scaffold(
+              body: Builder(
+                builder: (context) {
+                  return ElevatedButton(
+                    onPressed: () => showSharedEntryEditDialog(
+                      context,
+                      WidgetRefContext(context, container),
+                      word: '水晶宫',
+                      kind: SharedDictionaryKind.vietPhrase,
+                    ),
+                    child: const Text('Open Dialog'),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      String meaningText() => tester
+          .widget<TextField>(find.widgetWithText(TextField, 'Nghĩa'))
+          .controller!
+          .text;
+
+      expect(meaningText(), 'thủy tinh cung');
+
+      // Xóa bớt ký tự cuối → nghĩa của cụm ngắn hơn phải hiện ra.
+      await tester.enterText(find.widgetWithText(TextField, 'Từ nguồn'), '水晶');
+      await tester.pumpAndSettle();
+      expect(meaningText(), 'thủy tinh');
+
+      // Key không có trong từ điển → ô Nghĩa trống, không giữ nghĩa cũ.
+      await tester.enterText(find.widgetWithText(TextField, 'Từ nguồn'), '宫');
+      await tester.pumpAndSettle();
+      expect(meaningText(), '');
+
+      final cancel = find.text('Hủy');
+      await tester.ensureVisible(cancel);
+      await tester.tap(cancel);
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 600));
+    },
+  );
+
+  testWidgets('Đổi Từ nguồn không đè lên ô Nghĩa mà người dùng đã tự sửa', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final mockData = _createMock(
+      vietPhraseEntries: {'水晶宫': 'thủy tinh cung', '水晶': 'thủy tinh'},
+    );
+    final container = ProviderContainer(
+      overrides: [
+        sharedPreferencesProvider.overrideWithValue(prefs),
+        dictionariesProvider.overrideWith(
+          () => MockDictionariesNotifier(mockData),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+    container.read(currentModeProvider.notifier).state =
+        TranslationMode.chinese;
+    await container.read(dictionariesProvider.future);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) {
+                return ElevatedButton(
+                  onPressed: () => showSharedEntryEditDialog(
+                    context,
+                    WidgetRefContext(context, container),
+                    word: '水晶宫',
+                    kind: SharedDictionaryKind.vietPhrase,
+                  ),
+                  child: const Text('Open Dialog'),
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open Dialog'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Nghĩa'),
+      'nghĩa tự soạn',
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.widgetWithText(TextField, 'Từ nguồn'), '水晶');
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .widget<TextField>(find.widgetWithText(TextField, 'Nghĩa'))
+          .controller!
+          .text,
+      'nghĩa tự soạn',
+    );
+
+    final cancel = find.text('Hủy');
+    await tester.ensureVisible(cancel);
+    await tester.tap(cancel);
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 600));
+  });
+
+  testWidgets('Đổi Từ nguồn nạp lại ô Nghĩa của dialog Lạc Việt', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final mockData = _createMock(
+      vietPhraseEntries: const {},
+      lacVietEntries: {'水晶宫': 'thủy tinh cung', '水晶': 'thủy tinh'},
+    );
+    final container = ProviderContainer(
+      overrides: [
+        sharedPreferencesProvider.overrideWithValue(prefs),
+        dictionariesProvider.overrideWith(
+          () => MockDictionariesNotifier(mockData),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+    container.read(currentModeProvider.notifier).state =
+        TranslationMode.chinese;
+    await container.read(dictionariesProvider.future);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) {
+                return ElevatedButton(
+                  onPressed: () => showSharedEntryEditDialog(
+                    context,
+                    WidgetRefContext(context, container),
+                    word: '水晶宫',
+                    kind: SharedDictionaryKind.lacViet,
+                  ),
+                  child: const Text('Open Dialog'),
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open Dialog'));
+    await tester.pumpAndSettle();
+
+    String meaningText() => tester
+        .widget<TextField>(find.widgetWithText(TextField, 'Nghĩa'))
+        .controller!
+        .text;
+
+    expect(meaningText(), 'thủy tinh cung');
+
+    await tester.enterText(find.widgetWithText(TextField, 'Từ nguồn'), '水晶');
+    await tester.pumpAndSettle();
+    expect(meaningText(), 'thủy tinh');
+
+    final cancel = find.text('Hủy');
+    await tester.ensureVisible(cancel);
+    await tester.tap(cancel);
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 600));
+  });
+
+  testWidgets('Nút Xóa từ bám theo Từ nguồn hiện tại, không phải từ lúc mở', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final mockData = _createMock(
+      vietPhraseEntries: {'水晶宫': 'thủy tinh cung', '水晶': 'thủy tinh'},
+    );
+    final container = ProviderContainer(
+      overrides: [
+        sharedPreferencesProvider.overrideWithValue(prefs),
+        dictionariesProvider.overrideWith(
+          () => MockDictionariesNotifier(mockData),
+        ),
+      ],
+    );
+    addTearDown(container.dispose);
+    container.read(currentModeProvider.notifier).state =
+        TranslationMode.chinese;
+    await container.read(dictionariesProvider.future);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) {
+                return ElevatedButton(
+                  onPressed: () => showSharedEntryEditDialog(
+                    context,
+                    WidgetRefContext(context, container),
+                    word: '水晶宫',
+                    kind: SharedDictionaryKind.vietPhrase,
+                  ),
+                  child: const Text('Open Dialog'),
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open Dialog'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Xóa từ'), findsOneWidget);
+
+    // Key mới chưa có trong từ điển → không còn gì để xóa.
+    await tester.enterText(find.widgetWithText(TextField, 'Từ nguồn'), '宫');
+    await tester.pumpAndSettle();
+    expect(find.text('Xóa từ'), findsNothing);
+
+    // Quay lại một key có thật → nút hiện lại.
+    await tester.enterText(find.widgetWithText(TextField, 'Từ nguồn'), '水晶');
+    await tester.pumpAndSettle();
+    expect(find.text('Xóa từ'), findsOneWidget);
+
+    final cancel = find.text('Hủy');
+    await tester.ensureVisible(cancel);
+    await tester.tap(cancel);
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 600));
+  });
 }
 
 class WidgetRefContext implements WidgetRef {

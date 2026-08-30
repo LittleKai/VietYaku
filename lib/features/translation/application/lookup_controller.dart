@@ -322,9 +322,8 @@ class LookupController extends Notifier<LookupResult?> {
   }
 
   /// `nghĩa1/nghĩa2` → `nghĩa1; nghĩa2`.
-  static String _joinMeanings(String value) => parseVietPhraseValue(
-    value,
-  ).map((meaning) => meaning.displayText).join('; ');
+  static String _joinMeanings(String value) => formatVietPhraseForLookup(value);
+
 
   /// Phiên âm từng chữ Hán: ChinesePhienAmWords → Hán Việt;
   /// miss → ChinesePhienAmEnglishWords trong `[]`; khác giữ nguyên.

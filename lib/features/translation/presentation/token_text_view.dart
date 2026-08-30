@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/cjk.dart';
+import '../../../core/platform_features.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/entry_edit_dialog.dart';
 import '../../../shared/widgets/icon_context_menu.dart';
@@ -911,12 +912,53 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
       ),
     );
 
+    // Cảm ứng không có chuột phải, nên lối "chèn nghĩa vào ô Bản dịch" (bản
+    // desktop là chuột phải khi KHÔNG tô đen) phải đi qua chính thanh công cụ
+    // chọn text. Nghĩa lấy đúng chỗ bắt đầu vùng chọn, hệt bản chuột phải.
+    if (widget.paneId == PaneId.vietPhrase && PlatformFeatures.touchPrimary) {
+      final draftMeaning = _meaningForSelection(ranges, value, sel);
+      if (draftMeaning.isNotEmpty) {
+        custom.insert(
+          0,
+          IconContextMenuItem(
+            icon: Icons.playlist_add,
+            iconColor: scheme.primary,
+            label: 'Chèn vào Bản dịch',
+            onPressed: () {
+              editableTextState.hideToolbar();
+              ref.read(tokenSelectionProvider.notifier).clear();
+              insertIntoVietDraft(
+                ref.read(vietDraftControllerProvider),
+                draftMeaning,
+              );
+            },
+          ),
+        );
+      }
+    }
+
     // Tô đen → chỉ hiện các mục Thêm/Sửa + Tra online (+ mục admin nếu
     // đăng nhập).
     return IconContextMenu(
       anchors: editableTextState.contextMenuAnchors,
       items: custom,
     );
+  }
+
+  /// Nghĩa nằm tại vị trí BẮT ĐẦU vùng chọn — tương ứng chỗ người dùng nhấn giữ
+  /// để chọn. Rỗng nếu chỗ đó không phải cụm có trong từ điển.
+  static String _meaningForSelection(
+    List<(int, int, Token)> ranges,
+    TextEditingValue value,
+    TextSelection sel,
+  ) {
+    for (final (start, end, token) in ranges) {
+      if (token.kind != TokenKind.matched) continue;
+      if (sel.start >= start && sel.start < end) {
+        return _meaningAt(value.text.substring(start, end), sel.start - start);
+      }
+    }
+    return '';
   }
 
   @override

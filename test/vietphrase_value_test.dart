@@ -236,4 +236,40 @@ void main() {
       'Rimuru Tempest',
     );
   });
+
+  group('formatVietPhraseForLookup', () {
+    test('thay dấu / thành ; cho các cách dịch trong panel từ điển', () {
+      expect(
+        formatVietPhraseForLookup('kết thúc/giải quyết/hoàn thành'),
+        'kết thúc; giải quyết; hoàn thành',
+      );
+      expect(
+        formatVietPhraseForLookup('xào xạc/sà sà/sàn sạt'),
+        'xào xạc; sà sà; sàn sạt',
+      );
+    });
+
+    test('hỗ trợ nhiều tầng nghĩa và marker từ loại', () {
+      expect(
+        formatVietPhraseForLookup('(n)/ký ức/hồi ức/(2)/(v)/nhớ lại'),
+        '(n) ký ức; hồi ức; (v) nhớ lại',
+      );
+      expect(
+        formatVietPhraseForLookup(
+          '(n)vui vẻ/khoái lạc/(v)thưởng thức/(adj)chờ mong/mong mỏi',
+        ),
+        '(n) vui vẻ; khoái lạc; (v) thưởng thức; (adj) chờ mong; mong mỏi',
+      );
+      expect(
+        formatVietPhraseForLookup('cách 1/(2)/cách 2'),
+        'cách 1; cách 2',
+      );
+    });
+
+    test('giữ nguyên từ đơn không có dấu /', () {
+      expect(formatVietPhraseForLookup('không'), 'không');
+      expect(formatVietPhraseForLookup(''), '');
+    });
+  });
 }
+

@@ -7,6 +7,7 @@ import '../../translation/application/trad2simp_provider.dart';
 import '../../translation/application/translation_controller.dart';
 import '../../translation/domain/translation_engine.dart';
 import '../data/dictionary_repository.dart';
+import 'language_pack_provider.dart';
 
 final appPathsProvider = FutureProvider<AppPaths>((ref) => AppPaths.init());
 
@@ -16,6 +17,9 @@ class DictionariesNotifier extends AsyncNotifier<LoadedDictionaries> {
     final paths = await ref.watch(appPathsProvider.future);
     // Bộ dict theo ngôn ngữ đang dịch; đổi mode → nạp lại (cache .vydc giữ nhanh).
     final mode = ref.watch(currentModeProvider);
+    // Mobile: bộ từ điển của mode này phải được chép từ assets ra đĩa trước.
+    // Desktop: no-op.
+    await ref.watch(languagePackProvider(mode).future);
     // Chỉ phụ thuộc dictPaths của mode — đổi thuật toán/tùy chọn khác không reload.
     final dictPaths = ref.watch(
       settingsProvider.select((s) => s.dictPathsFor(mode)),

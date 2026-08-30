@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import '../../../core/app_paths.dart';
+import '../../../core/concurrency.dart';
 import '../../dictionary_search/domain/dictionary_search.dart';
 import '../../translation/domain/trad2simp_table.dart';
 import '../../translation/domain/translation_engine.dart';
@@ -169,29 +170,32 @@ class DictionaryRepository {
       return loadPath(type, source);
     }
 
-    final results = await Future.wait([
-      load(DictType.userDict),
-      load(DictType.names),
-      load(DictType.vietPhrase),
-      load(DictType.lacViet),
-      load(DictType.chinesePhienAm),
-      load(DictType.pronouns),
-      load(DictType.babylon),
-      load(DictType.thieuChuu),
-      load(DictType.cedict),
-      load(DictType.chinesePhienAmEnglish),
-      load(DictType.jaVi),
-      load(DictType.zhVi),
-      loadPath(DictType.names, userNamesPath), // overlay "Thêm vào Names"
-      loadPath(DictType.vietPhrase, sharedVietPhrasePath(mode)),
-      loadPath(DictType.lacViet, sharedLacVietPath(mode)),
-      useSudachiVariants
+    // Mobile: 19 isolate cùng lúc = 19 bộ (bytes nguồn + map đã parse) nằm
+    // trong RAM một lúc → vượt heap Android. Chạy tối đa 2; desktop giữ nguyên
+    // song song hết. Thứ tự kết quả không đổi nên các chỉ số bên dưới vẫn đúng.
+    final results = await runWithConcurrency<LoadResult>([
+      () => load(DictType.userDict),
+      () => load(DictType.names),
+      () => load(DictType.vietPhrase),
+      () => load(DictType.lacViet),
+      () => load(DictType.chinesePhienAm),
+      () => load(DictType.pronouns),
+      () => load(DictType.babylon),
+      () => load(DictType.thieuChuu),
+      () => load(DictType.cedict),
+      () => load(DictType.chinesePhienAmEnglish),
+      () => load(DictType.jaVi),
+      () => load(DictType.zhVi),
+      () => loadPath(DictType.names, userNamesPath), // overlay "Thêm vào Names"
+      () => loadPath(DictType.vietPhrase, sharedVietPhrasePath(mode)),
+      () => loadPath(DictType.lacViet, sharedLacVietPath(mode)),
+      () => useSudachiVariants
           ? loadPath(DictType.vietPhrase, sudachiPath('SudachiVariants.txt'))
           : emptyResult(DictType.vietPhrase),
-      loadPath(DictType.jaVi, sudachiPath('SudachiReadings.txt')),
-      load(DictType.mazii),
-      loadPath(DictType.onlineDict, onlineDictPath(mode)),
-    ]);
+      () => loadPath(DictType.jaVi, sudachiPath('SudachiReadings.txt')),
+      () => load(DictType.mazii),
+      () => loadPath(DictType.onlineDict, onlineDictPath(mode)),
+    ], limit: Platform.isAndroid || Platform.isIOS ? 2 : 0);
 
     final personRuleFile = File(
       p.join(p.dirname(dictPaths[DictType.vietPhrase]!), 'LuatNhan.txt'),

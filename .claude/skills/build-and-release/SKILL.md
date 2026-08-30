@@ -3,15 +3,13 @@ name: build-and-release
 description: |
   Build VietYaku cho Windows (zip), sau đó phát hành đồng thời lên GitHub Release
   và Backblaze B2 (link tải cho tool /studio/vietyaku trên giaiphapsangtao.com).
-  <!-- [DISABLED] Android (APK) build tạm thời bị tắt -->
+  Build cả Windows (zip) lẫn Android (apk).
   Trigger: khi user yêu cầu build, release, publish, xuất bản, deploy, hoặc tạo phiên bản mới.
 ---
 
 # Build & Release VietYaku
 
-Skill này tự động hóa quy trình: build Windows → tạo GitHub Release → upload artifacts → đẩy bản tải lên B2 cho web.
-
-> ⚠️ **TẠM THỜI DISABLED**: Android (APK) build đang bị tắt. Khi cần bật lại, tìm và uncomment các phần `[DISABLED-ANDROID]` trong file này và trong `scripts/build.ps1`.
+Skill này tự động hóa quy trình: build Windows + Android → tạo GitHub Release → upload artifacts → đẩy bản tải lên B2 cho web.
 
 ## ⚠️ Hai kênh phát hành — đừng nhầm
 
@@ -79,7 +77,7 @@ Hỏi user:
   - Gộp các commit cùng chủ đề thành một mục chính kèm các dòng mô tả chi tiết bên dưới.
   - Nếu một section không có nội dung, **bỏ section đó đi** (không để trống).
 - **Prerelease?**: có đánh dấu là prerelease không (mặc định: không)
-- **Build targets**: Windows (mặc định). <!-- [DISABLED-ANDROID] APK, Windows, hoặc cả hai (mặc định: cả hai) -->
+- **Build targets**: APK, Windows, hoặc cả hai (mặc định: cả hai).
 
 ### Bước 2: Kiểm tra trước khi build
 
@@ -119,10 +117,9 @@ Script sẽ:
 > release.ps1 -Version <version> ... -SkipBuild
 > ```
 
-<!-- [DISABLED-ANDROID]
+Với target `android`, script còn:
 - Build APK release: `flutter build apk --release`
-- Copy APK ra: `VietYaku-<version>.apk`
--->
+- Copy APK ra: `VietYaku-android-v<version>.apk` (đuôi `.apk` là điều kiện để cập nhật trong app nhận ra asset)
 
 ### Bước 4: Release lên GitHub + B2
 
@@ -137,7 +134,7 @@ Script sẽ:
 2. Tạo git tag `<version>`
 3. Push tag lên origin
 4. Tạo GitHub Release qua API (hoặc cập nhật release đã có cùng tag)
-5. Upload Windows ZIP lên release <!-- [DISABLED-ANDROID] Upload APK và Windows ZIP lên release -->
+5. Upload Windows ZIP và APK lên release
 6. Gọi `upload-b2.ps1` để đẩy bản tải web lên B2 (bỏ qua nếu truyền `-SkipB2`)
 
 Bước 6 upload lên bucket `alpha-studio`:
@@ -169,14 +166,9 @@ Rồi mở `https://giaiphapsangtao.com/studio/vietyaku` xem số version hiển
 
 ```
 build/release/
-└── VietYaku-windows-x64.zip      # upload lên CẢ GitHub Release và B2
+├── VietYaku-android-v<version>.apk   # chỉ lên GitHub Release (cập nhật trong app Android)
+└── VietYaku-windows-x64.zip          # upload lên CẢ GitHub Release và B2
 ```
-
-<!-- [DISABLED-ANDROID]
-build/release/
-├── VietYaku-<version>.apk
-└── VietYaku-windows-x64.zip
--->
 
 Trên B2 (bucket `alpha-studio`):
 
@@ -189,7 +181,7 @@ vietyaku-app/
 
 ## Lưu ý quan trọng
 
-<!-- [DISABLED-ANDROID] - **APK signing**: Hiện dùng debug signing key. Nếu cần production signing, user cần cung cấp keystore file và cấu hình trong `android/app/build.gradle.kts`. -->
+- **APK signing**: mặc định ký bằng debug key. Muốn ký thật thì tạo `android/key.properties` (đã gitignore) với `storeFile` / `storePassword` / `keyAlias` / `keyPassword` — `build.gradle.kts` tự nhận, không phải sửa code.
 - **Windows build**: Cần Visual Studio Build Tools C++ desktop workload.
 - **Data size**: Thư mục `data/jp/` và `data/cn/` được bundle vào assets (~130MB), APK và Windows ZIP sẽ lớn.
 - **Giới hạn 200MB cho upload B2**: `upload-b2.ps1` dùng `b2_upload_file` một phần. ZIP hiện ~64MB nên còn dư, nhưng nếu vượt 200MB script sẽ dừng và phải chuyển sang B2 large-file API.
@@ -204,8 +196,8 @@ Nếu cần build riêng lẻ (không release):
 # Chỉ build Windows
 flutter build windows --release
 
-# [DISABLED-ANDROID] Chỉ build APK
-# flutter build apk --release
+# Chỉ build APK
+flutter build apk --release
 ```
 
 Nếu cần release mà đã build sẵn:

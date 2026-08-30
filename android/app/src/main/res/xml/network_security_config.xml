@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Mac dinh van chan cleartext (HTTP) nhu Android 9+.
+  Mo ngoai le cho hai host phuc vu phat trien:
+    - localhost   : server chay trong chinh may (khi test tren thiet bi that qua adb reverse)
+    - 10.0.2.2    : dia chi may host nhin tu emulator Android
+  Server that (giaiphapsangtao.com / LittleKai-server tren Vercel) deu la HTTPS
+  nen khong can them ngoai le nao khac.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">10.0.2.2</domain>
+    </domain-config>
+</network-security-config>

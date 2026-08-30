@@ -1,6 +1,6 @@
 # Important Fixed Bugs
 
-**Last Updated:** 2026-08-13
+**Last Updated:** 2026-08-22
 
 ---
 
@@ -13,6 +13,13 @@ Record only high-impact, hard-to-detect, or likely-to-recur bugs. Do not record 
 ---
 
 ## Fixed Bugs
+
+### 2026-08-22 - Android release mất sạch tính năng mạng vì `AndroidManifest.xml` (main) thiếu `INTERNET`
+- **Symptom:** Trên bản release APK, tra online (Mazii/Jisho/Weblio/Youdao), tab Google Dịch, kiểm tra cập nhật và đồng bộ từ điển chung đều thất bại im lặng hoặc báo lỗi mạng chung chung. **Chạy `flutter run` (debug) thì mọi thứ bình thường** nên lỗi không bao giờ lộ ra trong lúc phát triển.
+- **Root Cause:** Flutter tự sinh `android/app/src/debug/AndroidManifest.xml` và `src/profile/AndroidManifest.xml` có sẵn `<uses-permission android:name="android.permission.INTERNET"/>` để hot reload chạy được, nhưng **`src/main/AndroidManifest.xml` thì không**. Manifest merger chỉ gộp `debug`/`profile` vào đúng build type tương ứng, nên quyền này biến mất khỏi bản release.
+- **Fix:** Khai báo `INTERNET` trong `src/main/AndroidManifest.xml`. Kèm theo: `android:largeHeap="true"` (bộ dict ~700k entry vượt heap mặc định) và `android:networkSecurityConfig` mở cleartext riêng cho `localhost`/`127.0.0.1`/`10.0.2.2` để test server dev.
+- **Do Not Repeat:** Đừng bao giờ suy ra quyền Android từ việc chạy debug. Sau khi build release, verify bằng `aapt2 dump permissions <apk>` — phải thấy đủ `INTERNET` + `REQUEST_INSTALL_PACKAGES`.
+- **Related Files:** `android/app/src/main/AndroidManifest.xml`, `android/app/src/main/res/xml/network_security_config.xml`
 
 ### 2026-08-13 - Bôi đen ở ô kết quả cho key THIẾU token có nghĩa rỗng (`激出了火气` → `激出火气`)
 - **Symptom:** Ô VietPhrase bôi đen "kích động ra hỏa khí" rồi chuột phải → "Sửa vào VietPhrase": ô Từ nguồn chỉ hiện `激出火气`, trong khi ô Nguồn là `激出了火气`. Không lỗi, không cảnh báo — key sai được lưu/publish thẳng vào từ điển chung và không bao giờ khớp lại văn bản.

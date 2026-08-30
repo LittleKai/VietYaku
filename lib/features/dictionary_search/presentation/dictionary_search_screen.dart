@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/platform_features.dart';
 import '../../../shared/widgets/feature_help_button.dart';
 import '../../clipboard/application/clipboard_reader_controller.dart';
 import '../../dictionary/application/dictionaries_provider.dart';
@@ -63,6 +64,84 @@ class _DictionarySearchScreenState
         ? null
         : ref.watch(dictionarySearchProvider(_submittedQuery!));
     final scheme = Theme.of(context).colorScheme;
+    final compact = isCompactWidth(context);
+
+    final queryField = TextField(
+      controller: _queryController,
+      autofocus: true,
+      textInputAction: TextInputAction.search,
+      onSubmitted: (_) => _search(),
+      decoration: InputDecoration(
+        labelText: _searchMode == DictionarySearchMode.fullTextValue
+            ? 'Nội dung nghĩa cần tìm'
+            : 'Key từ điển cần tìm',
+        hintText: _searchMode == DictionarySearchMode.wildcardKey
+            ? 'Ví dụ: *龍* hoặc 少?'
+            : null,
+        prefixIcon: const Icon(Icons.search),
+      ),
+    );
+
+    final modeDropdown = DropdownButtonFormField<DictionarySearchMode>(
+      initialValue: _searchMode,
+      // Mặc định dropdown tự rộng bằng item DÀI NHẤT ("Toàn văn trong nghĩa"),
+      // nên trong khung Expanded của màn hẹp nó tràn ra ngoài.
+      isExpanded: true,
+      decoration: const InputDecoration(labelText: 'Kiểu tìm'),
+      items: const [
+        DropdownMenuItem(
+          value: DictionarySearchMode.exactKey,
+          child: Text('Key chính xác'),
+        ),
+        DropdownMenuItem(
+          value: DictionarySearchMode.prefixKey,
+          child: Text('Key bắt đầu bằng'),
+        ),
+        DropdownMenuItem(
+          value: DictionarySearchMode.wildcardKey,
+          child: Text('Wildcard (* và ?)'),
+        ),
+        DropdownMenuItem(
+          value: DictionarySearchMode.fullTextValue,
+          child: Text('Toàn văn trong nghĩa'),
+        ),
+      ],
+      onChanged: (value) {
+        if (value == null) return;
+        setState(() => _searchMode = value);
+      },
+    );
+
+    final searchButton = FilledButton.icon(
+      onPressed: dictionaries.isLoading ? null : _search,
+      icon: const Icon(Icons.manage_search),
+      label: const Text('Tìm'),
+    );
+
+    final modeSelector = SegmentedButton<TranslationMode>(
+      showSelectedIcon: false,
+      segments: const [
+        ButtonSegment(
+          value: TranslationMode.japanese,
+          label: Text('Tiếng Nhật'),
+        ),
+        ButtonSegment(
+          value: TranslationMode.chinese,
+          label: Text('Tiếng Trung'),
+        ),
+      ],
+      selected: {mode},
+      onSelectionChanged: (selection) async {
+        final nextMode = selection.first;
+        setState(() {
+          _submittedQuery = null;
+          _selectedTypes = _selectedTypes
+              .where((type) => type.isAvailableFor(nextMode))
+              .toSet();
+        });
+        await ref.read(translationControllerProvider.notifier).setMode(nextMode);
+      },
+    );
 
     return Scaffold(
       appBar: AppBar(
@@ -87,112 +166,54 @@ class _DictionarySearchScreenState
             ),
           ],
         ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: SegmentedButton<TranslationMode>(
-              showSelectedIcon: false,
-              segments: const [
-                ButtonSegment(
-                  value: TranslationMode.japanese,
-                  label: Text('Tiếng Nhật'),
-                ),
-                ButtonSegment(
-                  value: TranslationMode.chinese,
-                  label: Text('Tiếng Trung'),
+        // Màn hẹp: bộ chọn Nhật/Trung xuống thân màn hình. Để trong `actions`
+        // thì tiêu đề không còn đủ chỗ (RenderFlex overflow trên điện thoại).
+        actions: compact
+            ? null
+            : [
+                Padding(
+                  padding: const EdgeInsets.only(right: 16),
+                  child: modeSelector,
                 ),
               ],
-              selected: {mode},
-              onSelectionChanged: (selection) async {
-                final nextMode = selection.first;
-                setState(() {
-                  _submittedQuery = null;
-                  _selectedTypes = _selectedTypes
-                      .where((type) => type.isAvailableFor(nextMode))
-                      .toSet();
-                });
-                await ref
-                    .read(translationControllerProvider.notifier)
-                    .setMode(nextMode);
-              },
-            ),
-          ),
-        ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (compact) ...[
+              Align(alignment: Alignment.centerLeft, child: modeSelector),
+              const SizedBox(height: 12),
+            ],
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _queryController,
-                            autofocus: true,
-                            textInputAction: TextInputAction.search,
-                            onSubmitted: (_) => _search(),
-                            decoration: InputDecoration(
-                              labelText:
-                                  _searchMode ==
-                                      DictionarySearchMode.fullTextValue
-                                  ? 'Nội dung nghĩa cần tìm'
-                                  : 'Key từ điển cần tìm',
-                              hintText:
-                                  _searchMode ==
-                                      DictionarySearchMode.wildcardKey
-                                  ? 'Ví dụ: *龍* hoặc 少?'
-                                  : null,
-                              prefixIcon: const Icon(Icons.search),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        SizedBox(
-                          width: 220,
-                          child: DropdownButtonFormField<DictionarySearchMode>(
-                            initialValue: _searchMode,
-                            decoration: const InputDecoration(
-                              labelText: 'Kiểu tìm',
-                            ),
-                            items: const [
-                              DropdownMenuItem(
-                                value: DictionarySearchMode.exactKey,
-                                child: Text('Key chính xác'),
-                              ),
-                              DropdownMenuItem(
-                                value: DictionarySearchMode.prefixKey,
-                                child: Text('Key bắt đầu bằng'),
-                              ),
-                              DropdownMenuItem(
-                                value: DictionarySearchMode.wildcardKey,
-                                child: Text('Wildcard (* và ?)'),
-                              ),
-                              DropdownMenuItem(
-                                value: DictionarySearchMode.fullTextValue,
-                                child: Text('Toàn văn trong nghĩa'),
-                              ),
-                            ],
-                            onChanged: (value) {
-                              if (value == null) return;
-                              setState(() => _searchMode = value);
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        FilledButton.icon(
-                          onPressed: dictionaries.isLoading ? null : _search,
-                          icon: const Icon(Icons.manage_search),
-                          label: const Text('Tìm'),
-                        ),
-                      ],
-                    ),
+                    // Màn hẹp: ô nhập nằm riêng một hàng. Xếp ngang như desktop
+                    // thì dropdown 220dp + nút đẩy ô nhập xuống còn vài dp.
+                    if (compact) ...[
+                      queryField,
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(child: modeDropdown),
+                          const SizedBox(width: 12),
+                          searchButton,
+                        ],
+                      ),
+                    ] else
+                      Row(
+                        children: [
+                          Expanded(child: queryField),
+                          const SizedBox(width: 12),
+                          SizedBox(width: 220, child: modeDropdown),
+                          const SizedBox(width: 12),
+                          searchButton,
+                        ],
+                      ),
                     const SizedBox(height: 14),
                     Wrap(
                       spacing: 8,

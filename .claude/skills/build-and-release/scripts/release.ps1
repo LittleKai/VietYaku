@@ -109,7 +109,7 @@ if (-not $Token) {
     exit 1
 }
 
-Write-Success ("GITHUB_TOKEN loaded (" + $Token.Substring(0,8) + '...)')
+Write-Success "GITHUB_TOKEN loaded"
 
 # --- Detect repo ---
 

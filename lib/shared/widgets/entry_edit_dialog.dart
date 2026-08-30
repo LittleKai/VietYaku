@@ -34,13 +34,12 @@ Future<void> showEntryEditDialog(
   String? initialMeaning,
 }) async {
   final dicts = ref.read(dictionariesProvider).valueOrNull;
-  final existing =
-      initialMeaning ??
-      (dicts == null
-          ? null
-          : (dicts.userDict.entries[word] ??
-                dicts.names.entries[word] ??
-                dicts.vietPhrase.entries[word]));
+  String? dictMeaningOf(String key) => dicts == null
+      ? null
+      : (dicts.userDict.entries[key] ??
+            dicts.names.entries[key] ??
+            dicts.vietPhrase.entries[key]);
+  final existing = initialMeaning ?? dictMeaningOf(word);
 
   final holder = _EntryFieldControllers();
   final translation = ref.read(translationControllerProvider);
@@ -81,6 +80,7 @@ Future<void> showEntryEditDialog(
       initialKey: word,
       initialMeaning: existing ?? '',
       hanVietOf: (key) => dicts == null ? null : hanVietReadingOf(dicts, key),
+      meaningForKey: dictMeaningOf,
       meaningHelper: 'Dùng dấu / để ngăn cách nhiều nghĩa.',
       mode: translation.mode,
       sourceText: impactSource,
@@ -194,20 +194,19 @@ Future<void> showSharedEntryEditDialog(
   final isVietPhrase = kind == SharedDictionaryKind.vietPhrase;
   final dictionaryName = isVietPhrase ? 'VietPhrase' : 'Lạc Việt';
   final dicts = ref.read(dictionariesProvider).valueOrNull;
-  String? existing;
-  if (dicts != null) {
-    if (isVietPhrase) {
-      existing = dicts.vietPhrase.entries[word];
-    } else {
-      existing = dicts.lacViet.entries[word];
-      if (existing == null || existing.trim().isEmpty) {
-        final vp = dicts.vietPhrase.entries[word];
-        if (vp != null && vp.trim().isNotEmpty) {
-          existing = convertVietPhraseToLacVietFormat(vp);
-        }
-      }
+  String? sharedMeaningOf(String key) {
+    if (dicts == null) return null;
+    if (isVietPhrase) return dicts.vietPhrase.entries[key];
+    final lacViet = dicts.lacViet.entries[key];
+    if (lacViet != null && lacViet.trim().isNotEmpty) return lacViet;
+    final vp = dicts.vietPhrase.entries[key];
+    if (vp != null && vp.trim().isNotEmpty) {
+      return convertVietPhraseToLacVietFormat(vp);
     }
+    return lacViet;
   }
+
+  final existing = sharedMeaningOf(word);
   final holder = _EntryFieldControllers();
   final mode = ref.read(translationControllerProvider).mode;
   final translation = ref.read(translationControllerProvider);
@@ -240,6 +239,7 @@ Future<void> showSharedEntryEditDialog(
       initialKey: word,
       initialMeaning: existing ?? '',
       hanVietOf: (key) => dicts == null ? null : hanVietReadingOf(dicts, key),
+      meaningForKey: sharedMeaningOf,
       vietPhraseFormat: isVietPhrase,
       lacVietFormat: !isVietPhrase,
       meaningHelper: isVietPhrase
@@ -270,66 +270,70 @@ Future<void> showSharedEntryEditDialog(
           .setNotifyOnGlossaryAutoUpdate(val),
     ),
     actionsBuilder: (dialogContext) => [
-      ValueListenableBuilder<GlossaryTerm?>(
-        valueListenable: holder.glossaryTermNotifier,
-        builder: (_, glossaryTerm, _) {
-          return ValueListenableBuilder<String>(
-            valueListenable: holder.meaningNotifier,
-            builder: (_, meaningText, _) {
-              final existsInGlossary = glossaryTerm != null;
-              final currentTarget = glossaryTargetOf(meaningText);
-              final isIdenticalGlossary =
-                  existsInGlossary &&
-                  glossaryTerm.target.trim() == currentTarget.trim();
+      // Từ nguồn, nghĩa và trạng thái Glossary đều đổi khi người dùng gõ →
+      // gộp làm một listenable để nút Glossary/Xóa từ bám theo key hiện tại.
+      ListenableBuilder(
+        listenable: Listenable.merge([
+          holder.glossaryTermNotifier,
+          holder.meaningNotifier,
+          holder.keyNotifier,
+        ]),
+        builder: (_, _) {
+          final glossaryTerm = holder.glossaryTermNotifier.value;
+          final meaningText = holder.meaningNotifier.value;
+          final currentKey = holder.keyNotifier.value.trim();
+          final existsInGlossary = glossaryTerm != null;
+          final currentTarget = glossaryTargetOf(meaningText);
+          final isIdenticalGlossary =
+              existsInGlossary &&
+              glossaryTerm.target.trim() == currentTarget.trim();
 
-              final showGlossaryButton =
-                  canUpdateGlossary && !isIdenticalGlossary;
-              final canDelete = existing != null || existsInGlossary;
+          final showGlossaryButton = canUpdateGlossary && !isIdenticalGlossary;
+          final canDelete =
+              sharedMeaningOf(currentKey) != null || existsInGlossary;
 
-              return Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (showGlossaryButton)
-                    TextButton.icon(
-                      icon: Icon(
-                        existsInGlossary
-                            ? Icons.edit_calendar_outlined
-                            : Icons.menu_book_outlined,
-                        size: 18,
-                      ),
-                      onPressed: () async {
-                        final updated = await showGlossaryUpdateDialog(
-                          dialogContext,
-                          ref,
-                          source: holder.keyText.trim(),
-                          meaning: holder.meaningText.trim(),
-                        );
-                        // Ghi xong thì đọc lại glossary: thẻ trạng thái đổi
-                        // sang "ĐÃ CÓ", nút Thêm/Ghi đè tự ẩn khi đã giống hệt.
-                        if (updated) holder.refreshGlossary?.call();
-                      },
-                      label: Text(
-                        existsInGlossary
-                            ? 'Ghi đè Glossary $glossaryLang'
-                            : 'Thêm vào Glossary $glossaryLang',
-                      ),
-                    ),
-                  if (canDelete)
-                    TextButton.icon(
-                      icon: const Icon(
-                        Icons.delete_outline,
-                        size: 18,
-                        color: Colors.red,
-                      ),
-                      onPressed: () => Navigator.pop(dialogContext, 'delete'),
-                      label: const Text(
-                        'Xóa từ',
-                        style: TextStyle(color: Colors.red),
-                      ),
-                    ),
-                ],
-              );
-            },
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (showGlossaryButton)
+                TextButton.icon(
+                  icon: Icon(
+                    existsInGlossary
+                        ? Icons.edit_calendar_outlined
+                        : Icons.menu_book_outlined,
+                    size: 18,
+                  ),
+                  onPressed: () async {
+                    final updated = await showGlossaryUpdateDialog(
+                      dialogContext,
+                      ref,
+                      source: holder.keyText.trim(),
+                      meaning: holder.meaningText.trim(),
+                    );
+                    // Ghi xong thì đọc lại glossary: thẻ trạng thái đổi
+                    // sang "ĐÃ CÓ", nút Thêm/Ghi đè tự ẩn khi đã giống hệt.
+                    if (updated) holder.refreshGlossary?.call();
+                  },
+                  label: Text(
+                    existsInGlossary
+                        ? 'Ghi đè Glossary $glossaryLang'
+                        : 'Thêm vào Glossary $glossaryLang',
+                  ),
+                ),
+              if (canDelete)
+                TextButton.icon(
+                  icon: const Icon(
+                    Icons.delete_outline,
+                    size: 18,
+                    color: Colors.red,
+                  ),
+                  onPressed: () => Navigator.pop(dialogContext, 'delete'),
+                  label: const Text(
+                    'Xóa từ',
+                    style: TextStyle(color: Colors.red),
+                  ),
+                ),
+            ],
           );
         },
       ),
@@ -357,12 +361,7 @@ Future<void> showSharedEntryEditDialog(
     final inGlossary =
         canUpdateGlossary &&
         (await glossaryService.find(mode, targetKey)) != null;
-    final inSharedDict =
-        existing != null ||
-        (dicts != null &&
-            (isVietPhrase
-                ? dicts.vietPhrase.entries.containsKey(targetKey)
-                : dicts.lacViet.entries.containsKey(targetKey)));
+    final inSharedDict = sharedMeaningOf(targetKey) != null;
 
     holder.disposeAfterRouteAnimation();
 
@@ -607,6 +606,7 @@ class _EntryFieldControllers {
   final ValueNotifier<bool> canSave = ValueNotifier(false);
   final ValueNotifier<GlossaryTerm?> glossaryTermNotifier = ValueNotifier(null);
   final ValueNotifier<String> meaningNotifier = ValueNotifier('');
+  final ValueNotifier<String> keyNotifier = ValueNotifier('');
   final ValueNotifier<bool> autoUpdateGlossaryNotifier = ValueNotifier(true);
   final ValueNotifier<bool> notifyOnGlossaryUpdateNotifier = ValueNotifier(
     true,
@@ -625,6 +625,7 @@ class _EntryFieldControllers {
       canSave.dispose();
       glossaryTermNotifier.dispose();
       meaningNotifier.dispose();
+      keyNotifier.dispose();
       autoUpdateGlossaryNotifier.dispose();
       notifyOnGlossaryUpdateNotifier.dispose();
     });
@@ -646,6 +647,7 @@ class _EntryFields extends StatefulWidget {
     required this.currentValueOf,
     required this.currentLayerLabel,
     this.hanVietOf,
+    this.meaningForKey,
     this.vietPhraseFormat = false,
     this.lacVietFormat = false,
     this.meaningHelper,
@@ -665,6 +667,10 @@ class _EntryFields extends StatefulWidget {
 
   /// Âm Hán Việt của key đang gõ; null (hoặc trả null) thì không hiện dòng này.
   final String? Function(String key)? hanVietOf;
+
+  /// Value thô của key trong từ điển đang sửa. Gõ lại ô Từ nguồn thì ô Nghĩa
+  /// nạp lại theo key mới (chỉ khi người dùng chưa tự sửa ô Nghĩa).
+  final String? Function(String key)? meaningForKey;
 
   /// VietPhrase được sửa theo từng nghĩa + từ loại, rồi encode về value một
   /// dòng khi preview/lưu.
@@ -688,6 +694,15 @@ class _EntryFieldsState extends State<_EntryFields> {
   final List<_VietPhraseMeaningRowData> _meaningRows = [];
   var _nextMeaningRowId = 0;
   bool _hasInvalidVietPhraseRows = false;
+
+  /// Key mà ô Nghĩa đang hiển thị, cùng value đã encode lúc nạp: lệch nhau
+  /// nghĩa là người dùng đã tự sửa → không nạp đè khi đổi Từ nguồn.
+  String _meaningSourceKey = '';
+  String _loadedMeaning = '';
+
+  /// Chỉ tự focus ô Nghĩa 1 lúc mở dialog; nạp lại theo key mới không được
+  /// cướp con trỏ khỏi ô Từ nguồn đang gõ.
+  bool _autofocusFirstMeaning = true;
   late EntryImpact _impact;
   String? _hanViet;
   GlossaryTerm? _glossaryTerm;
@@ -705,14 +720,9 @@ class _EntryFieldsState extends State<_EntryFields> {
       _hasGlossaryFile = GlossaryService(dir).hasGlossaryFor(widget.mode);
     }
     _keyController = TextEditingController(text: widget.initialKey)
-      ..addListener(_sync);
+      ..addListener(_onKeyChanged);
     if (widget.vietPhraseFormat) {
-      final initialMeanings = parseVietPhraseValue(widget.initialMeaning);
-      if (initialMeanings.isEmpty) {
-        _meaningRows.add(_newMeaningRow(const VietPhraseMeaning(text: '')));
-      } else {
-        _meaningRows.addAll(initialMeanings.map(_newMeaningRow));
-      }
+      _meaningRows.addAll(_buildMeaningRows(widget.initialMeaning));
     } else {
       _meaningController = TextEditingController(
         text: widget.lacVietFormat
@@ -720,25 +730,71 @@ class _EntryFieldsState extends State<_EntryFields> {
             : widget.initialMeaning,
       )..addListener(_sync);
     }
+    _meaningSourceKey = widget.initialKey.trim();
     widget.holder.refreshGlossary = () =>
         _checkGlossaryIfNeeded(_keyController.text.trim(), force: true);
     _sync();
+    _loadedMeaning = _encodedMeaning();
   }
+
+  /// Đổi Từ nguồn → nạp lại Nghĩa của key mới trước khi tính lại phần còn lại.
+  void _onKeyChanged() {
+    _reloadMeaningForKey();
+    _sync();
+  }
+
+  void _reloadMeaningForKey() {
+    final lookup = widget.meaningForKey;
+    if (lookup == null) return;
+    final key = _keyController.text.trim();
+    if (key == _meaningSourceKey) return;
+    // Người dùng đã tự sửa ô Nghĩa: giữ nguyên phần đang gõ dở.
+    if (_encodedMeaning() != _loadedMeaning) return;
+
+    _meaningSourceKey = key;
+    final raw = key.isEmpty ? '' : (lookup(key) ?? '');
+    _autofocusFirstMeaning = false;
+    if (widget.vietPhraseFormat) {
+      final old = List.of(_meaningRows);
+      _meaningRows
+        ..clear()
+        ..addAll(_buildMeaningRows(raw));
+      for (final row in old) {
+        row.dispose();
+      }
+    } else {
+      _meaningController!.value = TextEditingValue(
+        text: widget.lacVietFormat ? unescapeLacViet(raw) : raw,
+      );
+    }
+    _loadedMeaning = _encodedMeaning();
+  }
+
+  List<_VietPhraseMeaningRowData> _buildMeaningRows(String raw) {
+    final meanings = parseVietPhraseValue(raw);
+    if (meanings.isEmpty) {
+      return [_newMeaningRow(const VietPhraseMeaning(text: ''))];
+    }
+    return meanings.map(_newMeaningRow).toList();
+  }
+
+  String _encodedMeaning() => widget.vietPhraseFormat
+      ? encodeVietPhraseValue(
+          _meaningRows.map(
+            (row) => VietPhraseMeaning(
+              text: row.controller.text,
+              partOfSpeech: row.partOfSpeech,
+            ),
+          ),
+        )
+      : widget.lacVietFormat
+      ? escapeLacVietMeaning(_meaningController!.text)
+      : _meaningController!.text;
 
   void _sync() {
     widget.holder.keyText = _keyController.text;
-    final meaning = widget.vietPhraseFormat
-        ? encodeVietPhraseValue(
-            _meaningRows.map(
-              (row) => VietPhraseMeaning(
-                text: row.controller.text,
-                partOfSpeech: row.partOfSpeech,
-              ),
-            ),
-          )
-        : widget.lacVietFormat
-        ? escapeLacVietMeaning(_meaningController!.text)
-        : _meaningController!.text;
+    widget.holder.keyNotifier.value = _keyController.text;
+    final meaning = _encodedMeaning();
     _hasInvalidVietPhraseRows =
         widget.vietPhraseFormat &&
         _meaningRows.any((row) {
@@ -858,6 +914,7 @@ class _EntryFieldsState extends State<_EntryFields> {
           _VietPhraseMeaningEditor(
             rows: _meaningRows,
             hasInvalidRows: _hasInvalidVietPhraseRows,
+            autofocusFirst: _autofocusFirstMeaning,
             onAdd: _addMeaning,
             onRemove: _removeMeaning,
             onPartOfSpeechChanged: _changePartOfSpeech,
@@ -951,6 +1008,7 @@ class _VietPhraseMeaningEditor extends StatelessWidget {
   const _VietPhraseMeaningEditor({
     required this.rows,
     required this.hasInvalidRows,
+    required this.autofocusFirst,
     required this.onAdd,
     required this.onRemove,
     required this.onPartOfSpeechChanged,
@@ -958,6 +1016,7 @@ class _VietPhraseMeaningEditor extends StatelessWidget {
 
   final List<_VietPhraseMeaningRowData> rows;
   final bool hasInvalidRows;
+  final bool autofocusFirst;
   final VoidCallback onAdd;
   final ValueChanged<_VietPhraseMeaningRowData> onRemove;
   final void Function(
@@ -980,6 +1039,7 @@ class _VietPhraseMeaningEditor extends StatelessWidget {
             key: ObjectKey(rows[i]),
             index: i,
             row: rows[i],
+            autofocus: autofocusFirst && i == 0,
             canRemove: rows.length > 1,
             onRemove: () => onRemove(rows[i]),
             onPartOfSpeechChanged: (value) =>
@@ -1055,6 +1115,7 @@ class _MeaningRow extends StatefulWidget {
     super.key,
     required this.index,
     required this.row,
+    required this.autofocus,
     required this.canRemove,
     required this.onRemove,
     required this.onPartOfSpeechChanged,
@@ -1062,6 +1123,7 @@ class _MeaningRow extends StatefulWidget {
 
   final int index;
   final _VietPhraseMeaningRowData row;
+  final bool autofocus;
   final bool canRemove;
   final VoidCallback onRemove;
   final ValueChanged<VietPhrasePartOfSpeech?> onPartOfSpeechChanged;
@@ -1183,7 +1245,7 @@ class _MeaningRowState extends State<_MeaningRow> {
                     borderSide: BorderSide(color: tierColor, width: 2),
                   ),
                 ),
-                autofocus: number == 1,
+                autofocus: widget.autofocus,
               ),
             ),
             const SizedBox(width: 10),

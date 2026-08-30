@@ -1,17 +1,17 @@
 <#
 .SYNOPSIS
-    Build VietYaku Windows release.
+    Build VietYaku Windows + Android release.
 
 .DESCRIPTION
     - Update version in pubspec.yaml
-    - Build Windows release
+    - Build Windows release (ZIP) and/or Android release (APK)
     - Package output into build/release/
 
 .PARAMETER Version
     Version string (e.g. "1.0.0" or "v1.0.0").
 
 .PARAMETER Targets
-    Comma-separated build targets: "windows" (default).
+    Comma-separated build targets: "windows", "android" (default: both).
 
 .PARAMETER SkipVersionUpdate
     Skip updating version in pubspec.yaml.
@@ -21,7 +21,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$Version,
 
-    [string]$Targets = "windows",
+    [string]$Targets = "windows,android",
 
     [switch]$SkipVersionUpdate
 )
@@ -137,6 +137,31 @@ if ($TargetList -contains "windows") {
     Compress-Archive -Path "$WinBuildDir\*" -DestinationPath $ZipDest -Force
     $ZipSize = [math]::Round((Get-Item $ZipDest).Length / 1MB, 2)
     Write-Success "Windows ZIP: $ZipDest ($ZipSize MB)"
+}
+
+# --- Build Android ---
+
+if (($TargetList -contains "android") -or ($TargetList -contains "apk")) {
+    Write-Step "Building Android (release APK)"
+
+    & cmd /c "flutter build apk --release"
+    if ($LASTEXITCODE -ne 0) {
+        Write-Err "Flutter build apk failed!"
+        exit 1
+    }
+
+    $ApkSrc = Join-Path $ProjectRoot "build\app\outputs\flutter-apk\app-release.apk"
+    if (-not (Test-Path $ApkSrc)) {
+        Write-Err "APK output not found at $ApkSrc"
+        exit 1
+    }
+
+    # Ten phai ket thuc bang .apk: findAndroidApkAsset() trong app tim asset
+    # theo duoi file nay de mo trinh cai dat khi cap nhat trong app.
+    $ApkDest = Join-Path $ReleaseDir "VietYaku-android-v$SemVer.apk"
+    Copy-Item $ApkSrc $ApkDest -Force
+    $ApkSize = [math]::Round((Get-Item $ApkDest).Length / 1MB, 2)
+    Write-Success "Android APK: $ApkDest ($ApkSize MB)"
 }
 
 # --- Summary ---

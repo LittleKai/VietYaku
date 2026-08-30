@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/platform_features.dart';
 import '../../analysis/presentation/coverage_report_dialog.dart';
 import '../../dictionary/application/dictionaries_provider.dart';
+import '../../dictionary/presentation/language_pack_gate.dart';
 import '../../settings/settings_provider.dart';
 import '../application/translation_controller.dart';
 import '../domain/translation_engine.dart';
@@ -26,50 +28,122 @@ class _TranslateScreenState extends ConsumerState<TranslateScreen> {
   @override
   Widget build(BuildContext context) {
     final dicts = ref.watch(dictionariesProvider);
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < compactWidthBreakpoint;
+        return Column(
+          children: [
+            _MenuBar(compact: compact),
+            const Divider(height: 1, thickness: 1),
+            if (dicts.isLoading)
+              const LinearProgressIndicator(minHeight: 3)
+            else if (dicts.hasError)
+              MaterialBanner(
+                content: Text('Lỗi nạp từ điển: ${dicts.error}'),
+                actions: [
+                  TextButton(
+                    onPressed: () => ref.invalidate(dictionariesProvider),
+                    child: const Text('Thử lại'),
+                  ),
+                ],
+              ),
+            Expanded(
+              child: LanguagePackGate(
+                child: compact ? const _CompactPanes() : _WidePanes(ref: ref),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// Bố cục desktop: 2 cột kéo được, mỗi cột chia đôi theo chiều dọc.
+class _WidePanes extends StatelessWidget {
+  const _WidePanes({required this.ref});
+
+  final WidgetRef ref;
+
+  @override
+  Widget build(BuildContext context) {
     final columns = ref.watch(settingsProvider.select((s) => s.columnsRatio));
     final left = ref.watch(settingsProvider.select((s) => s.leftSplitRatio));
     final right = ref.watch(settingsProvider.select((s) => s.rightSplitRatio));
     final notifier = ref.read(settingsProvider.notifier);
 
-    final leftColumn = _DraggableSplit(
-      axis: Axis.vertical,
-      ratio: left,
-      onChangedEnd: (v) => notifier.setLayoutRatio('left', v),
-      first: const _SourceTabs(),
-      second: const LacVietPanel(),
+    return _DraggableSplit(
+      axis: Axis.horizontal,
+      ratio: columns,
+      onChangedEnd: (v) => notifier.setLayoutRatio('columns', v),
+      first: _DraggableSplit(
+        axis: Axis.vertical,
+        ratio: left,
+        onChangedEnd: (v) => notifier.setLayoutRatio('left', v),
+        first: const _SourceTabs(),
+        second: const LacVietPanel(),
+      ),
+      second: _DraggableSplit(
+        axis: Axis.vertical,
+        ratio: right,
+        onChangedEnd: (v) => notifier.setLayoutRatio('right', v),
+        first: const ResultPane(),
+        second: const VietPane(),
+      ),
     );
+  }
+}
 
-    final rightColumn = _DraggableSplit(
-      axis: Axis.vertical,
-      ratio: right,
-      onChangedEnd: (v) => notifier.setLayoutRatio('right', v),
-      first: const ResultPane(),
-      second: const VietPane(),
-    );
+/// Bố cục màn hẹp (điện thoại): 4 ô của bản desktop không thể đứng cạnh nhau
+/// nên trải phẳng thành tabs. Hán Việt được nâng lên hàng tab chính để không
+/// phải lồng hai TabBar chồng nhau.
+class _CompactPanes extends StatefulWidget {
+  const _CompactPanes();
 
+  @override
+  State<_CompactPanes> createState() => _CompactPanesState();
+}
+
+class _CompactPanesState extends State<_CompactPanes>
+    with SingleTickerProviderStateMixin {
+  static const _tabs = ['Nguồn', 'Hán Việt', 'VietPhrase', 'Nghĩa', 'Bản dịch'];
+
+  late final TabController _tabController = TabController(
+    length: _tabs.length,
+    vsync: this,
+  )..addListener(() {
+    if (!_tabController.indexIsChanging) setState(() {});
+  });
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Column(
       children: [
-        const _MenuBar(),
-        const Divider(height: 1, thickness: 1),
-        if (dicts.isLoading)
-          const LinearProgressIndicator(minHeight: 3)
-        else if (dicts.hasError)
-          MaterialBanner(
-            content: Text('Lỗi nạp từ điển: ${dicts.error}'),
-            actions: [
-              TextButton(
-                onPressed: () => ref.invalidate(dictionariesProvider),
-                child: const Text('Thử lại'),
-              ),
-            ],
-          ),
+        TabBar(
+          controller: _tabController,
+          isScrollable: true,
+          tabAlignment: TabAlignment.start,
+          tabs: [for (final label in _tabs) Tab(text: label)],
+        ),
+        // IndexedStack (không TabBarView): giữ state SourcePane — text đang gõ,
+        // vị trí cuộn, caret — y như _SourceTabs của bản desktop.
         Expanded(
-          child: _DraggableSplit(
-            axis: Axis.horizontal,
-            ratio: columns,
-            onChangedEnd: (v) => notifier.setLayoutRatio('columns', v),
-            first: leftColumn,
-            second: rightColumn,
+          child: IndexedStack(
+            index: _tabController.index,
+            children: const [
+              SourcePane(),
+              HanVietPane(),
+              ResultPane(),
+              LacVietPanel(),
+              VietPane(),
+            ],
           ),
         ),
       ],
@@ -172,7 +246,11 @@ class _DraggableSplitState extends State<_DraggableSplit> {
 
 /// Menu bar trên cùng: chọn ngôn ngữ Nhật/Trung + Dịch Lại + Dán & Dịch.
 class _MenuBar extends ConsumerWidget {
-  const _MenuBar();
+  const _MenuBar({required this.compact});
+
+  /// Màn hẹp: bỏ chip "Nhật → Việt" (đã nói lại điều SegmentedButton bên cạnh
+  /// vừa nói) để 3 nút thao tác lọt vào màn hình mà không phải cuộn.
+  final bool compact;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -246,25 +324,30 @@ class _MenuBar extends ConsumerWidget {
                     .read(translationControllerProvider.notifier)
                     .setMode(selection.first),
               ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: modeColor.withValues(alpha: isDark ? 0.2 : 0.1),
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(
-                    color: modeColor.withValues(alpha: isDark ? 0.5 : 0.3),
+              if (!compact) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: modeColor.withValues(alpha: isDark ? 0.2 : 0.1),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: modeColor.withValues(alpha: isDark ? 0.5 : 0.3),
+                    ),
+                  ),
+                  child: Text(
+                    isJapanese ? 'Nhật → Việt' : 'Trung → Việt',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: modeColor,
+                    ),
                   ),
                 ),
-                child: Text(
-                  isJapanese ? 'Nhật → Việt' : 'Trung → Việt',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: modeColor,
-                  ),
-                ),
-              ),
+              ],
               const SizedBox(width: 12),
               FilledButton.icon(
                 icon: const Icon(Icons.refresh_rounded, size: 16),

@@ -47,9 +47,11 @@ Future<void> main() async {
       await windowManager.focus();
     });
   } else {
-    // Mobile: từ điển không có ở đường dẫn dev tuyệt đối → seed từ assets
-    // sang app storage, rồi trỏ defaultDataDir vào đó trước khi build settings.
-    defaultDataDir = await AppPaths.seedBundledData();
+    // Mobile: đường dẫn dev tuyệt đối không tồn tại → trỏ defaultDataDir vào
+    // app storage TRƯỚC khi SettingsNotifier.build() đọc. Việc chép ~92MB
+    // assets ra đĩa KHÔNG làm ở đây (sẽ treo màn hình đen tới mức ANR) —
+    // languagePackProvider chép lười theo ngôn ngữ, có màn hình tiến độ.
+    defaultDataDir = await AppPaths.mobileDataRoot();
   }
 
   final prefs = await SharedPreferences.getInstance();

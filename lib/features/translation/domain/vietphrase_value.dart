@@ -211,6 +211,24 @@ String convertVietPhraseToLacVietFormat(String vpValue) {
   return meanings.first.alternatives.join('; ');
 }
 
+/// Chuyển value VietPhrase sang dạng hiển thị trong panel Nghĩa / popup tra nhanh:
+/// các cách dịch trong cùng tầng và giữa các tầng ngăn cách bởi `; `.
+/// VD: `kết thúc/giải quyết/hoàn thành` -> `kết thúc; giải quyết; hoàn thành`.
+/// `(n)/ký ức/hồi ức/(2)/(v)/nhớ lại` -> `(n) ký ức; hồi ức; (v) nhớ lại`.
+String formatVietPhraseForLookup(String value) {
+  final meanings = parseVietPhraseValue(value);
+  if (meanings.isEmpty) return value.replaceAll('/', '; ');
+  return meanings.map((meaning) {
+    final altText = meaning.alternatives.join('; ');
+    final text = altText.isNotEmpty ? altText : meaning.text;
+    if (meaning.partOfSpeech == VietPhrasePartOfSpeech.none) {
+      return text;
+    }
+    return '(${meaning.partOfSpeech.code}) $text';
+  }).join('; ');
+}
+
+
 /// Kiểu hiển thị VietPhrase đa nghĩa trong tab đa nghĩa.
 enum MultiMeaningDisplayMode {
   /// Phân cấp thị giác màu sắc & định dạng (Mặc định).

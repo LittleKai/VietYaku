@@ -7,7 +7,7 @@ Lý do phải chạy trên bản build: đường dẫn dữ liệu đổi giữ
 
 ## Trước khi test
 
-- [ ] `flutter analyze` sạch và `flutter test` pass (306 tests)
+- [ ] `flutter analyze` sạch và `flutter test` pass (347 tests)
 - [ ] Build: `flutter build windows --release` → chạy `build\windows\x64\runner\Release\vietyaku.exe` **độc lập** (mở từ Explorer, không qua IDE)
 - [ ] Test một lần trên máy/thư mục **chưa có `userdata/`** để bắt lỗi khởi động lần đầu (seed từ điển, tạo thư mục)
 
@@ -20,6 +20,17 @@ Lý do phải chạy trên bản build: đường dẫn dữ liệu đổi giữ
 - [ ] **Tra online:** bấm nút tra online ở ô Nghĩa → các nguồn đang bật trả kết quả; đóng dialog rồi tra lại cùng từ → lần này hiện offline ngay (đã lưu vào `OnlineDict_<mode>.txt`)
 - [ ] **EPUB:** mở tab EPUB → chọn một file `.epub` → xem trước → xuất DOCX → mở file ra kiểm tra có nội dung và ảnh nhúng thật
 - [ ] **Cập nhật:** Cài đặt → "Kiểm tra ngay" → trả về đúng phiên bản mới nhất trên GitHub Releases (hoặc báo đã mới nhất), không văng
+
+## Android (APK release)
+
+Chạy trên **APK release**, không phải `flutter run` — quyền `INTERNET` chỉ có sẵn ở manifest debug/profile, thiếu ở main là mọi thứ online chết mà debug không lộ ra.
+
+- [ ] **Gỡ app cũ rồi cài mới** → lần mở đầu hiện màn "Đang chuẩn bị bộ từ điển" có tiến độ, xong thì vào thẳng màn Dịch (không đen màn hình, không ANR). Mở lại lần hai phải nhanh hơn hẳn (đọc cache `.vydc`)
+- [ ] **Bố cục điện thoại:** thanh điều hướng nằm dưới đáy với 4 mục (Dịch · Tìm kiếm · Giao diện · Cài đặt — **không có EPUB**); màn Dịch có 5 tab phẳng Nguồn/Hán Việt/VietPhrase/Nghĩa/Bản dịch; không chỗ nào hiện sọc vàng-đen (overflow)
+- [ ] **Dịch + chạm:** dán đoạn Nhật → Dịch → tab VietPhrase ra đúng; **nhấn giữ** một token → menu có "Chèn vào Bản dịch" (bấm thử, chữ phải vào tab Bản dịch) và "Thêm vào UserDict"
+- [ ] **Online:** bấm nút Google Dịch → ra bản dịch cả đoạn; tra online một từ → có kết quả (nếu hai cái này im lặng thất bại, gần như chắc chắn manifest thiếu `INTERNET`)
+- [ ] **Đổi mode Trung:** lần đầu chuyển sang Tiếng Trung phải hiện lại màn chuẩn bị (seed `data/cn`), xong thì dịch được đoạn phồn thể
+- [ ] **TTS:** nút 🔊 đọc được; máy chưa cài giọng ja/zh thì nút mờ và tooltip chỉ đường **Cài đặt Android**, không phải đường dẫn Windows
 
 ## Sau khi test
 

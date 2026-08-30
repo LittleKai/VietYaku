@@ -3,16 +3,17 @@
 
 ## 1. Project Overview
 
-- **Type:** App đa nền tảng (Windows desktop + Android) — dịch Nhật/Trung→Việt kiểu VietPhrase + công cụ sửa từ điển JP, thay thế QuickTranslator_Jap (WinForms). Dịch chính offline; có thêm tính năng online tùy chọn: tra nghĩa Mazii / Google Dịch (Việt) / Jisho (Nhật→Anh) hoặc 有道词典 (Trung→Anh) / Weblio 日中 (Nhật→Trung) và tab Google Translate (endpoint gtx + fallback crawl translate.google.com/m). Android: chỉ dịch + TTS; ẩn Sửa từ điển/đồng bộ file (desktop-only).
+- **Type:** App đa nền tảng (Windows desktop + Android) — dịch Nhật/Trung→Việt kiểu VietPhrase + công cụ sửa từ điển JP, thay thế QuickTranslator_Jap (WinForms). Dịch chính offline; có thêm tính năng online tùy chọn: tra nghĩa Mazii / Google Dịch (Việt) / Jisho (Nhật→Anh) hoặc 有道词典 (Trung→Anh) / Weblio 日中 (Nhật→Trung) và tab Google Translate (endpoint gtx + fallback crawl translate.google.com/m).
+- **Phạm vi theo nền tảng** (`lib/core/platform_features.dart` — `PlatformFeatures`): Android có Dịch · Tìm kiếm · Giao diện · Cài đặt · tra online · đồng bộ từ điển chung · TTS; **ẩn** Chuyển đổi EPUB (cần hộp thoại lưu file desktop), Đồng bộ Glossary (thư mục AI_Translation_Bridge chỉ có trên máy Windows), Sửa từ điển (repair ghi file cạnh nguồn), Clipboard reader + hotkey (hook Win32).
 - **Tech Stack:** Flutter 3.44.2, Dart ^3.12, Material 3
 - **Package Manager:** pub (flutter pub)
 - **i18n:** None (UI tiếng Việt cố định)
 - **State Management:** Riverpod 2 — manual providers (Notifier/AsyncNotifier), KHÔNG codegen
 - **Styling:** Material 3, hệ thiết kế tập trung `lib/core/theme/app_theme.dart` (`AppTheme.light`/`.dark`, seed indigo `0xFF4F46E5`, font chrome Segoe UI, ~15 component theme cho dialog/ô nhập/dropdown/tab/nút/rail/card/tooltip/snackbar/slider/chip/menu). Hướng thị giác: sáng — rực — viền sắc, lớp nổi sáng hơn canvas, màu nền sáng tím nhạt thanh thoát (`0.025` indigo tint), nền tối đen/than trung tính thuần (`#121214`), trạng thái active luôn mang màu nhấn. Chọn được chế độ giao diện: Sáng, Tối, hoặc Tự động theo hệ thống (lưu `ui.themeMode` trong settings). Tự động nâng sáng màu Katakana ở chế độ Tối (Xanh lục tươi `#66BB6A`, Trắng `#FFFFFF`). Màu tô nổi + token Names qua `ThemeExtension AppSemanticColors` (sáng/tối riêng).
-- **Deployment:** Windows: `flutter build windows --release` → exe độc lập tại `build\windows\x64\runner\Release\vietyaku.exe`. Từ điển đi kèm dạng assets nên exe lớn thêm ~130MB.
-  - ⚠️ **Pipeline phát hành hiện CHỈ ra bản Windows.** Build APK đang bị tắt trong skill `build-and-release` (các khối `[DISABLED-ANDROID]` trong `SKILL.md` + `scripts/build.ps1`) — không có APK nào được đóng gói hay đăng lên GitHub Release/B2.
-  - Code Android **vẫn còn nguyên và chạy được** (`android/` + org `com.littlekai.vietyaku`; `flutter build apk --release` chạy tay vẫn ra APK): `AppPaths` có nhánh riêng cho Android/iOS, `settings_screen` ẩn mục desktop-only, `update_controller`/`findAndroidApkAsset` vẫn xử lý luồng mở APK. Chỉ là chưa có asset APK nào để các nhánh đó gặp.
-  - Bật lại Android: uncomment các khối `[DISABLED-ANDROID]` trong skill, rồi cập nhật lại dòng này.
+- **Deployment:**
+  - **Windows:** `flutter build windows --release` → exe độc lập tại `build\windows\x64\runner\Release\vietyaku.exe`. Từ điển đi kèm dạng assets nên exe lớn thêm ~155MB.
+  - **Android:** `flutter build apk --release` → APK. Ký bằng debug key mặc định; thả `android/key.properties` (đã gitignore, 4 khoá `storeFile`/`storePassword`/`keyAlias`/`keyPassword`) vào là `build.gradle.kts` tự dùng keystore thật, không phải sửa code. `minSdk` 24 · `targetSdk`/`compileSdk` 36 · AGP 9.0.1 · Gradle 9.1.0 · Kotlin 2.3.20 · JDK 17.
+  - Skill `build-and-release` build **cả hai** target (mặc định `-Targets "windows,android"`), APK ra `build/release/VietYaku-android-v<version>.apk` và chỉ lên GitHub Release (kênh cập nhật trong app); B2 vẫn chỉ nhận ZIP Windows cho link tải web.
 - **Phát hành (2 kênh song song, do skill `build-and-release` lo):** GitHub Release `LittleKai/VietYaku` phục vụ **cập nhật trong app**; Backblaze B2 (`vietyaku-app/version.json` + `vietyaku-app/releases/*.zip`, bucket `alpha-studio`) phục vụ **link tải trên web** tại `giaiphapsangtao.com/studio/vietyaku`. Cùng một file ZIP, B2 gắn thêm version vào tên object. Chi tiết ở mục "PHÁT HÀNH — HAI KÊNH SONG SONG" trong `CLAUDE.md`.
 
 Dữ liệu từ điển bundle trong dự án (commit git), mỗi ngôn ngữ một bộ tại `data/jp/` và `data/cn/` — đường dẫn hardcode (`defaultDataDir` trong settings_provider), không còn UI chọn file trong Cài đặt:
@@ -37,12 +38,12 @@ VietYaku/
 ├── tool/                           # build_simp2jp.dart (sinh assets, cần mạng), build_trad2simp.dart (sinh trad2simp.tsv từ data/cn/cedict_ts.u8, không cần mạng), export_jp.dart (CLI repair + verify), normalize_vietphrase_values.dart (dry-run/ghi chuẩn hóa value VietPhrase JP+CN, giữ BOM/CRLF), export_vocabflip_dicts.py (sinh JaViDict/ZhViDict.txt từ DB VocabFlip), build_sudachi_assets.dart (sinh data/jp/SudachiVariants+SudachiReadings từ SudachiDict raw, cần mạng), clean_single_kana.dart (lọc bỏ key là 1 ký tự Hiragana/Katakana trong JaViDict.txt)
 ├── lib/
 │   ├── main.dart                   # window_manager (1200×760, min 1000×640), SharedPreferences override, ProviderScope
-│   ├── app.dart                    # MaterialApp M3 + HomeShell (NavigationRail + IndexedStack 5 tab: Dịch, Tìm kiếm, Giao diện, Cài đặt, EPUB)
-│   ├── core/                       # cjk.dart, app_paths.dart, fnv_hash.dart, tts_service.dart, google_translate.dart (gtx + fallback crawl /m), theme/app_theme.dart (design system + AppSemanticColors)
+│   ├── app.dart                    # MaterialApp M3 + HomeShell responsive: ≥720dp → NavigationRail, <720dp → NavigationBar dưới đáy + PopScope (Back về tab Dịch). `homeDestinations()` lọc theo nền tảng (Android bỏ EPUB)
+│   ├── core/                       # cjk.dart, app_paths.dart (+ seed bộ ngôn ngữ từ assets trên mobile), concurrency.dart (runWithConcurrency), platform_features.dart (breakpoint 720dp + cờ tính năng theo nền tảng), fnv_hash.dart, tts_service.dart, google_translate.dart (gtx + fallback crawl /m), theme/app_theme.dart (design system + AppSemanticColors)
 │   ├── features/
 │   │   ├── analysis/               # domain (coverage_report — độ phủ + cụm chưa dịch + ứng viên tên riêng + cắt cụm lệch + cảnh báo ngoặc/số) · application (coverage_report_provider) · presentation (coverage_report_dialog)
 │   │   ├── clipboard/              # domain lọc CJK/debounce/hash/own-write · application bridge WM_CLIPBOARDUPDATE + Ctrl+Shift+V (Windows)
-│   │   ├── dictionary/             # domain (dict_type, phrase_dictionary, entry_impact) · data (dict_parser, binary_cache, dictionary_loader, dictionary_repository, user_dict_service) · application (dictionaries_provider)
+│   │   ├── dictionary/             # domain (dict_type, phrase_dictionary, entry_impact) · data (dict_parser, binary_cache, dictionary_loader, dictionary_repository, user_dict_service) · application (dictionaries_provider, language_pack_provider) · presentation (language_pack_gate — màn tiến độ chép từ điển lần đầu trên mobile)
 │   │   ├── dictionary_search/      # domain exact/prefix/wildcard/full-text + overlay winner · worker isolate sống lâu · Search Center UI
 │   │   ├── dictionary_sync/        # domain shared entry · typed HTTP API · merge overlay · Riverpod admin session/sync controller
 │   │   ├── epub_converter/         # đọc EPUB spine/OPF + xuất CSV/XLSX/MD/DOCX/TXT; UI chọn file/xem trước/lưu
@@ -51,7 +52,7 @@ VietYaku/
 │   │   ├── repair/                 # domain (jp_repair_pipeline, simp2jp_table, repair_report) · application (repair_controller) · presentation (repair_screen, repair_preview)
 │   │   └── settings/               # settings_provider, settings_screen (3 tab: Chung — thuật toán/popup/tra online/tốc độ đọc/sync + thư mục Glossary + màn đồng bộ Glossary ↔ VietPhrase (chỉ admin)/update; Tiếng Nhật — kana+Sudachi+giọng Nhật+repair; Tiếng Trung — phồn→giản+giọng Trung), appearance_screen (cỡ chữ+font/màu kana/hiển thị)
 │   └── shared/widgets/             # tts_button, entry_edit_dialog, app_dialog, feature_help_button (`?` + dialog giải thích), icon_context_menu, settings_layout
-└── test/                           # 318 tests (39 file; integration dữ liệu thật tự skip nếu thiếu path)
+└── test/                           # 351 tests (43 file; integration dữ liệu thật tự skip nếu thiếu path)
 ```
 
 ### Critical Files
@@ -146,7 +147,7 @@ Menu bar trên cùng (chọn Nhật/Trung + Dán & Dịch). Trái (flex 2): tabs
 |---------|--------|-----------|---------|
 | Đổi theme Sáng / Tối / Tự động | ✅ Done | app_theme.dart, settings_provider.dart, appearance_screen.dart | Lưu `ui.themeMode`, Dark mode tự tăng tương phản Katakana |
 | Chọn giọng đọc + tốc độ TTS | ✅ Done | tts_service, settings_provider, settings_screen, tts_button | Tách riêng Nhật/Trung, độc lập 0.1–1.0, "Nghe thử" |
-| Nền tảng Android | ✅ Done | android/*, main.dart, app_paths.dart | Từ điển seed từ assets, chỉ dịch + TTS |
+| Nền tảng Android | ✅ Done | android/*, main.dart, app_paths.dart, platform_features.dart, concurrency.dart, language_pack_provider/gate, app.dart, translate_screen, dictionary_search_screen | Manifest có `INTERNET` + `largeHeap` + network_security_config; seed bộ từ điển theo ĐÚNG ngôn ngữ đang dùng (có màn tiến độ), nạp tối đa 2 isolate cùng lúc; bố cục hẹp NavigationBar + 5 tab phẳng; menu cảm ứng "Chèn vào Bản dịch" |
 | JP repair pipeline + RepairScreen | ✅ Done | jp_repair_pipeline, simp2jp_table, repair_controller, repair_screen | VietPhrase: 13.317 space, 81.299 chữ converted |
 | UserDict/UserNames overlay | ✅ Done | user_dict_service, entry_edit_dialog, dictionary_repository | Sửa nghĩa áp dụng ngay, không đụng file gốc |
 | Đồng bộ VietPhrase/Lạc Việt chung | ✅ Done | dictionary_sync/*, dictionary_repository, entry_edit_dialog | Pull delta, admin sửa pending + atomic publish |
@@ -161,13 +162,13 @@ Menu bar trên cùng (chọn Nhật/Trung + Dán & Dịch). Trái (flex 2): tabs
 | Tab Hán Việt toàn văn | ✅ Done | han_viet_pane, translation_controller | Tính cùng lượt dịch |
 | Thuật toán dịch + Ưu tiên Name | ✅ Done | translation_engine, settings_provider, settings_screen | Trái→phải, Cụm dài, Cụm dài ≥4; Prioritize Names |
 | Quy tắc hậu xử lý regex + Luật Nhân + rule tester | ✅ Done | translation_rule, translation_rule_repository, translation_rule_tester_dialog | Regex atomic mode, Luật Nhân hơn 200 rule QT_Jap |
-| Chọn kiểu caret + tô nổi đỏ đồng bộ 3 pane | ✅ Done | token_selection, source_pane, token_text_view | Nháy chuột chọn cụm, highlight 2 chiều |
+| Chọn kiểu caret + tô nổi đỏ đồng bộ 3 pane | ✅ Done | token_selection, source_pane, token_text_view | Nháy chuột chọn cụm, highlight 2 chiều; active từ ở ô VietPhrase / Hán Việt thì ô Nguồn tự cuộn tới cụm khi cụm đang ngoài khung nhìn |
 | Nhận diện cụm từ điển phụ | ✅ Done | secondary_phrase, secondary_phrases_provider, token_text_view | Mode Nhật: kana unmatched vào Lạc Việt > Nhật Việt > Mazii |
-| Ô Nghĩa đa từ điển + popup tra nhanh | ✅ Done | lookup_controller, lacviet_panel, source_pane | VietPhrase → Lạc Việt → Mazii → Nhật Việt → … |
+| Ô Nghĩa đa từ điển + popup tra nhanh | ✅ Done | lookup_controller, lacviet_panel, source_pane, vietphrase_value | VietPhrase → Lạc Việt → Mazii → Nhật Việt → …; mục VietPhrase định dạng `/` thành `; ` phân tách nghĩa sạch; popup neo ở ô Nguồn, hiện cho từ được active ở bất kỳ ô nào (Nguồn / VietPhrase / Hán Việt) |
 | Từ điển Mazii offline (Nhật→Việt) | ✅ Done | dict_type, dictionary_repository, lookup_controller | 171.299 entry từ MaziiDict.db |
-| Sửa từ điển từ toolbar chuột phải | ✅ Done | source_pane, token_text_view, icon_context_menu, entry_edit_dialog | Biên nguồn vùng chọn, Hán Việt chip, auto-expand, tier colors, focus active highlights |
+| Sửa từ điển từ toolbar chuột phải | ✅ Done | source_pane, token_text_view, icon_context_menu, entry_edit_dialog | Biên nguồn vùng chọn, Hán Việt chip, auto-expand, tier colors, focus active highlights; đổi ô Từ nguồn thì Nghĩa + Hán Việt + trạng thái Glossary + preview tác động nạp lại theo key mới (giữ nguyên nếu người dùng đã tự sửa ô Nghĩa); nút Xóa từ hiện/ẩn theo key hiện tại |
 | Chuyển đổi EPUB | ✅ Done | epub_converter/*, app.dart | Nhúng ảnh thật vào DOCX, xuất CSV/XLSX/MD/DOCX/TXT |
-| Tự động kiểm tra cập nhật (GitHub Releases) | ✅ Done | features/update/*, app.dart, settings_provider | Windows ZIP update + bat script. Nhánh Android (`findAndroidApkAsset` → mở APK) còn nguyên trong code nhưng **dormant**: pipeline phát hành đang tắt build APK nên release không có asset `.apk` nào để khớp |
+| Tự động kiểm tra cập nhật (GitHub Releases) | ✅ Done | features/update/*, app.dart, settings_provider | Windows: tải ZIP + bat script. Android: `findAndroidApkAsset` khớp asset đuôi `.apk`, tải về temp rồi `OpenFilex.open` mở trình cài đặt (`REQUEST_INSTALL_PACKAGES`, FileProvider của open_filex) |
 | Phát hành lên B2 cho trang tải web | ✅ Done | .claude/skills/build-and-release/scripts/upload-b2.ps1, release.ps1 | Đẩy ZIP + `version.json` lên `vietyaku-app/` để `/studio/vietyaku` tải về |
 | Đẩy từ sang Global Glossary | ✅ Done | features/glossary/*, settings_provider, entry_edit_dialog | Ghi `Global Glossary.json` JP/CN của AI_Translation_Bridge |
 | Đồng bộ hàng loạt Glossary ↔ VietPhrase | ✅ Done | features/glossary/*, dictionary_sync_controller | 2 chiều, phân trang, lọc trùng/không trùng |
@@ -176,7 +177,9 @@ Menu bar trên cùng (chọn Nhật/Trung + Dán & Dịch). Trái (flex 2): tabs
 | Preview tác động trước khi sửa/publish | ✅ Done | dictionary/domain/entry_impact, entry_edit_dialog | `base ‖ hiện tại ‖ mới`, số lần xuất hiện |
 | Search Center / tra ngược | ✅ Done | features/dictionary_search/*, app.dart | Exact/prefix/wildcard/full-text, overlay winner |
 
-**Verify end-to-end:** `dart run tool/normalize_vietphrase_values.dart` → JP `0/187.419`, CN `0/690.006` entry cần chuẩn hóa. `dart run tool/export_jp.dart` → VietPhrase_JP.txt (187.419 entries) + LacViet_JP.txt (103.632) cạnh file gốc; hết key `覚 悟`/`军`, value nguyên vẹn từng byte; dịch Nhật match dài, dịch Trung có fallback phiên âm. `flutter test` 312 pass + `flutter analyze --no-pub` sạch; `flutter build windows --release --no-pub` thành công.
+**Verify end-to-end:** `dart run tool/normalize_vietphrase_values.dart` → JP `0/187.419`, CN `0/690.006` entry cần chuẩn hóa. `dart run tool/export_jp.dart` → VietPhrase_JP.txt (187.419 entries) + LacViet_JP.txt (103.632) cạnh file gốc; hết key `覚 悟`/`军`, value nguyên vẹn từng byte; dịch Nhật match dài, dịch Trung có fallback phiên âm. `flutter test` 351 pass + `flutter analyze --no-pub` sạch; `flutter build windows --release --no-pub` thành công.
+
+**Verify Android (emulator `Medium_Phone_API_36.1`, API 36):** `flutter build apk --debug` → cài chạy được; lần đầu seed `data/jp` (13 file, 92MB) rồi nạp 14 dict trong ~18s, lần sau đọc `.vydc` — không OOM, không ANR; dán & dịch đoạn Nhật ra đúng tầng nghĩa; nhấn giữ token hiện menu "Chèn vào Bản dịch / Thêm vào UserDict / Thêm vào Names / Tra online"; tab Google Dịch trả kết quả online (xác nhận quyền `INTERNET` trong bản không-debug bằng `aapt2 dump permissions`).
 
 ---
 
@@ -187,7 +190,7 @@ Menu bar trên cùng (chọn Nhật/Trung + Dán & Dịch). Trái (flex 2): tabs
 
 ### 🟡 Medium Priority
 - [ ] Chuột phải token (chèn nghĩa không active + menu edit theo quyền) chưa có widget test (hit-test TextSpan với kSecondaryButton phức tạp) — verify tay.
-- [ ] Từ điển bundle dạng assets (`data/jp`, `data/cn`) áp cho MỌI nền tảng → APK Android + build Windows đều +~130MB; mobile copy sang app storage lần đầu tốn thêm ~130MB đĩa. pubspec không cho khai báo assets theo nền tảng nên chấp nhận (đổi lại Windows portable hơn). Nếu cần giảm: seed data cho Android bằng cơ chế riêng (asset pack / tải server).
+- [ ] Từ điển bundle dạng assets (`data/jp`, `data/cn`) áp cho MỌI nền tảng → APK Android + build Windows đều +~155MB (pubspec không cho khai báo assets theo nền tảng). Trên Android đã giảm nửa phần ghi đĩa bằng cách chỉ seed bộ ngôn ngữ đang dùng (`AppPaths.seedLanguagePack`): mode Nhật ~92MB text + cache `.vydc`, mode Trung ~63MB. Muốn giảm tiếp thì phải chuyển sang asset pack / tải từ server.
 - [x] Đã tạo thành công GitHub Release `v1.0.8` (upload `VietYaku-windows-x64.zip`). Luồng check update API (`GET .../releases/latest`) hiện đã trả về phiên bản mới nhất.
 
 ### 🟢 Low Priority / Nice to Have (Backlog v2 — KHÔNG làm v1)

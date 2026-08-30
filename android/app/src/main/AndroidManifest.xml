@@ -1,9 +1,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- BAT BUOC cho ban release: tra online (Mazii/Jisho/Weblio/Youdao),
+         Google Dich, kiem tra cap nhat, dong bo tu dien chung. Manifest
+         debug/profile co san INTERNET nen thieu dong nay chi vo o ban release. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <application
         android:label="VietYaku"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:largeHeap="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"

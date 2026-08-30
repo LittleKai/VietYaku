@@ -218,7 +218,8 @@ class AppSettings {
   final double ttsSpeechRateJa;
   final double ttsSpeechRateZh;
 
-  /// Các từ điển hiện trong popup khi active từ ở ô Nguồn (tối đa 1) theo từng ngôn ngữ.
+  /// Các từ điển hiện trong popup ở ô Nguồn khi active một từ ở bất kỳ ô nào
+  /// (Nguồn / VietPhrase / Hán Việt, tối đa 1) theo từng ngôn ngữ.
   final List<LookupDictionaryType> popupDictionaryTypesJa;
   final List<LookupDictionaryType> popupDictionaryTypesZh;
 
