@@ -329,11 +329,16 @@ if ($SkipB2) {
     Write-Step "Uploading to Backblaze B2"
 
     $WinZip = $Artifacts | Where-Object { $_.Name -like "*windows*.zip" } | Select-Object -First 1
+    $AndroidApk = $Artifacts | Where-Object { $_.Name -like "*android*.apk" } | Select-Object -First 1
     if (-not $WinZip) {
         Write-Err "No Windows ZIP found in build/release/ - skipping B2 upload."
     } else {
         $UploadScript = Join-Path $PSScriptRoot "upload-b2.ps1"
-        & $UploadScript -Version $SemVer -ZipPath $WinZip.FullName -Title $Title -Notes $Notes -ReleaseUrl $HtmlUrl
+        $UploadArgs = @("-Version", $SemVer, "-ZipPath", $WinZip.FullName, "-Title", $Title, "-Notes", $Notes, "-ReleaseUrl", $HtmlUrl)
+        if ($AndroidApk) {
+            $UploadArgs += @("-ApkPath", $AndroidApk.FullName)
+        }
+        & $UploadScript @UploadArgs
         if ($LASTEXITCODE -eq 0) {
             $B2Ok = $true
         } else {
