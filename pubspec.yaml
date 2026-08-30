@@ -2,7 +2,7 @@
 description: "VietYaku Ă¢â‚¬â€ Japanese/Chinese to Vietnamese offline translator with dictionary repair tools."
 publish_to: 'none'
 
-version: 1.1.1+13
+version: 1.2.0+14
 
 environment:
   sdk: ^3.12.2
