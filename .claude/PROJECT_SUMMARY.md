@@ -191,7 +191,7 @@ Menu bar trên cùng (chọn Nhật/Trung + Dán & Dịch). Trái (flex 2): tabs
 ### 🟡 Medium Priority
 - [ ] Chuột phải token (chèn nghĩa không active + menu edit theo quyền) chưa có widget test (hit-test TextSpan với kSecondaryButton phức tạp) — verify tay.
 - [ ] Từ điển bundle dạng assets (`data/jp`, `data/cn`) áp cho MỌI nền tảng → APK Android + build Windows đều +~155MB (pubspec không cho khai báo assets theo nền tảng). Trên Android đã giảm nửa phần ghi đĩa bằng cách chỉ seed bộ ngôn ngữ đang dùng (`AppPaths.seedLanguagePack`): mode Nhật ~92MB text + cache `.vydc`, mode Trung ~63MB. Muốn giảm tiếp thì phải chuyển sang asset pack / tải từ server.
-- [x] Đã tạo thành công GitHub Release `v1.0.8` (upload `VietYaku-windows-x64.zip`). Luồng check update API (`GET .../releases/latest`) hiện đã trả về phiên bản mới nhất.
+- [x] Đã tạo thành công GitHub Release `v1.2.0` (upload `VietYaku-windows-x64.zip` + `VietYaku-android-v1.2.0.apk`). Luồng check update API (`GET .../releases/latest`) và B2 (`version.json`) hiện đã trả về phiên bản mới nhất.
 
 ### 🟢 Low Priority / Nice to Have (Backlog v2 — KHÔNG làm v1)
 - [ ] EPUB nhúng ảnh thật vào Markdown (`![](media/…)` + xuất kèm thư mục media): DOCX đã nhúng thật; Markdown/CSV/XLSX/TXT hiện vẫn `(img)`.
