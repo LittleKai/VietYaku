@@ -11,6 +11,7 @@ import '../../translation/domain/translation_rule.dart';
 import '../domain/dict_type.dart';
 import '../domain/phrase_dictionary.dart';
 import 'dictionary_loader.dart';
+import 'japanese_variant_loader.dart';
 
 class LoadedDictionaries {
   final PhraseDictionary userDict;
@@ -170,6 +171,13 @@ class DictionaryRepository {
       return loadPath(type, source);
     }
 
+    // Dựng index biến thể mất vài giây; chạy song song với các dict để không
+    // cộng thẳng vào thời gian mở app.
+    final variantIndexFuture =
+        mode == TranslationMode.japanese && useSudachiVariants
+        ? loadJapaneseVariantIndex(sudachiPath('SudachiVariantGroups.txt'))
+        : null;
+
     // Mobile: 19 isolate cùng lúc = 19 bộ (bytes nguồn + map đã parse) nằm
     // trong RAM một lúc → vượt heap Android. Chạy tối đa 2; desktop giữ nguyên
     // song song hết. Thứ tự kết quả không đổi nên các chỉ số bên dưới vẫn đúng.
@@ -197,6 +205,25 @@ class DictionaryRepository {
       () => loadPath(DictType.onlineDict, onlineDictPath(mode)),
     ], limit: Platform.isAndroid || Platform.isIOS ? 2 : 0);
 
+    final hasDynamicOverlays = [
+      results[0].dictionary,
+      results[12].dictionary,
+      results[13].dictionary,
+      results[14].dictionary,
+    ].any((dictionary) => !dictionary.isEmpty);
+    final variantIndex = await variantIndexFuture;
+    final dynamicVariantIndex = hasDynamicOverlays ? variantIndex : null;
+
+    PhraseDictionary expandDynamic(PhraseDictionary dictionary) {
+      if (dynamicVariantIndex == null || dynamicVariantIndex.isEmpty) {
+        return dictionary;
+      }
+      return PhraseDictionary(
+        dictionary.type,
+        dynamicVariantIndex.expandEntries(dictionary.entries),
+      );
+    }
+
     final personRuleFile = File(
       p.join(p.dirname(dictPaths[DictType.vietPhrase]!), 'LuatNhan.txt'),
     );
@@ -205,8 +232,9 @@ class DictionaryRepository {
         : '';
     final personRules = parsePersonRules(personRuleSource);
 
+    final userDict = expandDynamic(results[0].dictionary);
     var names = results[1].dictionary;
-    final userNames = results[12].dictionary;
+    final userNames = expandDynamic(results[12].dictionary);
     if (!userNames.isEmpty) {
       names = PhraseDictionary(DictType.names, {
         ...names.entries,
@@ -216,7 +244,7 @@ class DictionaryRepository {
 
     var vietPhrase = results[2].dictionary;
     final sudachiVariants = results[15].dictionary;
-    final sharedVietPhrase = results[13].dictionary;
+    final sharedVietPhrase = expandDynamic(results[13].dictionary);
     if (!sudachiVariants.isEmpty || !sharedVietPhrase.isEmpty) {
       // Biến thể Sudachi merge DƯỚI VietPhrase (key trùng thì VietPhrase
       // thắng), Shared đè trên cùng.
@@ -228,7 +256,7 @@ class DictionaryRepository {
     }
 
     var lacViet = results[3].dictionary;
-    final sharedLacViet = results[14].dictionary;
+    final sharedLacViet = expandDynamic(results[14].dictionary);
     if (!sharedLacViet.isEmpty) {
       lacViet = PhraseDictionary(DictType.lacViet, {
         ...lacViet.entries,
@@ -237,7 +265,7 @@ class DictionaryRepository {
     }
 
     return LoadedDictionaries(
-      userDict: results[0].dictionary,
+      userDict: userDict,
       names: names,
       vietPhrase: vietPhrase,
       lacViet: lacViet,
@@ -258,13 +286,13 @@ class DictionaryRepository {
           id: 'userDict',
           label: 'UserDict',
           type: DictType.userDict,
-          entries: results[0].dictionary.entries,
+          entries: userDict.entries,
         ),
         DictionarySearchLayer(
           id: 'userNames',
           label: 'UserNames (overlay)',
           type: DictType.names,
-          entries: results[12].dictionary.entries,
+          entries: userNames.entries,
         ),
         DictionarySearchLayer(
           id: 'names',
@@ -276,7 +304,7 @@ class DictionaryRepository {
           id: 'sharedVietPhrase',
           label: 'VietPhrase chung',
           type: DictType.vietPhrase,
-          entries: results[13].dictionary.entries,
+          entries: sharedVietPhrase.entries,
         ),
         DictionarySearchLayer(
           id: 'vietPhrase',
@@ -294,7 +322,7 @@ class DictionaryRepository {
           id: 'sharedLacViet',
           label: 'Lạc Việt chung',
           type: DictType.lacViet,
-          entries: results[14].dictionary.entries,
+          entries: sharedLacViet.entries,
         ),
         DictionarySearchLayer(
           id: 'lacViet',

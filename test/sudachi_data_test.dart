@@ -44,4 +44,29 @@ void main() {
     expect(entries.containsKey('し'), isFalse);
     expect(entries.containsKey('く'), isFalse);
   });
+
+  test('SudachiVariantGroups.txt: mỗi nhóm có ít nhất 2 surface khác nhau', () {
+    final file = File('data/jp/SudachiVariantGroups.txt');
+    if (!file.existsSync()) {
+      markTestSkipped('Thiếu data/jp/SudachiVariantGroups.txt');
+      return;
+    }
+
+    var text = file.readAsStringSync();
+    if (text.isNotEmpty && text.codeUnitAt(0) == 0xFEFF) {
+      text = text.substring(1);
+    }
+    var count = 0;
+    for (final rawLine in text.split('\n')) {
+      final line = rawLine.endsWith('\r')
+          ? rawLine.substring(0, rawLine.length - 1)
+          : rawLine;
+      if (line.isEmpty) continue;
+      final surfaces = line.split('\t');
+      expect(surfaces, isNot(contains('')), reason: line);
+      expect(surfaces.toSet().length, greaterThanOrEqualTo(2), reason: line);
+      count++;
+    }
+    expect(count, greaterThan(0));
+  });
 }

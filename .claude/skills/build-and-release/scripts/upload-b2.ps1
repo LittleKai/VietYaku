@@ -38,8 +38,6 @@ param(
 
     [string]$ZipPath = "",
 
-    [string]$ApkPath = "",
-
     [string]$Title = "",
 
     [string]$Notes = "",
@@ -236,56 +234,6 @@ try {
 $ZipUrl = "$CdnBase/$ZipKey"
 Write-Success "ZIP -> $ZipUrl"
 
-# --- Upload Android APK (if available) ---
-
-$Assets = @(
-    [ordered]@{
-        name                 = $ZipName
-        browser_download_url = $ZipUrl
-        size                 = $ZipItem.Length
-        content_type         = "application/zip"
-    }
-)
-
-if (-not $ApkPath) {
-    $PotentialApk = Join-Path $ProjectRoot "build\release\VietYaku-android-v$SemVer.apk"
-    if (Test-Path $PotentialApk -PathType Leaf) {
-        $ApkPath = $PotentialApk
-    }
-}
-
-$ApkUrl = $null
-if ($ApkPath -and (Test-Path $ApkPath -PathType Leaf)) {
-    $ApkItem   = Get-Item $ApkPath
-    $ApkName   = "VietYaku-android-v$SemVer.apk"
-    $ApkKey    = "vietyaku-app/releases/$ApkName"
-    $ApkSizeMb = [math]::Round($ApkItem.Length / 1MB, 2)
-
-    Write-Step "Uploading $ApkName ($ApkSizeMb MB) to B2"
-
-    if ($ApkItem.Length -gt 200MB) {
-        Write-Err "APK is larger than 200MB - b2_upload_file single-part upload is not suitable. Use the B2 large-file API."
-        exit 1
-    }
-
-    try {
-        Invoke-B2Upload -Key $ApkKey -FilePath $ApkItem.FullName -ContentType "application/vnd.android.package-archive" | Out-Null
-    } catch {
-        Write-Err "APK upload failed: $($_.Exception.Message)"
-        exit 1
-    }
-
-    $ApkUrl = "$CdnBase/$ApkKey"
-    Write-Success "APK -> $ApkUrl"
-
-    $Assets += [ordered]@{
-        name                 = $ApkName
-        browser_download_url = $ApkUrl
-        size                 = $ApkItem.Length
-        content_type         = "application/vnd.android.package-archive"
-    }
-}
-
 # --- Upload version.json ---
 
 Write-Step "Uploading version.json"
@@ -297,7 +245,14 @@ $Manifest = [ordered]@{
     body         = $Notes
     html_url     = $ReleaseUrl
     published_at = $PublishedAt
-    assets       = $Assets
+    assets       = @(
+        [ordered]@{
+            name                 = $ZipName
+            browser_download_url = $ZipUrl
+            size                 = $ZipItem.Length
+            content_type         = "application/zip"
+        }
+    )
 }
 
 $ManifestJson  = $Manifest | ConvertTo-Json -Depth 5
@@ -321,9 +276,6 @@ Write-Host " B2 upload completed!" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Green
 Write-Host ""
 Write-Host "Download (web) : $ZipUrl" -ForegroundColor Yellow
-if ($ApkUrl) {
-    Write-Host "Download (APK) : $ApkUrl" -ForegroundColor Yellow
-}
 Write-Host "Manifest       : $ManifestUrl" -ForegroundColor Yellow
 Write-Host "Studio page    : https://giaiphapsangtao.com/studio/vietyaku"
 Write-Host ""

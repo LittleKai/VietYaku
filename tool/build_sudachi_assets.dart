@@ -1,4 +1,4 @@
-// Sinh data/jp/SudachiVariants.txt + data/jp/SudachiReadings.txt từ
+// Sinh SudachiVariants.txt + SudachiVariantGroups.txt + SudachiReadings.txt từ
 // SudachiDict raw lexicon (docs/NGHIEN_CUU_SUDACHI.md §2.6). Chạy lúc dev,
 // CẦN MẠNG lần đầu (tải zip về build/sudachi_raw, các lần sau dùng lại):
 //
@@ -15,8 +15,11 @@
 // - SudachiReadings.txt: `từ=katakana` (trường 11, tối đa 3 cách đọc, nối
 //   `/`) cho các key có trong VietPhrase/Names/LacViet chứa ít nhất 1 chữ
 //   Hán (key thuần kana tự đọc được, bỏ cho nhẹ file).
+// - SudachiVariantGroups.txt: mỗi dòng TSV là một nhóm surface có cùng dạng
+//   chuẩn, cách đọc, từ loại và hình thái. App dùng nhóm này để sinh alias cho
+//   entry User/Shared được thêm sau khi build.
 //
-// Cả hai file ghi UTF-8 BOM CRLF, sort theo key để diff ổn định.
+// Cả ba file ghi UTF-8 BOM CRLF, sort theo key để diff ổn định.
 import 'dart:convert';
 import 'dart:io';
 
@@ -127,6 +130,7 @@ Future<void> main(List<String> args) async {
   // 3. Quét lexicon: biến thể (0 ≠ 12) + cách đọc (11).
   final variants = <String, String>{}; // biến_thể → value VietPhrase
   final readings = <String, List<String>>{}; // từ → các cách đọc katakana
+  final variantGroups = <String, Set<String>>{};
   var rows = 0;
   for (final csv in csvFiles) {
     final lines = const Utf8Codec(
@@ -142,6 +146,19 @@ Future<void> main(List<String> args) async {
       final reading = fields[11];
       final normalized = fields[12];
       if (surface.isEmpty) continue;
+
+      if (surface.length >= 2 &&
+          reading.isNotEmpty &&
+          reading != '*' &&
+          normalized.isNotEmpty &&
+          normalized != '*') {
+        final signature = [
+          normalized,
+          reading,
+          ...fields.sublist(5, 11),
+        ].join('\u0001');
+        variantGroups.putIfAbsent(signature, () => <String>{}).add(surface);
+      }
 
       if (normalized.isNotEmpty &&
           normalized != '*' &&
@@ -201,6 +218,20 @@ Future<void> main(List<String> args) async {
   }
 
   writeDict('SudachiVariants.txt', variants);
+  final groupLines = <String>{};
+  for (final surfaces in variantGroups.values) {
+    if (surfaces.length < 2 || !surfaces.any(hasHan)) continue;
+    final sorted = surfaces.toList()..sort();
+    groupLines.add(sorted.join('\t'));
+  }
+  final sortedGroupLines = groupLines.toList()..sort();
+  File(
+    '$dataDir/SudachiVariantGroups.txt',
+  ).writeAsStringSync('﻿${sortedGroupLines.join('\r\n')}\r\n');
+  stdout.writeln(
+    'Ghi $dataDir/SudachiVariantGroups.txt: '
+    '${sortedGroupLines.length} nhóm.',
+  );
   writeDict('SudachiReadings.txt', {
     for (final e in readings.entries) e.key: e.value.join('/'),
   });

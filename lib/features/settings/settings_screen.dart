@@ -22,6 +22,7 @@ import '../translation/domain/translation_rule.dart';
 import '../translation/presentation/translation_rule_tester_dialog.dart';
 import '../update/application/update_controller.dart';
 import '../update/presentation/update_dialog.dart';
+import 'presentation/donate_dialog.dart';
 import 'settings_provider.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -188,6 +189,29 @@ class SettingsScreen extends ConsumerWidget {
               title: 'Cập nhật ứng dụng',
               description: 'Kiểm tra và tải bản mới từ GitHub Releases.',
               children: [_UpdateSettings()],
+            ),
+            SettingsSection(
+              icon: Icons.favorite_outline,
+              accentColor: const Color(0xFFE91E63),
+              title: 'Ủng hộ nhà phát triển',
+              description:
+                  'Nếu bạn thấy VietYaku hữu ích, hãy ủng hộ tác giả một ly cà phê để tiếp thêm động lực phát triển nhé!',
+              children: [
+                SettingsControlRow(
+                  title: 'Quét mã QR ủng hộ',
+                  description:
+                      'Mở mã VietQR (Vietcombank) để quét trên app ngân hàng / ví điện tử. Hỗ trợ sao chép STK và tải ảnh QR.',
+                  controlWidth: 210,
+                  control: Align(
+                    alignment: Alignment.centerRight,
+                    child: FilledButton.tonalIcon(
+                      icon: const Icon(Icons.qr_code_2_rounded),
+                      label: const Text('Mở mã QR'),
+                      onPressed: () => showDonateDialog(context),
+                    ),
+                  ),
+                ),
+              ],
             ),
             const SettingsSection(
               icon: Icons.info_outline,

@@ -75,3 +75,6 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Hybrid Architect/Builder snapshots
+.hybrid-ai/archive/
