@@ -42,10 +42,25 @@ class MaziiApi {
                 orElse: () => results.first,
               )
               as Map;
+      // `/api/search` bỏ qua tham số `dict`: hỏi `cnvi` vẫn trả mục của từ điển
+      // Nhật (phonetic là kana, pinyin rỗng). Nhận bừa thì mode Trung lưu vào
+      // OnlineDict toàn nghĩa của một từ tiếng Nhật khác hẳn.
+      if (dict != 'javi' && _hasKanaReading(item)) return null;
       return _format(item);
     } catch (_) {
       return null;
     }
+  }
+
+  /// Cách đọc của mục là kana → mục này đến từ từ điển Nhật.
+  static bool _hasKanaReading(Map item) {
+    final phonetic = item['phonetic'];
+    if (phonetic is! String || phonetic.isEmpty) return false;
+    return phonetic.runes.any(
+      (r) =>
+          (r >= 0x3040 && r <= 0x309F) || // hiragana
+          (r >= 0x30A0 && r <= 0x30FF), // katakana
+    );
   }
 
   static String? _format(Map item) {

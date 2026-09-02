@@ -7,10 +7,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../features/translation/domain/translation_engine.dart';
 import '../translation/domain/lookup_dictionary_type.dart';
+import '../translation/domain/meaning_panel_layout.dart';
 import '../translation/domain/online_lookup_source.dart';
 import '../translation/domain/translation_rule.dart';
 import '../translation/domain/vietphrase_value.dart';
 import '../dictionary/domain/dict_type.dart';
+import '../dictionary_sync/domain/sync_reminder.dart';
 import '../repair/domain/jp_repair_pipeline.dart';
 
 /// Bộ từ điển bundle trong dự án (data/jp, data/cn), đổi được trong Cài đặt.
@@ -62,6 +64,19 @@ const modeDirNames = <TranslationMode, String>{
   TranslationMode.japanese: 'jp',
   TranslationMode.chinese: 'cn',
 };
+
+/// Thư mục con của bộ dict chứa từ điển do app sinh ra khi tra (AI/online).
+///
+/// Chỉ phiên admin mới ghi vào đây: nằm trong `data/<lang>` nên được đóng gói
+/// theo bản phát hành, tách khỏi từ điển nguồn nhờ thư mục con riêng. Người
+/// dùng thường vẫn ghi vào `userdata/dictionaries` — app nạp cả hai và mục cá
+/// nhân đè lên mục dùng chung.
+///
+/// An toàn khi cập nhật app: self-update Windows dùng `xcopy /E /Y` (ghi đè,
+/// không xoá file thừa) và `seedLanguagePack` trên mobile cũng chép đè chứ
+/// không dọn thư mục, nên thư mục con này sống sót qua các bản cập nhật.
+String generatedDictDir(TranslationMode mode) =>
+    p.join(defaultDataDir, modeDirNames[mode]!, 'generated');
 
 const dictFileNames = <DictType, String>{
   DictType.vietPhrase: 'VietPhrase.txt',
@@ -223,6 +238,10 @@ class AppSettings {
   final List<LookupDictionaryType> popupDictionaryTypesJa;
   final List<LookupDictionaryType> popupDictionaryTypesZh;
 
+  /// Loại từ điển nào hiện trong ô Nghĩa và theo thứ tự nào, riêng từng ngôn ngữ.
+  final MeaningPanelLayout meaningPanelJa;
+  final MeaningPanelLayout meaningPanelZh;
+
   /// Các nguồn chạy khi bấm "Tra online" (rỗng = tắt hẳn tra online).
   final List<OnlineLookupSource> onlineLookupSources;
 
@@ -231,6 +250,10 @@ class AppSettings {
 
   /// Tự động đồng bộ (kéo) từ điển chung từ server lúc khởi động. Mặc định tắt.
   final bool autoSyncDictionary;
+
+  /// Chu kỳ (ngày) nhắc cập nhật từ điển chung khi mở app. 0 = tắt nhắc,
+  /// nhỏ nhất là [SyncReminder.minIntervalDays] (2 tuần).
+  final int dictionarySyncReminderDays;
 
   /// Windows: nghe clipboard CJK và đăng ký Ctrl+Shift+V toàn hệ thống.
   final bool clipboardReaderEnabled;
@@ -245,7 +268,7 @@ class AppSettings {
   /// Hiển thị thông báo Toast/SnackBar khi tự động cập nhật Glossary.
   final bool notifyOnGlossaryAutoUpdate;
 
-  const AppSettings({
+  AppSettings({
     required this.dictPaths,
     required this.defaultMode,
     this.translationAlgorithm = TranslationAlgorithm.leftToRight,
@@ -278,14 +301,22 @@ class AppSettings {
     this.ttsSpeechRateZh = 0.5,
     this.popupDictionaryTypesJa = const [],
     this.popupDictionaryTypesZh = const [LookupDictionaryType.lacViet],
+    MeaningPanelLayout? meaningPanelJa,
+    MeaningPanelLayout? meaningPanelZh,
     this.onlineLookupSources = OnlineLookupSource.values,
     this.autoCheckUpdates = true,
     this.autoSyncDictionary = false,
+    this.dictionarySyncReminderDays = SyncReminder.defaultIntervalDays,
     this.clipboardReaderEnabled = false,
     this.glossaryDir = defaultGlossaryDir,
     this.autoUpdateGlossaryOnSave = true,
     this.notifyOnGlossaryAutoUpdate = true,
-  });
+  }) : meaningPanelJa =
+           meaningPanelJa ??
+           MeaningPanelLayout.defaultsFor(TranslationMode.japanese),
+       meaningPanelZh =
+           meaningPanelZh ??
+           MeaningPanelLayout.defaultsFor(TranslationMode.chinese);
 
   /// Voice đã chọn cho [mode] ('' = tự động).
   String ttsVoiceFor(TranslationMode mode) =>
@@ -300,6 +331,10 @@ class AppSettings {
       mode == TranslationMode.japanese
       ? popupDictionaryTypesJa
       : popupDictionaryTypesZh;
+
+  /// Bố cục ô Nghĩa (loại nào hiện + thứ tự) cho [mode].
+  MeaningPanelLayout meaningPanelLayoutFor(TranslationMode mode) =>
+      mode == TranslationMode.japanese ? meaningPanelJa : meaningPanelZh;
 
   double get ttsSpeechRate => ttsSpeechRateJa;
   List<LookupDictionaryType> get popupDictionaryTypes => popupDictionaryTypesJa;
@@ -345,9 +380,12 @@ class AppSettings {
     double? ttsSpeechRateZh,
     List<LookupDictionaryType>? popupDictionaryTypesJa,
     List<LookupDictionaryType>? popupDictionaryTypesZh,
+    MeaningPanelLayout? meaningPanelJa,
+    MeaningPanelLayout? meaningPanelZh,
     List<OnlineLookupSource>? onlineLookupSources,
     bool? autoCheckUpdates,
     bool? autoSyncDictionary,
+    int? dictionarySyncReminderDays,
     bool? clipboardReaderEnabled,
     String? glossaryDir,
     bool? autoUpdateGlossaryOnSave,
@@ -388,6 +426,8 @@ class AppSettings {
     ttsVoiceZh: ttsVoiceZh ?? this.ttsVoiceZh,
     ttsSpeechRateJa: ttsSpeechRateJa ?? this.ttsSpeechRateJa,
     ttsSpeechRateZh: ttsSpeechRateZh ?? this.ttsSpeechRateZh,
+    meaningPanelJa: meaningPanelJa ?? this.meaningPanelJa,
+    meaningPanelZh: meaningPanelZh ?? this.meaningPanelZh,
     popupDictionaryTypesJa:
         popupDictionaryTypesJa ?? this.popupDictionaryTypesJa,
     popupDictionaryTypesZh:
@@ -395,6 +435,8 @@ class AppSettings {
     onlineLookupSources: onlineLookupSources ?? this.onlineLookupSources,
     autoCheckUpdates: autoCheckUpdates ?? this.autoCheckUpdates,
     autoSyncDictionary: autoSyncDictionary ?? this.autoSyncDictionary,
+    dictionarySyncReminderDays:
+        dictionarySyncReminderDays ?? this.dictionarySyncReminderDays,
     clipboardReaderEnabled:
         clipboardReaderEnabled ?? this.clipboardReaderEnabled,
     glossaryDir: glossaryDir ?? this.glossaryDir,
@@ -452,9 +494,12 @@ class SettingsNotifier extends Notifier<AppSettings> {
   static const _popupDictionaryTypesKey = 'lookup.popupDictionaries';
   static const _popupDictionaryTypesJaKey = 'lookup.popupDictionaries.ja';
   static const _popupDictionaryTypesZhKey = 'lookup.popupDictionaries.zh';
+  static const _meaningPanelJaKey = 'lookup.meaningPanel.ja';
+  static const _meaningPanelZhKey = 'lookup.meaningPanel.zh';
   static const _onlineLookupSourcesKey = 'lookup.onlineSources';
   static const _autoCheckUpdatesKey = 'update.autoCheckUpdates';
   static const _autoSyncDictionaryKey = 'dictionarySync.autoSync';
+  static const _dictionarySyncReminderDaysKey = 'dictionarySync.reminderDays';
   static const _clipboardReaderEnabledKey = 'clipboard.readerEnabled';
   static const _glossaryDirKey = 'glossary.dir';
   static const _autoUpdateGlossaryOnSaveKey = 'glossary.autoUpdateOnSave';
@@ -554,6 +599,14 @@ class SettingsNotifier extends Notifier<AppSettings> {
           prefs.getDouble(_ttsSpeechRateJaKey) ?? legacyTtsRate ?? 0.5,
       ttsSpeechRateZh:
           prefs.getDouble(_ttsSpeechRateZhKey) ?? legacyTtsRate ?? 0.5,
+      meaningPanelJa: MeaningPanelLayout.decode(
+        prefs.getString(_meaningPanelJaKey),
+        TranslationMode.japanese,
+      ),
+      meaningPanelZh: MeaningPanelLayout.decode(
+        prefs.getString(_meaningPanelZhKey),
+        TranslationMode.chinese,
+      ),
       popupDictionaryTypesJa: () {
         final saved =
             prefs.getStringList(_popupDictionaryTypesJaKey) ?? legacyPopupDicts;
@@ -592,6 +645,10 @@ class SettingsNotifier extends Notifier<AppSettings> {
       }(),
       autoCheckUpdates: prefs.getBool(_autoCheckUpdatesKey) ?? true,
       autoSyncDictionary: prefs.getBool(_autoSyncDictionaryKey) ?? false,
+      dictionarySyncReminderDays: SyncReminder.normalizeIntervalDays(
+        prefs.getInt(_dictionarySyncReminderDaysKey) ??
+            SyncReminder.defaultIntervalDays,
+      ),
       clipboardReaderEnabled:
           prefs.getBool(_clipboardReaderEnabledKey) ?? false,
       glossaryDir: prefs.getString(_glossaryDirKey) ?? defaultGlossaryDir,
@@ -660,6 +717,21 @@ class SettingsNotifier extends Notifier<AppSettings> {
     } else {
       state = state.copyWith(popupDictionaryTypesZh: normalized);
     }
+  }
+
+  /// Lưu bố cục ô Nghĩa (loại nào hiện + thứ tự) cho [mode].
+  Future<void> setMeaningPanelLayout(
+    TranslationMode mode,
+    MeaningPanelLayout layout,
+  ) async {
+    final prefs = ref.read(sharedPreferencesProvider);
+    final key = mode == TranslationMode.japanese
+        ? _meaningPanelJaKey
+        : _meaningPanelZhKey;
+    await prefs.setString(key, layout.encode());
+    state = mode == TranslationMode.japanese
+        ? state.copyWith(meaningPanelJa: layout)
+        : state.copyWith(meaningPanelZh: layout);
   }
 
   /// Bật/tắt từng nguồn tra online; giữ đúng thứ tự khai báo của enum.
@@ -857,6 +929,13 @@ class SettingsNotifier extends Notifier<AppSettings> {
     final prefs = ref.read(sharedPreferencesProvider);
     await prefs.setBool(_autoSyncDictionaryKey, value);
     state = state.copyWith(autoSyncDictionary: value);
+  }
+
+  Future<void> setDictionarySyncReminderDays(int value) async {
+    final normalized = SyncReminder.normalizeIntervalDays(value);
+    final prefs = ref.read(sharedPreferencesProvider);
+    await prefs.setInt(_dictionarySyncReminderDaysKey, normalized);
+    state = state.copyWith(dictionarySyncReminderDays: normalized);
   }
 
   Future<void> setClipboardReaderEnabled(bool value) async {

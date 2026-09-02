@@ -17,6 +17,19 @@ import '../domain/vietphrase_value.dart';
 import 'trad2simp_provider.dart';
 import 'translation_controller.dart';
 
+/// Key thật sự dùng để tra/lưu từ điển cho [rawWord] người dùng bôi đen: mode
+/// Trung có bật quy đổi thì phải về giản thể trước, y như `lookup()` làm, nếu
+/// không sẽ so nhầm với key đã lưu trong OnlineDict/AiDict.
+String lookupKeyOf(WidgetRef ref, String rawWord) {
+  if (ref.read(currentModeProvider) != TranslationMode.chinese) return rawWord;
+  if (!ref.read(settingsProvider).convertTraditionalToSimplified) {
+    return rawWord;
+  }
+  final table =
+      ref.read(trad2SimpTableProvider).valueOrNull ?? Trad2SimpTable.empty;
+  return table.convert(rawWord);
+}
+
 final maziiApiProvider = Provider<MaziiApi>((ref) => MaziiApi());
 final jishoApiProvider = Provider<JishoApi>((ref) => JishoApi());
 final weblioApiProvider = Provider<WeblioApi>((ref) => WeblioApi());
@@ -232,6 +245,21 @@ class LookupController extends Notifier<LookupResult?> {
     final online = dicts.onlineDict.entries[word];
     if (online != null) {
       sections.addAll(decodeOnlineSections(word, online));
+    }
+
+    // 5b. Kết quả tra AI đã lưu (AiDict_<mode>.txt) — chỉ khớp đúng cụm.
+    final ai = dicts.aiDict.entries[word];
+    if (ai != null) {
+      sections.addAll(decodeOnlineSections(word, ai));
+    }
+
+    // 5c. Từ/cụm con AI đã tách (AiEntries_<mode>.txt): tra được như một mục
+    // từ điển bình thường chứ không chỉ nằm im phục vụ engine dịch.
+    final aiEntry = dicts.aiEntries.entries[word];
+    if (aiEntry != null) {
+      sections.add(
+        LookupSection(word, 'AI tách từ', _joinMeanings(aiEntry)),
+      );
     }
 
     // 6. Phiên âm Hán Việt đoạn nguồn quanh vị trí chọn.

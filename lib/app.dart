@@ -7,8 +7,10 @@ import 'package:window_manager/window_manager.dart';
 
 import 'core/platform_features.dart';
 import 'core/theme/app_theme.dart';
+import 'core/window_maximize.dart';
 import 'features/clipboard/application/clipboard_reader_controller.dart';
 import 'features/dictionary_sync/application/dictionary_sync_controller.dart';
+import 'features/dictionary_sync/presentation/sync_reminder_dialog.dart';
 import 'features/dictionary_search/presentation/dictionary_search_screen.dart';
 import 'features/epub_converter/presentation/epub_converter_screen.dart';
 import 'features/settings/appearance_screen.dart';
@@ -66,11 +68,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-        windowManager.isMaximized().then((maximized) {
-          if (!maximized) {
-            windowManager.maximize();
-          }
-        });
+        ensureWindowMaximized();
         PackageInfo.fromPlatform()
             .then((info) {
               windowManager.setTitle('VietYaku v${info.version}');
@@ -95,6 +93,9 @@ class _HomeShellState extends ConsumerState<HomeShell> {
             }
           }
         }();
+      } else {
+        // Tự động đồng bộ đã kéo bản mới mỗi lần mở app nên không cần nhắc.
+        maybeShowSyncReminderDialog(context, ref);
       }
     });
   }

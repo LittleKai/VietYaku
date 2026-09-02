@@ -21,5 +21,7 @@ final secondaryPhrasesProvider = Provider<List<SecondaryPhrase>>((ref) {
     lacViet: dicts.lacViet,
     jaVi: dicts.jaVi,
     mazii: dicts.mazii,
+    onlineDict: dicts.onlineDict,
+    aiDict: dicts.aiDict,
   );
 });

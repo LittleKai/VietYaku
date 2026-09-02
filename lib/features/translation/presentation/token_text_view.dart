@@ -7,6 +7,8 @@ import '../../../core/platform_features.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/entry_edit_dialog.dart';
 import '../../../shared/widgets/icon_context_menu.dart';
+import '../../ai_translation/application/ai_settings_controller.dart';
+import '../../ai_translation/presentation/ai_lookup_dialog.dart';
 import '../../dictionary/application/dictionaries_provider.dart';
 import '../../dictionary/domain/dict_type.dart';
 import '../../dictionary_sync/application/dictionary_sync_controller.dart';
@@ -353,6 +355,9 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
   /// từ nào bị nhấn; map điểm nhấn qua renderEditable.getPositionForPoint.
   Offset? _secondaryTapPosition;
   bool _ignoreCollapsedSelection = false;
+
+  /// Đã cấu hình key AI chưa — tính trong `build`, dùng trong context menu.
+  bool _aiHasKey = false;
 
   TextStyle _styleFor(
     Token token,
@@ -815,6 +820,9 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
     }
 
     final dicts = ref.read(dictionariesProvider).valueOrNull;
+    // Key thật sự dùng để lưu OnlineDict/AiDict (mode Trung đã quy giản thể) —
+    // so bằng chuỗi thô sẽ không bao giờ khớp với bản đã lưu.
+    final savedKey = lookupKeyOf(ref, word);
     final userMeaning = dicts?.userDict.entries[word];
     final vpMeaning = dicts?.vietPhrase.entries[word];
     final lacVietMeaning = dicts?.lacViet.entries[word];
@@ -898,19 +906,35 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
         },
       ),
     );
-    custom.add(
-      IconContextMenuItem(
-        icon: Icons.travel_explore,
-        iconColor: meaningLabelColor('Google Dịch', scheme),
-        label: 'Tra online',
-        onPressed: () {
-          editableTextState.hideToolbar();
-          // Tra key CJK của vùng chọn, không phải nghĩa tiếng Việt hiển thị.
-          ref.read(lookupControllerProvider.notifier).lookup(word);
-          showOnlineLookupDialog(context, ref, word: word);
-        },
-      ),
-    );
+    if (dicts?.onlineDict.entries.containsKey(savedKey) != true) {
+      custom.add(
+        IconContextMenuItem(
+          icon: Icons.travel_explore,
+          iconColor: meaningLabelColor('Google Dịch', scheme),
+          label: 'Tra online',
+          onPressed: () {
+            editableTextState.hideToolbar();
+            // Tra key CJK của vùng chọn, không phải nghĩa tiếng Việt hiển thị.
+            ref.read(lookupControllerProvider.notifier).lookup(word);
+            showOnlineLookupDialog(context, ref, word: word);
+          },
+        ),
+      );
+    }
+    if (_aiHasKey && dicts?.aiDict.entries.containsKey(savedKey) != true) {
+      custom.add(
+        IconContextMenuItem(
+          icon: Icons.auto_awesome,
+          iconColor: meaningLabelColor('AI Dịch', scheme),
+          label: 'Tra AI',
+          onPressed: () {
+            editableTextState.hideToolbar();
+            ref.read(lookupControllerProvider.notifier).lookup(word);
+            showAiLookupDialog(context, ref, word: word);
+          },
+        ),
+      );
+    }
 
     // Cảm ứng không có chuột phải, nên lối "chèn nghĩa vào ô Bản dịch" (bản
     // desktop là chuột phải khi KHÔNG tô đen) phải đi qua chính thanh công cụ
@@ -965,6 +989,13 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final sem = AppSemanticColors.of(context);
+    // Watch ngay trong build: `_contextMenu` chỉ được `read`, mà provider chưa
+    // từng dựng thì `valueOrNull` là null và mục "Tra AI" sẽ không hiện.
+    _aiHasKey = ref.watch(
+      aiSettingsControllerProvider.select(
+        (s) => s.valueOrNull?.hasConfiguredKey ?? false,
+      ),
+    );
     final selection = ref.watch(tokenSelectionProvider);
     final paneStyle = ref.watch(
       settingsProvider.select((s) => s.paneTextStyleFor(widget.paneId)),

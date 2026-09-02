@@ -1,4 +1,4 @@
-﻿name: vietyaku
+name: vietyaku
 description: "VietYaku Ă¢â‚¬â€ Japanese/Chinese to Vietnamese offline translator with dictionary repair tools."
 publish_to: 'none'
 
@@ -27,6 +27,7 @@ dependencies:
   html: ^0.15.6
   url_launcher: ^6.3.0
   open_filex: ^4.5.0
+  flutter_markdown_plus: ^1.0.12
 
 dev_dependencies:
   flutter_test:

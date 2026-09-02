@@ -1,7 +1,7 @@
 # Project Summary — VietYaku
 ---
 
-**Last updated:** 2026-09-01
+**Last updated:** 2026-09-02
 
 ## 1. Project Overview
 
@@ -18,7 +18,7 @@
   - Skill `build-and-release` build **cả hai** target (mặc định `-Targets "windows,android"`), APK ra `build/release/VietYaku-android-v<version>.apk` và chỉ lên GitHub Release (kênh cập nhật trong app); B2 vẫn chỉ nhận ZIP Windows cho link tải web.
 - **Phát hành (2 kênh song song, do skill `build-and-release` lo):** GitHub Release `LittleKai/VietYaku` phục vụ **cập nhật trong app**; Backblaze B2 (`vietyaku-app/version.json` + `vietyaku-app/releases/*.zip`, bucket `alpha-studio`) phục vụ **link tải trên web** tại `giaiphapsangtao.com/studio/vietyaku`. Cùng một file ZIP, B2 gắn thêm version vào tên object. Chi tiết ở mục "PHÁT HÀNH — HAI KÊNH SONG SONG" trong `CLAUDE.md`.
 
-Dữ liệu từ điển bundle trong dự án (commit git), mỗi ngôn ngữ một bộ tại `data/jp/` và `data/cn/` — đường dẫn hardcode (`defaultDataDir` trong settings_provider), không còn UI chọn file trong Cài đặt:
+Dữ liệu từ điển bundle trong dự án (KHÔNG commit git, đi theo bản phát hành qua `assets:` của pubspec), mỗi ngôn ngữ một bộ tại `data/jp/` và `data/cn/` — đường dẫn hardcode (`defaultDataDir` trong settings_provider), không còn UI chọn file trong Cài đặt:
 - `data/jp/` (nguồn Drive QuickTranslator_Jap, đã repair simp→JP): VietPhrase.txt (187.419 — bản `_JP` repair), LacViet.txt (103.632 — bản `_JP`), Names.txt, JaViDict.txt (172.321), + ThieuChuu/Babylon/cedict_ts.u8/ChinesePhienAm*/Pronouns, SudachiVariants.txt (13.677 — biến thể→value VietPhrase), SudachiVariantGroups.txt (110.326 nhóm cách viết kana/kanji cho overlay động), SudachiReadings.txt (43.996 — từ=kana đọc; cả ba sinh bởi tool/build_sudachi_assets.dart), Mazii.txt (từ điển Mazii offline Nhật→Việt, format LacViet — value `\n\t` escaped; đã convert đầy đủ 171.299 entry từ MaziiDict.db sau khi loại bỏ các kana đơn).
 - `data/cn/` (nguồn `D:\Software\QuickTranslator\Quick Translator Chinese\Data`): VietPhrase.txt (690.007), LacViet.txt (66.450), Names.txt, ZhViDict.txt (161.194), + bộ chung như trên.
 - JaViDict/ZhViDict generate từ SQLite của VocabFlip bằng `tool/export_vocabflip_dicts.py` (chạy 1 lần, conda py312), value escape `\n\t` như LacViet.
@@ -35,26 +35,27 @@ VietYaku/
 ├── CLAUDE.md, .claude/             # docs hệ thống (summary, conventions, fixed bugs, setup report)
 ├── codegraph.json                  # cấu hình loại trừ file/folder khỏi CodeGraph indexer
 ├── docs/                            # nghiên cứu/roadmap; NGHIEN_CUU_DINH_HUONG_PHAT_TRIEN.md, NGHIEN_CUU_SUDACHI.md, NGHIEN_CUU_TINH_NANG_2026-08.md (chấm điểm tính năng đề xuất)
-├── data/jp/, data/cn/              # bộ từ điển bundle theo ngôn ngữ (commit git, ~123MB)
+├── data/jp/, data/cn/              # bộ từ điển theo ngôn ngữ (~123MB; KHÔNG commit git — `.gitignore` có `data/*`, đi theo bản phát hành qua `assets:`). `generated/` là thư mục con app tự ghi khi admin tra AI/online
 ├── assets/mappings/                # simp2jp.tsv (3.932 + 69 ambiguous), jp_valid_kanji.txt (3.030), simp2jp_overrides.tsv (soạn tay), trad2simp.tsv (2.455 ký tự phồn→giản)
-├── tool/                           # build_simp2jp.dart (sinh assets, cần mạng), build_trad2simp.dart (sinh trad2simp.tsv từ data/cn/cedict_ts.u8, không cần mạng), export_jp.dart (CLI repair + verify), normalize_vietphrase_values.dart (dry-run/ghi chuẩn hóa value VietPhrase JP+CN, giữ BOM/CRLF), export_vocabflip_dicts.py (sinh JaViDict/ZhViDict.txt từ DB VocabFlip), build_sudachi_assets.dart (sinh SudachiVariants+SudachiVariantGroups+SudachiReadings từ SudachiDict raw, cần mạng), clean_single_kana.dart (lọc bỏ key là 1 ký tự Hiragana/Katakana trong JaViDict.txt)
+├── tool/                           # build_simp2jp.dart (sinh assets, cần mạng), build_trad2simp.dart (sinh trad2simp.tsv từ data/cn/cedict_ts.u8, không cần mạng), export_jp.dart (CLI repair + verify), normalize_vietphrase_values.dart (dry-run/ghi chuẩn hóa value VietPhrase JP+CN, giữ BOM/CRLF), export_vocabflip_dicts.py (sinh JaViDict/ZhViDict.txt từ DB VocabFlip), build_sudachi_assets.dart (sinh SudachiVariants+SudachiVariantGroups+SudachiReadings từ SudachiDict raw, cần mạng), clean_single_kana.dart (lọc bỏ key là 1 ký tự Hiragana/Katakana trong JaViDict.txt), backfill_lookup_overlay.dart (bù overlay VietPhrase cho OnlineDict/AiDict đã lưu trước khi có cơ chế tự thêm)
 ├── lib/
 │   ├── main.dart                   # window_manager (1200×760, min 1000×640), SharedPreferences override, ProviderScope
 │   ├── app.dart                    # MaterialApp M3 + HomeShell responsive: ≥720dp → NavigationRail, <720dp → NavigationBar dưới đáy + PopScope (Back về tab Dịch). `homeDestinations()` lọc theo nền tảng (Android bỏ EPUB)
-│   ├── core/                       # cjk.dart, app_paths.dart (+ seed bộ ngôn ngữ từ assets trên mobile), concurrency.dart (runWithConcurrency), platform_features.dart (breakpoint 720dp + cờ tính năng theo nền tảng), fnv_hash.dart, tts_service.dart, google_translate.dart (gtx + fallback crawl /m), theme/app_theme.dart (design system + AppSemanticColors)
+│   ├── core/                       # cjk.dart, app_paths.dart (+ seed bộ ngôn ngữ từ assets trên mobile), concurrency.dart (runWithConcurrency), platform_features.dart (breakpoint 720dp + cờ tính năng theo nền tảng), fnv_hash.dart, tts_service.dart, window_maximize.dart (ép maximize thật lúc khởi động), google_translate.dart (gtx + fallback crawl /m), theme/app_theme.dart (design system + AppSemanticColors)
 │   ├── features/
+│   │   ├── ai_translation/         # domain (ai_service_type, ai_api_key, ai_key_rotator, ai_service_config, ai_lookup_result) · data (ai_api_client, ai_settings_repository) · application (ai_settings_controller, ai_lookup_controller) · presentation (ai_settings_dialog, ai_lookup_dialog)
 │   │   ├── analysis/               # domain (coverage_report — độ phủ + cụm chưa dịch + ứng viên tên riêng + cắt cụm lệch + cảnh báo ngoặc/số) · application (coverage_report_provider) · presentation (coverage_report_dialog)
 │   │   ├── clipboard/              # domain lọc CJK/debounce/hash/own-write · application bridge WM_CLIPBOARDUPDATE + Ctrl+Shift+V (Windows)
 │   │   ├── dictionary/             # domain (dict_type, phrase_dictionary, japanese_variant_index, entry_impact) · data (dict_parser, binary_cache, dictionary_loader, japanese_variant_loader, dictionary_repository, user_dict_service) · application (dictionaries_provider, language_pack_provider) · presentation (language_pack_gate — màn tiến độ chép từ điển lần đầu trên mobile)
 │   │   ├── dictionary_search/      # domain exact/prefix/wildcard/full-text + overlay winner · worker isolate sống lâu · Search Center UI
-│   │   ├── dictionary_sync/        # domain shared entry · typed HTTP API · merge overlay · Riverpod admin session/sync controller
+│   │   ├── dictionary_sync/        # domain shared entry + sync_reminder (chu kỳ nhắc) · typed HTTP API · merge overlay · Riverpod admin session/sync controller · presentation (sync_reminder_dialog)
 │   │   ├── epub_converter/         # đọc EPUB spine/OPF + xuất CSV/XLSX/MD/DOCX/TXT; UI chọn file/xem trước/lưu
 │   │   ├── glossary/               # domain (glossary_term) · data (glossary_service — đọc/ghi `Global Glossary.json` JP/CN của AI_Translation_Bridge) · application (glossary_sync_controller — ghép 2 bên, lọc trùng/created_by) · presentation (glossary_update_dialog — xác nhận trước khi ghi; glossary_sync_screen — đồng bộ hàng loạt 2 chiều, có phân trang)
-│   │   ├── translation/            # domain (translation_engine, translation_rule, token, vietphrase_value, reading_extractor, online_lookup_source, trad2simp_table) · data (translation_rule_repository + các API online) · application (translation_controller + currentModeProvider, translation_rules_provider, lookup/online lookup, trad2simp, token_selection, viet_draft) · presentation (translate_screen, source/result/viet/han_viet pane, token_text_view, translation_rule_tester_dialog, lacviet_panel)
+│   │   ├── translation/            # domain (translation_engine, translation_rule, token, vietphrase_value, reading_extractor, online_lookup_source, trad2simp_table, dict_entry_filter, meaning_panel_layout) · data (translation_rule_repository + các API online) · application (translation_controller + currentModeProvider, translation_rules_provider, lookup/online lookup, trad2simp, token_selection, viet_draft) · presentation (translate_screen, source/result/viet/han_viet pane, token_text_view, translation_rule_tester_dialog, lacviet_panel)
 │   │   ├── repair/                 # domain (jp_repair_pipeline, simp2jp_table, repair_report) · application (repair_controller) · presentation (repair_screen, repair_preview)
-│   │   └── settings/               # settings_provider, settings_screen (3 tab: Chung — thuật toán/popup/tra online/tốc độ đọc/sync + thư mục Glossary + màn đồng bộ Glossary ↔ VietPhrase (chỉ admin)/update; Tiếng Nhật — kana+Sudachi+giọng Nhật+repair; Tiếng Trung — phồn→giản+giọng Trung), appearance_screen (cỡ chữ+font/màu kana/hiển thị)
-│   └── shared/widgets/             # tts_button, entry_edit_dialog, app_dialog, feature_help_button (`?` + dialog giải thích), icon_context_menu, settings_layout
-└── test/                           # 364 tests (45 file; integration dữ liệu thật tự skip nếu thiếu path)
+│   │   └── settings/               # settings_provider, settings_screen (3 tab: Chung — thuật toán/popup/tra online/dịch AI/tốc độ đọc/sync + thư mục Glossary + màn đồng bộ Glossary ↔ VietPhrase (chỉ admin)/update; Tiếng Nhật — kana+Sudachi+giọng Nhật+repair; Tiếng Trung — phồn→giản+giọng Trung), appearance_screen (cỡ chữ+font/màu kana/hiển thị)
+│   └── shared/widgets/             # tts_button, entry_edit_dialog, app_dialog, feature_help_button (`?` + dialog giải thích), icon_context_menu, settings_layout, markdown_body_view (render nghĩa AI)
+└── test/                           # 482 tests (54 file; integration dữ liệu thật tự skip nếu thiếu path)
 ```
 
 ### Critical Files
@@ -84,6 +85,16 @@ Feature-first: mỗi feature chia `domain/` (thuần Dart, không Flutter) · `d
 - Riverpod manual: `NotifierProvider` (settings, translation, lookup, repair, recent files), `AsyncNotifierProvider` (dictionaries, saved words), `FutureProvider` (appPaths, ttsService, simp2jpTable).
 - `sharedPreferencesProvider` override trong `main()` sau `SharedPreferences.getInstance()`.
 - Đồng bộ từ điển chung chỉ áp dụng cho VietPhrase/Lạc Việt: `GET /api/glossary/sync` kéo các trang delta bằng opaque cursor (public); `POST` publish entry qua JWT admin. `username + JWT` lưu SharedPreferences để khôi phục phiên (không lưu mật khẩu; logout/401 xóa phiên). Admin sửa cục bộ vào `SharedVietPhrase/SharedLacViet_<mode>.txt` và hàng đợi `PendingVietPhrase/PendingLacViet_<mode>.txt`; chỉ bấm `Update` mới upload các mục chờ của cả Nhật/Trung. Cursor lưu riêng theo mode; pull delta xong re-apply pending để không mất sửa đổi chưa upload. Non-admin dùng UserDict; UserNames luôn local.
+- Tra AI: cấu hình ở `userdata/ai_settings.json` (+ mirror SharedPreferences), **không** bao giờ nhúng key vào source/bundle — người dùng tự dán key trong Cài đặt → Dịch AI. Mỗi key mang một `weight`; `AiKeyRotator` (smooth weighted round-robin) chia lượt đúng tỉ lệ weight và rải đều, không bốc ngẫu nhiên. Key trả 401/403 nghỉ 30 phút, 429 nghỉ 1 phút rồi được dùng lại; một lần tra thử tối đa 3 key. `executeAiLookup` đọc hết notifier/service TRƯỚC khi await để đóng dialog giữa chừng vẫn lưu được kết quả; đã có trong AiDict thì nút "Tra AI" tự ẩn để khỏi gọi lặp.
+- Định dạng kết quả AI: prompt yêu cầu **JSON** (`AiLookupResult` — meaning/pos/reading/romaji/han_viet/parts/sub_entries), không ví dụ sử dụng. `AiDict_<mode>.txt` lưu JSON compact một dòng trong khung `<<AI Dịch>>` như OnlineDict; hiển thị thì `aiBodyToMarkdown` đổi sang Markdown rồi `MarkdownBodyView` (flutter_markdown_plus) render — mục cũ lưu Markdown thô vẫn hiện đúng vì được trả nguyên văn. Model không chịu trả JSON thì lưu nguyên văn, không mất kết quả.
+- 3 từ điển sinh ra khi tra, mỗi ngôn ngữ một bộ: `AiDict_<mode>.txt` (phân tích đầy đủ, CHỈ cho ô Nghĩa), `AiEntries_<mode>.txt` (`sub_entries` AI tách ra → vào engine dịch, xếp SAU VietPhrase nên không đè từ điển gốc), `VietPhrase_<mode>.txt` (overlay chứa những key VietPhrase gốc chưa có — nằm trên VietPhrase, dưới SharedVietPhrase). Cùng `OnlineDict_<mode>.txt`.
+- **Vì sao mục tra được PHẢI vào overlay VietPhrase:** từ phải tra online/AI chính là từ VietPhrase chưa có → engine greedy cắt nó thành từng chữ (`再入荷` → `[再, 入荷]`) → token sinh ra không bao giờ bằng key đã lưu → click lại `onlineDict.entries[word]` luôn trượt và ô Nghĩa trống. Có mục trong VietPhrase thì engine mới cắt đúng cụm. `tool/backfill_lookup_overlay.dart` (dry-run mặc định, `--apply`, `--mode=`, `--dir=`) bù cho dữ liệu lưu trước khi có cơ chế này.
+- **Bố cục ô Nghĩa tuỳ chỉnh** (`meaning_panel_layout.dart`): người dùng chọn loại từ điển nào hiện và kéo đổi thứ tự, **riêng cho JP và CN**. `MeaningPanelLayout` giữ `order` đầy đủ + tập `hidden` tách rời, nên tắt rồi bật lại vẫn về đúng vị trí cũ và loại thêm về sau không bị hiểu nhầm là "đã tắt". Lưu một khoá `lookup.meaningPanel.<mode>` dạng `name:0|1` cách nhau bằng `,`. Panel dùng `orderMeaningSections` — sắp xếp ỔN ĐỊNH theo vị trí loại nên nhiều mục cùng loại (các nguồn online) giữ nguyên thứ tự `lookup()` sinh ra; mục có nhãn lạ vẫn hiện và xếp cuối.
+- `AiEntries` tra được như một từ điển thật: `lookup()` sinh section `AI tách từ` (bước 5c) chứ không chỉ nằm im phục vụ engine dịch, và có mặt trong Search Center lẫn danh sách bật/tắt của ô Nghĩa.
+- **Xóa từ**: `stageLocalDelete` gỡ key khỏi `VietPhrase_<mode>.txt` + `AiEntries_<mode>.txt` (userdata, và `generated/` nếu admin) rồi mới xếp hàng xóa ở dict chung. Chạy cả khi chưa đăng nhập admin — không thì từ do AI tạo trong overlay cá nhân không bao giờ xóa được. `AiDict`/`OnlineDict` giữ nguyên.
+- Ba rào chắn trong `translation/domain/dict_entry_filter.dart` trước khi promote vào VietPhrase (value VietPhrase chèn thẳng vào bản dịch nên sai là hỏng cả đoạn): `isWordLikeEntry` (chỉ từ/cụm ≤10 rune, không dấu câu/khoảng trắng — chặn cả câu), `meaningMatchesWord` (nguồn online tra mờ: `再入荷`→mục của `再入`, `一愣`→`eleven; 11`; chỉ nhận khi headword đúng bằng từ đã tra), `vietnameseLookupLabels` (chỉ Mazii trả nghĩa Việt; Jisho/Youdao tiếng Anh, Weblio tiếng Trung bị loại).
+- Chỗ ghi 4 file đó theo vai trò: **admin** → `data/<lang>/generated/` (đóng gói theo bản phát hành); **chưa đăng nhập** → `userdata/dictionaries/`. `loadAll(generatedDir: …)` nạp cả hai và mục cá nhân đè mục dùng chung. Không đụng file từ điển nguồn và không vào hàng đợi publish của dictionary_sync.
+- Nhắc cập nhật từ điển chung: mốc `dictionarySync.reminderBaseline` (epoch ms) ghi khi `sync()` thành công, khi trả lời hộp thoại nhắc, và ở lần chạy đầu chưa có mốc. Mở app mà `now - baseline >= dictionarySync.reminderDays` (mặc định 30, kẹp tối thiểu 14, `0` = tắt) → `maybeShowSyncReminderDialog` hỏi; "Cập nhật ngay" kéo cả hai ngôn ngữ, "Để sau" dời mốc lên hiện tại nên lần hỏi kế tiếp cách đúng một chu kỳ. Bật `autoSyncDictionary` thì không nhắc (mỗi lần mở app đã kéo bản mới).
 - Engine: `HashMap<String,String>` + `maxLenByFirstUnit: Map<int,int>` per dict (key = UTF-16 code unit đầu). Tie-break UserDict > Names > VietPhrase. Fallback chữ Hán đơn → ChinesePhienAmWords; kana/lạ → passthrough.
 - Engine options (constructor, chữ ký `translate()` không đổi): `TranslationAlgorithm` — `leftToRight` (mặc định) / `longestPhrase` (cụm dài toàn văn đặt trước, khe trống dịch trái→phải chặn biên) / `longestPhrase4` (chỉ cụm ≥4 code unit vào vòng global); `prioritizeNames` — tiered: dict đứng trước có match (bất kỳ độ dài) thắng dict sau (UserDict ngắn vẫn thắng cụm dài — cố ý). Settings áp dụng ở lần Dịch kế tiếp.
 - Token giữ `rawValue` (value dict nguyên bản); `meaning`/`display`/`displayAll` là getter — đổi tab một nghĩa/đa nghĩa chỉ đổi render, không re-translate.
@@ -154,6 +165,11 @@ Menu bar trên cùng (chọn Nhật/Trung + Dán & Dịch). Trái (flex 2): tabs
 | UserDict/UserNames overlay | ✅ Done | user_dict_service, entry_edit_dialog, dictionary_repository | Sửa nghĩa áp dụng ngay, không đụng file gốc |
 | Alias kana/kanji động cho overlay Nhật | ✅ Done | japanese_variant_index, japanese_variant_loader, dictionary_repository, build_sudachi_assets | UserDict/UserNames/shared VietPhrase/Lạc Việt tự nhận cách viết cùng nhóm Sudachi, kể cả entry dạng thân từ; ghép mảnh chỉ kana hoá nên không sinh `扱い斬れ`; không nuốt hậu tố ngữ pháp như `れ`, `ずに` |
 | Đồng bộ VietPhrase/Lạc Việt chung | ✅ Done | dictionary_sync/*, dictionary_repository, entry_edit_dialog | Pull delta, admin sửa pending + atomic publish |
+| Nhắc cập nhật từ điển chung định kỳ | ✅ Done | sync_reminder, dictionary_sync_controller, sync_reminder_dialog, app.dart, settings_screen | Mở app quá chu kỳ (mặc định 30 ngày, tối thiểu 14, chọn được Tắt) → hỏi có cập nhật không |
+| Tra cứu & phân tích AI | ✅ Done | ai_translation/*, settings_screen, lacviet_panel, source_pane, token_text_view | 5 nhà cung cấp (Gemini CLI/API, ChatGPT, Claude, Grok); nhập key tay, xoay vòng key theo weight; kết quả JSON render bằng Markdown |
+| Từ AI tự vào từ điển dịch | ✅ Done | ai_lookup_result, ai_lookup_controller, user_dict_service, dictionary_repository | `sub_entries` (đã đưa về thân từ: `チャラい` → `チャラ`) ghi vào `AiEntries_<mode>.txt`; key VietPhrase chưa có thì thêm vào overlay `VietPhrase_<mode>.txt` |
+| Tuỳ chỉnh bố cục ô Nghĩa (bật/tắt + kéo sắp xếp) | ✅ Done | meaning_panel_layout, settings_provider, settings_screen, lacviet_panel | Riêng JP/CN; hàng chip kéo-thả (Draggable/DragTarget) + dialog bật/tắt |
+| Từ điển sinh khi tra vào bộ dùng chung | ✅ Done | settings_provider (`generatedDictDir`), dictionary_repository, ai/online lookup controller | Admin ghi `data/<lang>/generated/`, chưa đăng nhập ghi `userdata/dictionaries/`; app nạp và merge cả hai |
 | Bộ dict theo ngôn ngữ (data/jp, data/cn) | ✅ Done | settings_provider, dictionary_repository, dictionaries_provider | Đổi mode → reload bộ dict tương ứng |
 | Quy phồn thể → giản thể (mode Trung) | ✅ Done | trad2simp_table, trad2simp_provider, build_trad2simp.dart | 2.455 ký tự phồn→giản từ cedict_ts.u8 |
 | Quy key từ điển Trung về giản thể | ✅ Done | dictionary_loader (`normalizeKeysToSimplified`), dictionary_repository | Chạy trong isolate, key giản thể thắng |
@@ -223,6 +239,7 @@ Menu bar trên cùng (chọn Nhật/Trung + Dán & Dịch). Trái (flex 2): tabs
 - shared_preferences ^2.3.4 — settings + recent files
 - flutter_tts ^4.2.0 — WinRT SpeechSynthesizer (ja-JP / zh-CN, offline)
 - archive ^4.0.9 · xml ^7.0.1 · html ^0.15.6 — đọc EPUB và tạo/kiểm tra OOXML DOCX/XLSX
+- flutter_markdown_plus ^1.0.12 — render nghĩa AI trong ô Nghĩa + dialog tra AI. Dùng bản `_plus` vì `flutter_markdown` gốc đã bị discontinued; API (`MarkdownBody`/`MarkdownStyleSheet`) giống hệt.
 - collection ^1.19.0
 
 ### External APIs / Services
@@ -258,7 +275,7 @@ Menu bar trên cùng (chọn Nhật/Trung + Dán & Dịch). Trái (flex 2): tabs
 
 ### Testing checklist:
 - [ ] `flutter analyze` sạch
-- [ ] `flutter test` pass (364 tests; integration tự skip nếu thiếu dữ liệu thật)
+- [ ] `flutter test` pass (482 tests; integration tự skip nếu thiếu dữ liệu thật)
 - [ ] Nếu đụng repair/parser: `dart run tool/export_jp.dart` verify OK
 - [ ] Trước khi release: chạy `.claude/SMOKE_TEST_CHECKLIST.md` trên exe đã build (pipeline hiện chỉ ra bản Windows — xem mục Deployment)
 

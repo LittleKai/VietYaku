@@ -4,12 +4,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
 import '../../dictionary/application/dictionaries_provider.dart';
+import '../../dictionary/data/user_dict_service.dart';
 import '../../settings/settings_provider.dart';
 import '../../translation/application/translation_controller.dart';
 import '../../translation/domain/translation_engine.dart';
 import '../data/dictionary_sync_api.dart';
 import '../data/shared_dictionary_service.dart';
 import '../domain/shared_dictionary_entry.dart';
+import '../domain/sync_reminder.dart';
 
 class DictionarySyncState {
   final bool isLoggingIn;
@@ -52,6 +54,10 @@ class DictionarySyncController extends Notifier<DictionarySyncState> {
   /// Số sửa đổi cục bộ đang chờ mà khi đạt tới sẽ tự động Update lên server,
   /// ngoài việc bấm nút Update thủ công.
   static const _autoPublishThreshold = 10;
+
+  /// Mốc đếm chu kỳ nhắc cập nhật (epoch ms): lần cập nhật gần nhất, hoặc lần
+  /// gần nhất người dùng trả lời hộp thoại nhắc.
+  static const _reminderBaselineKey = 'dictionarySync.reminderBaseline';
 
   static String _cursorKey(TranslationMode mode) =>
       'sharedDictionary.cursor.${mode.name}';
@@ -155,13 +161,38 @@ class DictionarySyncController extends Notifier<DictionarySyncState> {
     required SharedDictionaryKind kind,
     required String source,
   }) async {
-    if (!state.isAdmin) return;
+    final paths = await ref.read(appPathsProvider.future);
+
+    // Từ do tra AI/online sinh ra nằm ở overlay riêng chứ không phải
+    // SharedVietPhrase, nên phải gỡ ở đây thì "Xóa từ" mới thực sự có tác dụng.
+    // Chạy cho cả người dùng thường: overlay cá nhân của họ nằm trong userdata.
+    var removedGenerated = false;
+    if (kind == SharedDictionaryKind.vietPhrase) {
+      final userDicts = UserDictService(paths);
+      removedGenerated = await userDicts.removeGeneratedEntry(mode, source);
+      if (state.isAdmin) {
+        final alsoShared = await userDicts.removeGeneratedEntry(
+          mode,
+          source,
+          inDir: generatedDictDir(mode),
+        );
+        removedGenerated = removedGenerated || alsoShared;
+      }
+    }
+
+    if (!state.isAdmin) {
+      if (removedGenerated) {
+        await _reloadCurrentTranslation();
+        state = state.copyWith(message: 'Đã xóa từ khỏi từ điển của bạn.');
+      }
+      return;
+    }
+
     final entry = SharedDictionaryEntry(
       kind: kind,
       source: source,
       operation: EntryOperation.delete,
     );
-    final paths = await ref.read(appPathsProvider.future);
     final service = SharedDictionaryService(paths);
     await service.stageLocalEdit(mode, entry);
     await _reloadCurrentTranslation();
@@ -277,6 +308,7 @@ class DictionarySyncController extends Notifier<DictionarySyncState> {
         await service.pendingEntries(mode),
       );
       await prefs.setString(_cursorKey(mode), cursor);
+      await _setReminderBaseline(DateTime.now());
       if (changed > 0 || restored > 0) {
         await _reloadCurrentTranslation();
       }
@@ -293,6 +325,46 @@ class DictionarySyncController extends Notifier<DictionarySyncState> {
     } finally {
       client.close();
     }
+  }
+
+  /// Mốc đếm chu kỳ nhắc; `null` khi chưa từng ghi.
+  DateTime? reminderBaseline() {
+    final ms = ref.read(sharedPreferencesProvider).getInt(_reminderBaselineKey);
+    return ms == null ? null : DateTime.fromMillisecondsSinceEpoch(ms);
+  }
+
+  /// Tới hạn nhắc cập nhật từ điển chung chưa. Lần chạy đầu (chưa có mốc) chỉ
+  /// ghi mốc là [now] rồi trả `false` — bắt đầu đếm từ lúc này.
+  Future<bool> isReminderDue({DateTime? now}) async {
+    final at = now ?? DateTime.now();
+    final intervalDays = ref
+        .read(settingsProvider)
+        .dictionarySyncReminderDays;
+    if (SyncReminder.normalizeIntervalDays(intervalDays) ==
+        SyncReminder.disabledIntervalDays) {
+      return false;
+    }
+    final baseline = reminderBaseline();
+    if (baseline == null) {
+      await _setReminderBaseline(at);
+      return false;
+    }
+    return SyncReminder.isDue(
+      intervalDays: intervalDays,
+      baseline: baseline,
+      now: at,
+    );
+  }
+
+  /// Đã hỏi và người dùng đã trả lời: đẩy mốc lên hiện tại để lần nhắc kế tiếp
+  /// cách đúng một chu kỳ nữa.
+  Future<void> markReminderPrompted({DateTime? now}) =>
+      _setReminderBaseline(now ?? DateTime.now());
+
+  Future<void> _setReminderBaseline(DateTime at) async {
+    await ref
+        .read(sharedPreferencesProvider)
+        .setInt(_reminderBaselineKey, at.millisecondsSinceEpoch);
   }
 
   Future<void> _reloadCurrentTranslation() async {

@@ -34,6 +34,8 @@ List<SecondaryPhrase> findSecondaryPhrases({
   required PhraseDictionary lacViet,
   required PhraseDictionary jaVi,
   required PhraseDictionary mazii,
+  PhraseDictionary? onlineDict,
+  PhraseDictionary? aiDict,
 }) {
   final result = <SecondaryPhrase>[];
   var i = 0;
@@ -51,7 +53,17 @@ List<SecondaryPhrase> findSecondaryPhrases({
       j++;
       runEnd = tokens[j].sourceStart + tokens[j].source.length;
     }
-    _matchRun(text, runStart, runEnd, lacViet, jaVi, mazii, result);
+    _matchRun(
+      text,
+      runStart,
+      runEnd,
+      lacViet,
+      jaVi,
+      mazii,
+      onlineDict,
+      aiDict,
+      result,
+    );
     i = j + 1;
   }
   return result;
@@ -68,6 +80,8 @@ SecondaryPhrase? secondaryPhraseStartingAt({
   required PhraseDictionary lacViet,
   required PhraseDictionary jaVi,
   required PhraseDictionary mazii,
+  PhraseDictionary? onlineDict,
+  PhraseDictionary? aiDict,
 }) {
   var i = 0;
   while (i < tokens.length &&
@@ -83,7 +97,16 @@ SecondaryPhrase? secondaryPhraseStartingAt({
     i++;
     runEnd = tokens[i].sourceStart + tokens[i].source.length;
   }
-  return _matchAt(text, offset, runEnd, lacViet, jaVi, mazii);
+  return _matchAt(
+    text,
+    offset,
+    runEnd,
+    lacViet,
+    jaVi,
+    mazii,
+    onlineDict,
+    aiDict,
+  );
 }
 
 void _matchRun(
@@ -93,11 +116,22 @@ void _matchRun(
   PhraseDictionary lacViet,
   PhraseDictionary jaVi,
   PhraseDictionary mazii,
+  PhraseDictionary? onlineDict,
+  PhraseDictionary? aiDict,
   List<SecondaryPhrase> out,
 ) {
   var pos = runStart;
   while (pos < runEnd) {
-    final phrase = _matchAt(text, pos, runEnd, lacViet, jaVi, mazii);
+    final phrase = _matchAt(
+      text,
+      pos,
+      runEnd,
+      lacViet,
+      jaVi,
+      mazii,
+      onlineDict,
+      aiDict,
+    );
     if (phrase == null) {
       pos += runeLengthAt(text, pos);
       continue;
@@ -115,6 +149,8 @@ SecondaryPhrase? _matchAt(
   PhraseDictionary lacViet,
   PhraseDictionary jaVi,
   PhraseDictionary mazii,
+  PhraseDictionary? onlineDict,
+  PhraseDictionary? aiDict,
 ) {
   final firstUnit = text.codeUnitAt(pos);
   var maxLen = lacViet.maxLenFor(firstUnit);
@@ -122,6 +158,14 @@ SecondaryPhrase? _matchAt(
   if (jl > maxLen) maxLen = jl;
   final ml = mazii.maxLenFor(firstUnit);
   if (ml > maxLen) maxLen = ml;
+  if (onlineDict != null) {
+    final ol = onlineDict.maxLenFor(firstUnit);
+    if (ol > maxLen) maxLen = ol;
+  }
+  if (aiDict != null) {
+    final al = aiDict.maxLenFor(firstUnit);
+    if (al > maxLen) maxLen = al;
+  }
   if (maxLen > runEnd - pos) maxLen = runEnd - pos;
 
   for (var len = maxLen; len >= 2; len--) {
@@ -131,7 +175,14 @@ SecondaryPhrase? _matchAt(
     if (lastUnit >= 0xD800 && lastUnit <= 0xDBFF) continue;
     final candidate = text.substring(pos, endPos);
     if (_runeCount(candidate) < 2) continue;
-    final label = _priorityLabel(candidate, lacViet, jaVi, mazii);
+    final label = _priorityLabel(
+      candidate,
+      lacViet,
+      jaVi,
+      mazii,
+      onlineDict,
+      aiDict,
+    );
     if (label != null) {
       return SecondaryPhrase(
         start: pos,
@@ -149,10 +200,14 @@ String? _priorityLabel(
   PhraseDictionary lacViet,
   PhraseDictionary jaVi,
   PhraseDictionary mazii,
+  PhraseDictionary? onlineDict,
+  PhraseDictionary? aiDict,
 ) {
   if (lacViet.entries.containsKey(key)) return 'Lạc Việt';
   if (jaVi.entries.containsKey(key)) return 'Nhật Việt';
   if (mazii.entries.containsKey(key)) return 'Mazii';
+  if (onlineDict != null && onlineDict.entries.containsKey(key)) return 'Online';
+  if (aiDict != null && aiDict.entries.containsKey(key)) return 'AI Dịch';
   return null;
 }
 

@@ -7,16 +7,22 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../core/platform_features.dart';
 import '../../core/tts_service.dart';
+import '../../shared/widgets/app_dialog.dart';
 import '../../shared/widgets/feature_help_button.dart';
 import '../../shared/widgets/settings_layout.dart';
+import '../ai_translation/application/ai_settings_controller.dart';
+import '../ai_translation/domain/ai_service_config.dart';
+import '../ai_translation/presentation/ai_settings_dialog.dart';
 import '../clipboard/application/clipboard_reader_controller.dart';
 import '../dictionary_sync/application/dictionary_sync_controller.dart';
+import '../dictionary_sync/domain/sync_reminder.dart';
 import '../glossary/data/glossary_service.dart';
 import '../glossary/presentation/glossary_sync_screen.dart';
 import '../repair/domain/jp_repair_pipeline.dart';
 import '../repair/presentation/repair_screen.dart';
 import '../translation/application/translation_controller.dart';
 import '../translation/domain/translation_engine.dart';
+import '../translation/domain/lookup_dictionary_type.dart';
 import '../translation/domain/online_lookup_source.dart';
 import '../translation/domain/translation_rule.dart';
 import '../translation/presentation/translation_rule_tester_dialog.dart';
@@ -176,6 +182,14 @@ class SettingsScreen extends ConsumerWidget {
               children: [_OnlineLookupSourcesSetting()],
             ),
             const SettingsSection(
+              icon: Icons.auto_awesome_outlined,
+              accentColor: Color(0xFF8E24AA),
+              title: 'Dịch AI',
+              description:
+                  'Cấu hình các mô hình AI (Gemini CLI, Gemini API, ChatGPT, Claude, Grok) và API keys để tra cứu và phân tích ngữ pháp, từ tố nâng cao.',
+              children: [_AiTranslationSetting()],
+            ),
+            const SettingsSection(
               icon: Icons.cloud_sync_outlined,
               accentColor: Color(0xFF00838F),
               title: 'Từ điển chung',
@@ -331,6 +345,16 @@ class SettingsScreen extends ConsumerWidget {
               ],
             ),
             const SettingsSection(
+              icon: Icons.reorder,
+              accentColor: Color(0xFF3949AB),
+              title: 'Ô Nghĩa tiếng Nhật',
+              description:
+                  'Chọn từ điển nào hiện trong ô Nghĩa và kéo để đổi thứ tự hiển thị.',
+              children: [
+                _MeaningPanelSetting(mode: TranslationMode.japanese),
+              ],
+            ),
+            const SettingsSection(
               icon: Icons.volume_up_outlined,
               accentColor: Color(0xFF00897B),
               title: 'Phát âm',
@@ -413,6 +437,16 @@ class SettingsScreen extends ConsumerWidget {
               ],
             ),
             const SettingsSection(
+              icon: Icons.reorder,
+              accentColor: Color(0xFF3949AB),
+              title: 'Ô Nghĩa tiếng Trung',
+              description:
+                  'Chọn từ điển nào hiện trong ô Nghĩa và kéo để đổi thứ tự hiển thị.',
+              children: [
+                _MeaningPanelSetting(mode: TranslationMode.chinese),
+              ],
+            ),
+            const SettingsSection(
               icon: Icons.volume_up_outlined,
               accentColor: Color(0xFF00897B),
               title: 'Phát âm',
@@ -458,6 +492,223 @@ class _ClipboardReaderSetting extends ConsumerWidget {
         ],
       ),
       onChanged: ref.read(settingsProvider.notifier).setClipboardReaderEnabled,
+    );
+  }
+}
+
+/// Các từ điển hiện trong ô Nghĩa: một hàng chip nối tiếp theo đúng thứ tự
+/// hiển thị, kéo chip này thả lên chip kia để đổi chỗ.
+///
+/// Dạng chip thay cho danh sách dọc vì 12 loại × một dòng chiếm gần hết màn
+/// Cài đặt, trong khi thứ tự mới là thứ cần nhìn thấy — chip xếp ngang cho
+/// thấy trọn thứ tự trong 2-3 dòng.
+class _MeaningPanelSetting extends ConsumerWidget {
+  const _MeaningPanelSetting({required this.mode});
+
+  final TranslationMode mode;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final layout = ref.watch(
+      settingsProvider.select((s) => s.meaningPanelLayoutFor(mode)),
+    );
+    final notifier = ref.read(settingsProvider.notifier);
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final visible = layout.visible;
+    final hiddenCount = layout.order.length - visible.length;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Text(
+            visible.isEmpty
+                ? 'Đang tắt hết — ô Nghĩa sẽ trống.'
+                : 'Giữ một thẻ rồi kéo thả lên thẻ khác để đổi thứ tự. Bấm ✕ để ẩn.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: scheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: scheme.outlineVariant),
+          ),
+          child: Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              for (var i = 0; i < visible.length; i++)
+                _DictOrderChip(
+                  key: ValueKey(visible[i]),
+                  type: visible[i],
+                  position: i + 1,
+                  onDropped: (dragged) => notifier.setMeaningPanelLayout(
+                    mode,
+                    layout.movedOnto(dragged, visible[i]),
+                  ),
+                  onHide: () => notifier.setMeaningPanelLayout(
+                    mode,
+                    layout.withVisibility(visible[i], false),
+                  ),
+                ),
+              ActionChip(
+                avatar: const Icon(Icons.tune, size: 16),
+                label: Text(
+                  hiddenCount == 0 ? 'Chọn từ điển' : 'Đang ẩn $hiddenCount',
+                ),
+                onPressed: () => _showPicker(context, ref, mode),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Một thẻ từ điển kéo thả được. Vừa là nguồn kéo vừa là chỗ thả: thả thẻ khác
+/// lên nó nghĩa là "cho thẻ kia về đứng chỗ này".
+class _DictOrderChip extends StatelessWidget {
+  const _DictOrderChip({
+    super.key,
+    required this.type,
+    required this.position,
+    required this.onDropped,
+    required this.onHide,
+  });
+
+  final LookupDictionaryType type;
+  final int position;
+  final ValueChanged<LookupDictionaryType> onDropped;
+  final VoidCallback onHide;
+
+  @override
+  Widget build(BuildContext context) {
+    return DragTarget<LookupDictionaryType>(
+      onWillAcceptWithDetails: (details) => details.data != type,
+      onAcceptWithDetails: (details) => onDropped(details.data),
+      builder: (context, candidate, _) {
+        final chip = _chip(
+          context,
+          highlighted: candidate.isNotEmpty,
+        );
+        // LongPress chứ không phải Draggable thường: màn Cài đặt cuộn dọc,
+        // kéo-ngay sẽ nuốt luôn thao tác vuốt cuộn khi ngón tay chạm trúng thẻ.
+        return LongPressDraggable<LookupDictionaryType>(
+          data: type,
+          feedback: Material(
+            color: Colors.transparent,
+            child: _chip(context, dragging: true),
+          ),
+          childWhenDragging: Opacity(opacity: 0.35, child: chip),
+          child: chip,
+        );
+      },
+    );
+  }
+
+  Widget _chip(
+    BuildContext context, {
+    bool highlighted = false,
+    bool dragging = false,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(8, 4, 4, 4),
+      decoration: BoxDecoration(
+        color: highlighted ? scheme.primaryContainer : scheme.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: highlighted ? scheme.primary : scheme.outlineVariant,
+          width: highlighted ? 2 : 1,
+        ),
+        boxShadow: dragging
+            ? [BoxShadow(color: scheme.shadow.withValues(alpha: 0.3), blurRadius: 8)]
+            : null,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '$position',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              color: scheme.primary,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(type.label),
+          const SizedBox(width: 2),
+          InkWell(
+            borderRadius: BorderRadius.circular(20),
+            onTap: onHide,
+            child: Padding(
+              padding: const EdgeInsets.all(3),
+              child: Icon(Icons.close, size: 14, color: scheme.onSurfaceVariant),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Dialog bật/tắt: loại đang tắt hiện dạng nút bấm để bật lại.
+void _showPicker(BuildContext context, WidgetRef ref, TranslationMode mode) {
+  showAppDialog<void>(
+    context: context,
+    icon: Icons.tune,
+    title: mode == TranslationMode.japanese
+        ? 'Từ điển ô Nghĩa — tiếng Nhật'
+        : 'Từ điển ô Nghĩa — tiếng Trung',
+    description:
+        'Bấm để bật/tắt. Thứ tự hiển thị chỉnh bằng cách kéo thẻ ở màn Cài đặt.',
+    accentColor: const Color(0xFF3949AB),
+    content: _MeaningPanelPicker(mode: mode),
+    actionsBuilder: (dialogContext) => [
+      TextButton(
+        onPressed: () => Navigator.of(dialogContext).pop(),
+        child: const Text('Xong'),
+      ),
+    ],
+  );
+}
+
+class _MeaningPanelPicker extends ConsumerWidget {
+  const _MeaningPanelPicker({required this.mode});
+
+  final TranslationMode mode;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final layout = ref.watch(
+      settingsProvider.select((s) => s.meaningPanelLayoutFor(mode)),
+    );
+    final notifier = ref.read(settingsProvider.notifier);
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final type in layout.order)
+          FilterChip(
+            label: Text(type.label),
+            selected: layout.isVisible(type),
+            onSelected: (on) => notifier.setMeaningPanelLayout(
+              mode,
+              layout.withVisibility(type, on),
+            ),
+          ),
+      ],
     );
   }
 }
@@ -544,6 +795,35 @@ class _OnlineLookupSourcesSetting extends ConsumerWidget {
               },
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _AiTranslationSetting extends ConsumerWidget {
+  const _AiTranslationSetting();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final aiSettings =
+        ref.watch(aiSettingsControllerProvider).valueOrNull ??
+        AiSettings.defaults();
+    final activeService = aiSettings.activeService;
+    final activeConfig = aiSettings.activeConfig;
+    final keyCount = activeConfig.keys.length;
+
+    return SettingsControlRow(
+      title: 'Nhà cung cấp & Mô hình',
+      description:
+          '${activeService.label} (${activeConfig.selectedModel}) · $keyCount API key${keyCount != 1 ? "s" : ""}',
+      controlWidth: 200,
+      control: Align(
+        alignment: Alignment.centerRight,
+        child: FilledButton.tonalIcon(
+          icon: const Icon(Icons.tune, size: 18),
+          label: const Text('Cài đặt AI'),
+          onPressed: () => showAiSettingsDialog(context, ref),
+        ),
       ),
     );
   }
@@ -752,6 +1032,9 @@ class _DictionarySyncSettingsState
     final autoSync = ref.watch(
       settingsProvider.select((s) => s.autoSyncDictionary),
     );
+    final reminderDays = ref.watch(
+      settingsProvider.select((s) => s.dictionarySyncReminderDays),
+    );
 
     return Column(
       children: [
@@ -762,6 +1045,35 @@ class _DictionarySyncSettingsState
           value: autoSync,
           onChanged: (value) =>
               ref.read(settingsProvider.notifier).setAutoSyncDictionary(value),
+        ),
+        SettingsControlRow(
+          title: 'Nhắc cập nhật từ điển',
+          description: autoSync
+              ? 'Đang bật tự động đồng bộ nên không cần nhắc.'
+              : 'Mở app sau chừng này ngày kể từ lần cập nhật gần nhất thì hỏi có muốn cập nhật không. Bấm "Để sau" sẽ hỏi lại sau đúng một chu kỳ nữa.',
+          controlWidth: 210,
+          control: DropdownMenu<int>(
+            expandedInsets: EdgeInsets.zero,
+            enabled: !autoSync,
+            initialSelection: reminderDays,
+            onSelected: (value) {
+              if (value != null) {
+                ref
+                    .read(settingsProvider.notifier)
+                    .setDictionarySyncReminderDays(value);
+              }
+            },
+            dropdownMenuEntries: const [
+              DropdownMenuEntry(
+                value: SyncReminder.disabledIntervalDays,
+                label: 'Tắt',
+              ),
+              DropdownMenuEntry(value: 14, label: '2 tuần'),
+              DropdownMenuEntry(value: 30, label: '1 tháng'),
+              DropdownMenuEntry(value: 60, label: '2 tháng'),
+              DropdownMenuEntry(value: 90, label: '3 tháng'),
+            ],
+          ),
         ),
         SettingsControlRow(
           title: 'Cập nhật từ điển',

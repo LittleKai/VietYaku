@@ -201,4 +201,69 @@ void main() {
     );
     expect(phrases, isEmpty);
   });
+
+  test('nhận cụm đã lưu trong OnlineDict để chọn lại trúng nguyên cụm', () {
+    const text = 'たりしていた';
+    final onlineDict = _dict(DictType.onlineDict, {
+      'たりしていた': '<<Mazii Online>>\nnào là...; chẳng hạn như',
+    });
+    final phrases = findSecondaryPhrases(
+      text: text,
+      tokens: _unmatchedRunes(text),
+      lacViet: empty,
+      jaVi: empty,
+      mazii: empty,
+      onlineDict: onlineDict,
+    );
+    expect(phrases, hasLength(1));
+    expect(phrases.first.source, 'たりしていた');
+    expect(phrases.first.label, 'Online');
+  });
+
+  test('nhận cụm đã lưu trong AiDict', () {
+    const text = 'たりしていた';
+    final aiDict = _dict(DictType.aiDict, {
+      'たりしていた': '<<AI Dịch>>\n1. Nghĩa tiếng Việt: nào là...',
+    });
+    final phrases = findSecondaryPhrases(
+      text: text,
+      tokens: _unmatchedRunes(text),
+      lacViet: empty,
+      jaVi: empty,
+      mazii: empty,
+      aiDict: aiDict,
+    );
+    expect(phrases, hasLength(1));
+    expect(phrases.first.label, 'AI Dịch');
+  });
+
+  test('từ điển gốc thắng OnlineDict/AiDict khi cùng khớp một cụm', () {
+    const text = 'たりしていた';
+    final phrases = findSecondaryPhrases(
+      text: text,
+      tokens: _unmatchedRunes(text),
+      lacViet: _dict(DictType.lacViet, {'たりしていた': 'nào là...'}),
+      jaVi: empty,
+      mazii: empty,
+      onlineDict: _dict(DictType.onlineDict, {'たりしていた': 'x'}),
+      aiDict: _dict(DictType.aiDict, {'たりしていた': 'y'}),
+    );
+    expect(phrases, hasLength(1));
+    expect(phrases.first.label, 'Lạc Việt');
+  });
+
+  test('secondaryPhraseStartingAt cũng thấy cụm AiDict', () {
+    const text = 'たりしていた';
+    final phrase = secondaryPhraseStartingAt(
+      text: text,
+      tokens: _unmatchedRunes(text),
+      offset: 0,
+      lacViet: empty,
+      jaVi: empty,
+      mazii: empty,
+      aiDict: _dict(DictType.aiDict, {'たりしていた': 'y'}),
+    );
+    expect(phrase, isNotNull);
+    expect(phrase!.label, 'AI Dịch');
+  });
 }

@@ -150,7 +150,10 @@ bool Win32Window::Create(const std::wstring& title,
 }
 
 bool Win32Window::Show() {
-  return ShowWindow(window_handle_, SW_SHOWNORMAL);
+  // SW_SHOW, not SW_SHOWNORMAL: the engine calls Show() from
+  // SetNextFrameCallback after main.dart has already maximized the window,
+  // and SW_SHOWNORMAL would restore it back to its normal size.
+  return ShowWindow(window_handle_, SW_SHOW);
 }
 
 // static
@@ -188,6 +191,14 @@ Win32Window::MessageHandler(HWND hwnd,
       return 0;
 
     case WM_DPICHANGED: {
+      // A maximized window is resized by the system on a DPI change. Applying
+      // the suggested rect here would resize the frame while WS_MAXIMIZE stays
+      // set, leaving a small window whose caption button still shows the
+      // restore icon.
+      if (IsZoomed(hwnd)) {
+        return 0;
+      }
+
       auto newRectSize = reinterpret_cast<RECT*>(lparam);
       LONG newWidth = newRectSize->right - newRectSize->left;
       LONG newHeight = newRectSize->bottom - newRectSize->top;

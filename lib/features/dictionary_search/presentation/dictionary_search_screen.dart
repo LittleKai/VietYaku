@@ -383,4 +383,6 @@ String _dictTypeLabel(DictType type) => switch (type) {
   DictType.jaVi => 'Nhật Việt',
   DictType.zhVi => 'Trung Việt',
   DictType.onlineDict => 'Online đã lưu',
+  DictType.aiDict => 'AI đã lưu',
+  DictType.aiEntries => 'AI tách từ',
 };

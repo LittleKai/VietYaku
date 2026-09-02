@@ -5,7 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/app_paths.dart';
 import '../../dictionary/application/dictionaries_provider.dart';
 import '../../dictionary/data/user_dict_service.dart';
+import '../../dictionary_sync/application/dictionary_sync_controller.dart';
 import '../../settings/settings_provider.dart';
+import '../domain/dict_entry_filter.dart';
 import '../domain/online_lookup_source.dart';
 import '../domain/trad2simp_table.dart';
 import '../domain/translation_engine.dart';
@@ -103,8 +105,29 @@ List<OnlineLookupTask> startOnlineLookup(WidgetRef ref, String rawWord) {
   final lookup = ref.read(lookupControllerProvider.notifier);
   final dictionaries = ref.read(dictionariesProvider.notifier);
   final appPaths = ref.read(appPathsProvider.future);
+  // Admin ghi vào bộ dict dùng chung của ngôn ngữ để đóng gói theo bản phát
+  // hành; người dùng thường ghi vào userdata cá nhân.
+  final targetDir = ref.read(dictionarySyncProvider).isAdmin
+      ? generatedDictDir(mode)
+      : null;
+  final knownToVietPhrase =
+      ref.read(dictionariesProvider).valueOrNull?.vietPhrase.entries.containsKey(
+        word,
+      ) ??
+      true;
 
-  unawaited(_persist(tasks, word, mode, lookup, dictionaries, appPaths));
+  unawaited(
+    _persist(
+      tasks,
+      word,
+      mode,
+      lookup,
+      dictionaries,
+      appPaths,
+      targetDir,
+      knownToVietPhrase,
+    ),
+  );
   return tasks;
 }
 
@@ -115,6 +138,8 @@ Future<void> _persist(
   LookupController lookup,
   DictionariesNotifier dictionaries,
   Future<AppPaths> appPaths,
+  String? targetDir,
+  bool knownToVietPhrase,
 ) async {
   try {
     final bodies = await Future.wait(tasks.map((task) => task.body));
@@ -131,9 +156,37 @@ Future<void> _persist(
     lookup.addOnlineSections(word, sections);
     // Máy dịch trả nghĩa theo ngữ cảnh, lưu lại dễ sai → chỉ lưu từ điển thật.
     if (toSave.isEmpty) return;
-    await UserDictService(
-      await appPaths,
-    ).upsertOnlineDict(mode, word, encodeOnlineSections(toSave));
+    final service = UserDictService(await appPaths);
+    await service.upsertOnlineDict(
+      mode,
+      word,
+      encodeOnlineSections(toSave),
+      inDir: targetDir,
+    );
+
+    // Từ tra online thường KHÔNG có trong VietPhrase (không có mới phải tra) →
+    // engine cắt nó thành từng chữ và click lại không bao giờ khớp nguyên cụm,
+    // nên mục vừa lưu sẽ không hiện ra được. Thêm vào overlay VietPhrase để
+    // engine tách đúng cụm; chỉ nhận từ/cụm từ, không nhận cả câu.
+    // Nguồn online tra mờ: gõ 再入荷 có thể trả mục của 再入 — đọc thì người
+    // dùng tự nhận ra lệch, nhưng đưa vào VietPhrase là nhét bản dịch SAI vào
+    // từ điển dịch. Chỉ promote khi headword nguồn trả về đúng bằng từ đã tra.
+    if (!knownToVietPhrase && isWordLikeEntry(word)) {
+      final exact = toSave
+          .where(
+            (s) =>
+                vietnameseLookupLabels.contains(s.label) &&
+                meaningMatchesWord(word, s.body),
+          )
+          .toList();
+      final short = exact.isEmpty ? '' : shortMeaningOf(exact.first.body);
+      if (short.isNotEmpty) {
+        await service.upsertVietPhraseOverlay(mode, {
+          word: short,
+        }, inDir: targetDir);
+      }
+    }
+
     await dictionaries.reload();
   } catch (_) {
     // Mất mạng / lỗi ghi file: kết quả đã hiện trên dialog là đủ.

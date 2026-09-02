@@ -158,6 +158,8 @@ class TokenSelectionNotifier extends Notifier<TokenSelection?> {
       lacViet: dicts.lacViet,
       jaVi: dicts.jaVi,
       mazii: dicts.mazii,
+      onlineDict: dicts.onlineDict,
+      aiDict: dicts.aiDict,
     );
   }
 

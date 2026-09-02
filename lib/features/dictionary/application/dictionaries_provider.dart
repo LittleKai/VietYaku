@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/app_paths.dart';
+import '../../dictionary_sync/application/dictionary_sync_controller.dart';
 import '../../settings/settings_provider.dart';
 import '../../translation/application/trad2simp_provider.dart';
 import '../../translation/application/translation_controller.dart';
@@ -37,12 +38,19 @@ class DictionariesNotifier extends AsyncNotifier<LoadedDictionaries> {
     final trad2simp = mode == TranslationMode.chinese && convertTrad
         ? await ref.watch(trad2SimpTableProvider.future)
         : null;
+    // Phiên admin ghi AiDict/OnlineDict thẳng vào `data/<lang>/generated` để
+    // đóng gói theo bản phát hành → nạp thêm thư mục đó. Người dùng thường chỉ
+    // có bản cá nhân trong userdata.
+    final isAdmin = ref.watch(
+      dictionarySyncProvider.select((s) => s.isAdmin),
+    );
     final sw = Stopwatch()..start();
     final loaded = await DictionaryRepository(paths).loadAll(
       dictPaths,
       mode: mode,
       useSudachiVariants: useSudachiVariants,
       trad2simp: trad2simp,
+      generatedDir: isAdmin ? generatedDictDir(mode) : null,
     );
     debugPrint(
       'Dictionaries loaded in ${sw.elapsedMilliseconds}ms: '

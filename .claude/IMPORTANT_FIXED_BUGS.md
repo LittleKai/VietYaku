@@ -1,6 +1,6 @@
 # Important Fixed Bugs
 
-**Last Updated:** 2026-08-22
+**Last Updated:** 2026-09-02
 
 ---
 
@@ -147,3 +147,42 @@ Record only high-impact, hard-to-detect, or likely-to-recur bugs. Do not record 
 - **Fix:** `_normalizeGroups` cắt dần đuôi kana chung của cả nhóm để sinh thêm nhóm thân từ; mảnh không thuộc nhóm nào thì giữ nguyên thay vì bỏ cả key. Kèm hai chốt chặn nhiễu + tốc độ: mảnh phụ chỉ được kana hoá (chặn `切れ`→`斬れ` và `きれ`→`訊れ` — cùng nhóm Sudachi vì chung dạng chuẩn + cách đọc), và segmentation đi greedy longest-match + cache biến thể theo surface (expand 2.034 entry: 56s → 0,12s).
 - **Do Not Repeat:** Dữ liệu Sudachi là surface của TỪ, còn entry người dùng thường là thân từ hoặc cụm ghép — test tính năng dựa trên nhóm Sudachi phải có case thân từ (`吞み込`) và case ghép mảnh (`扱い切`), đừng chỉ test dạng từ điển chuẩn. Nhóm Sudachi gộp theo dạng chuẩn + cách đọc nên KHÔNG được coi mọi thành viên là thay thế được cho nhau khi chỉ khớp một mảnh.
 - **Related Files:** `lib/features/dictionary/domain/japanese_variant_index.dart`, `lib/features/dictionary/data/dictionary_repository.dart`, `test/japanese_variant_index_test.dart`, `test/dictionary_repository_variant_test.dart`
+
+## Từ tra online/AI lưu rồi nhưng click lại không hiện, và không xóa được
+
+**Triệu chứng:** OnlineDict/AiDict đã có từ, click vào từ đó thì ô Nghĩa trống. Từ do AI tạo bấm "Xóa từ" cũng không mất (`比如铸铁者的冷面锡德`).
+
+**Hai nguyên nhân độc lập:**
+
+1. *Không tra lại được* — từ phải tra online/AI chính là từ VietPhrase **chưa có**; engine greedy vì thế cắt nó thành từng chữ (`再入荷` → `[再, 入荷]`), token sinh ra không bao giờ bằng key đã lưu nên `onlineDict.entries[word]` luôn trượt. 16/24 mục thật của người dùng dính lỗi này. Sửa: lưu xong thì thêm key vào overlay `VietPhrase_<mode>.txt` để engine cắt đúng cụm.
+
+2. *Không xóa được* — `stageLocalDelete` chỉ gỡ mục khỏi `SharedVietPhrase`; từ do AI tạo nằm ở overlay `VietPhrase_<mode>.txt`/`AiEntries_<mode>.txt` nên lệnh xóa chỉ ghi `__DELETE__` vào hàng chờ mà từ vẫn được dịch. Thêm nữa `if (!state.isAdmin) return;` khiến người dùng thường xóa gì cũng no-op im lặng. Sửa: `removeGeneratedEntry` gỡ cả hai overlay, chạy trước và không phụ thuộc quyền admin.
+
+**Bẫy đi kèm khi promote nghĩa online vào VietPhrase** (value VietPhrase chèn thẳng vào bản dịch nên sai là hỏng cả đoạn) — 3 rào chắn trong `dict_entry_filter.dart`:
+- Nguồn online tra **mờ**: gõ `再入荷` trả mục của `再入`, `一愣` trả `eleven; 11` → `meaningMatchesWord` bắt buộc headword khớp đúng.
+- Jisho/Youdao trả tiếng Anh, Weblio trả tiếng Trung → `vietnameseLookupLabels` chỉ nhận Mazii.
+- Cả câu/mệnh đề không được vào từ điển dịch → `isWordLikeEntry` (≤10 rune, không dấu câu/khoảng trắng).
+
+## Mazii mode Trung trả kết quả từ điển Nhật
+
+**Triệu chứng:** toàn bộ 35 mục `OnlineDict_chinese.txt` có phần Mazii là nghĩa của một từ tiếng Nhật khác hẳn — `一愣` → `eleven; 11`, `小正太` → `short sword`, `幸福` → `happiness` đọc `「こうふく」`.
+
+**Nguyên nhân:** `https://mazii.net/api/search` **bỏ qua tham số `dict`**. Gửi `dict: "cnvi"` vẫn nhận về mục của từ điển Nhật (`phonetic` là kana, `pinyin` rỗng). Đã kiểm chứng bằng gọi API trực tiếp — lỗi còn sống, không phải dữ liệu cũ, nên xoá dữ liệu không thôi thì tra lại vẫn lưu rác.
+
+**Sửa:** `MaziiApi.lookup` trả `null` khi `dict != 'javi'` mà kết quả có cách đọc kana. Mode Trung coi như Mazii miss; nguồn còn lại là 有道词典 (Trung→Anh).
+
+**Bài học:** API không chính thức có thể im lặng bỏ qua tham số. Đừng tin `dict`/`lang` đã được tôn trọng — kiểm tra chính nội dung trả về có đúng ngôn ngữ không.
+
+## Khởi động: nút title bar hiện icon Restore nhưng cửa sổ vẫn không maximize
+
+**Triệu chứng:** thỉnh thoảng mở app, cửa sổ vẫn ở kích thước thường (1200×760) trong khi nút phóng to đã đổi sang icon Restore. Bấm nút đó chỉ "restore" về đúng chỗ cũ; muốn full màn hình phải bấm hai lần. Không lỗi, không log.
+
+**Nguyên nhân:** trạng thái Win32 bị lệch — cờ `WS_MAXIMIZE` còn, nhưng khung cửa sổ đã bị `SetWindowPos` thu nhỏ. Hai chỗ trong runner mặc định của Flutter (`windows/runner/win32_window.cpp`) đụng vào cửa sổ sau khi `main.dart` gọi `windowManager.maximize()`:
+1. `WM_DPICHANGED` gọi `SetWindowPos` với rect gợi ý. `SetWindowPos` đổi kích thước mà **không** xóa `WS_MAXIMIZE` → icon Restore + cửa sổ bé. DPI đổi ngay lúc khởi động khi cửa sổ được center rồi maximize trên máy nhiều màn hình khác mức scale → lỗi chỉ thỉnh thoảng mới xảy ra.
+2. `Win32Window::Show()` dùng `SW_SHOWNORMAL`, mà engine gọi `Show()` qua `SetNextFrameCallback` **sau** khi `main()` đã maximize → `SW_SHOWNORMAL` khôi phục cửa sổ về kích thước thường.
+
+`windowManager.maximize()` là `PostMessage(WM_SYSCOMMAND, SC_MAXIMIZE)` (bất đồng bộ) nên thứ tự với hai chỗ trên không định trước → lỗi không tái hiện đều.
+
+**Sửa:** runner bỏ qua `SetWindowPos` khi `IsZoomed(hwnd)` (Windows tự resize cửa sổ maximize khi đổi DPI), `Show()` dùng `SW_SHOW`. Thêm `ensureWindowMaximized()` (`lib/core/window_maximize.dart`) chạy ở post-frame của `HomeShell`: nếu cờ báo maximized mà diện tích cửa sổ < 90% màn hình thì `unmaximize()` rồi `maximize()` lại.
+
+**Bài học:** `windowManager.isMaximized()` chỉ đọc `WINDOWPLACEMENT.showCmd`, KHÔNG bảo đảm cửa sổ thật sự to — đừng dùng nó một mình làm điều kiện chặn maximize. Và mọi `SetWindowPos` có kích thước trong `win32_window.cpp` đều phải xét `IsZoomed`.

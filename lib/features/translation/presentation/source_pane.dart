@@ -7,6 +7,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/entry_edit_dialog.dart';
 import '../../../shared/widgets/icon_context_menu.dart';
+import '../../ai_translation/application/ai_settings_controller.dart';
+import '../../ai_translation/presentation/ai_lookup_dialog.dart';
 import '../../dictionary/application/dictionaries_provider.dart';
 import '../../dictionary_sync/application/dictionary_sync_controller.dart';
 import '../../dictionary_sync/domain/shared_dictionary_entry.dart';
@@ -347,6 +349,14 @@ class _SourcePaneState extends ConsumerState<SourcePane> {
   }
 
   Widget _buildEditor(BuildContext context, TextStyle style) {
+    // Watch ngay trong build: `contextMenuBuilder` chỉ được `read`, mà provider
+    // chưa từng dựng thì `valueOrNull` là null và mục "Tra AI" sẽ không hiện.
+    final aiHasKey = ref.watch(
+      aiSettingsControllerProvider.select(
+        (s) => s.valueOrNull?.hasConfiguredKey ?? false,
+      ),
+    );
+
     return TextField(
       key: _fieldKey,
       controller: _controller,
@@ -368,6 +378,9 @@ class _SourcePaneState extends ConsumerState<SourcePane> {
         if (selection.isEmpty) return const SizedBox.shrink();
 
         final dicts = ref.read(dictionariesProvider).valueOrNull;
+        // Key thật sự dùng để lưu OnlineDict/AiDict (mode Trung đã quy giản
+        // thể) — so bằng chuỗi thô sẽ không bao giờ khớp với bản đã lưu.
+        final savedKey = lookupKeyOf(ref, selection);
         final userMeaning = dicts?.userDict.entries[selection];
         final vpMeaning = dicts?.vietPhrase.entries[selection];
         final lacVietMeaning = dicts?.lacViet.entries[selection];
@@ -446,16 +459,28 @@ class _SourcePaneState extends ConsumerState<SourcePane> {
               );
             },
           ),
-          IconContextMenuItem(
-            icon: Icons.travel_explore,
-            iconColor: meaningLabelColor('Google Dịch', scheme),
-            label: 'Tra online',
-            onPressed: () {
-              hide();
-              ref.read(lookupControllerProvider.notifier).lookup(selection);
-              showOnlineLookupDialog(this.context, ref, word: selection);
-            },
-          ),
+          if (dicts?.onlineDict.entries.containsKey(savedKey) != true)
+            IconContextMenuItem(
+              icon: Icons.travel_explore,
+              iconColor: meaningLabelColor('Google Dịch', scheme),
+              label: 'Tra online',
+              onPressed: () {
+                hide();
+                ref.read(lookupControllerProvider.notifier).lookup(selection);
+                showOnlineLookupDialog(this.context, ref, word: selection);
+              },
+            ),
+          if (aiHasKey && dicts?.aiDict.entries.containsKey(savedKey) != true)
+            IconContextMenuItem(
+              icon: Icons.auto_awesome,
+              iconColor: meaningLabelColor('AI Dịch', scheme),
+              label: 'Tra AI',
+              onPressed: () {
+                hide();
+                ref.read(lookupControllerProvider.notifier).lookup(selection);
+                showAiLookupDialog(this.context, ref, word: selection);
+              },
+            ),
         ]);
         return IconContextMenu(
           anchors: editableTextState.contextMenuAnchors,
