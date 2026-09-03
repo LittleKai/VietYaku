@@ -128,14 +128,34 @@ class LookupResult {
 }
 
 class LookupController extends Notifier<LookupResult?> {
+  /// Tham số của lần `lookup()` gần nhất, để [refreshCurrent] tra lại y hệt.
+  String _lastRawWord = '';
+  String _lastRawSentence = '';
+
+  /// Các mục chèn thêm bằng [addOnlineSections] cho từ đang hiển thị.
+  ///
+  /// [refreshCurrent] chỉ được phép ghép lại mục từ danh sách NÀY, không phải
+  /// mọi mục cũ đang hiển: mục do `lookup()` sinh ra mà tra lại không còn
+  /// (vừa xóa khỏi từ điển) phải biến mất thật.
+  final List<LookupSection> _sessionSections = [];
+
   @override
   LookupResult? build() => null;
 
   /// Tra đa từ điển cho [word]; [sentence] là đoạn nguồn quanh vị trí chọn
   /// (dùng cho mục Phiên Âm).
   void lookup(String rawWord, {String rawSentence = ''}) {
+    final result = _buildResult(rawWord, rawSentence);
+    if (result == null) return;
+    _lastRawWord = rawWord;
+    _lastRawSentence = rawSentence;
+    _sessionSections.clear();
+    state = result;
+  }
+
+  LookupResult? _buildResult(String rawWord, String rawSentence) {
     final dicts = ref.read(dictionariesProvider).valueOrNull;
-    if (dicts == null || rawWord.isEmpty) return;
+    if (dicts == null || rawWord.isEmpty) return null;
     final mode = ref.read(currentModeProvider);
 
     // Mode Trung: quy phồn→giản trước khi tra, y như lúc dịch cả văn bản. Chọn
@@ -302,7 +322,7 @@ class LookupController extends Notifier<LookupResult?> {
       reading = lacVietValue == null ? null : extractReading(lacVietValue);
       reading ??= jaVi == null ? null : extractKanaReading(jaVi);
     }
-    state = LookupResult(
+    return LookupResult(
       word: word,
       matchedKey: matchedKey,
       reading: reading?.text,
@@ -315,12 +335,44 @@ class LookupController extends Notifier<LookupResult?> {
 
   void clearResult() => state = null;
 
+  /// Tra lại từ đang hiển thị sau khi từ điển vừa đổi (mục AI/online vừa được
+  /// ghi vào AiDict/OnlineDict/AiEntries/overlay VietPhrase, hoặc người dùng vừa
+  /// sửa/xóa một mục), để ô Nghĩa đổi theo ngay thay vì bắt bấm lại đúng từ đó.
+  void refreshCurrent() {
+    if (state == null || _lastRawWord.isEmpty) return;
+    final refreshed = _buildResult(_lastRawWord, _lastRawSentence);
+    if (refreshed == null) return;
+    state = _withSessionSections(refreshed);
+  }
+
+  /// Ghép lại các mục chỉ tồn tại trong phiên: nghĩa máy dịch (Google) cố ý
+  /// không được lưu vào từ điển nên tra lại sẽ không sinh lại được.
+  LookupResult _withSessionSections(LookupResult result) {
+    final labels = result.sections.map((s) => s.label).toSet();
+    final extra = _sessionSections
+        .where((s) => !labels.contains(s.label))
+        .toList();
+    if (extra.isEmpty) return result;
+    return LookupResult(
+      word: result.word,
+      matchedKey: result.matchedKey,
+      reading: result.reading,
+      readingKind: result.readingKind,
+      hanViet: result.hanViet,
+      body: result.body,
+      sections: [...result.sections, ...extra],
+    );
+  }
+
   /// Chèn kết quả tra online vào cuối ô Nghĩa (bỏ mục cũ cùng nhãn khi tra lại).
   /// Bỏ qua nếu người dùng đã chọn từ khác trong lúc chờ mạng.
   void addOnlineSections(String word, List<LookupSection> online) {
     final current = state;
     if (current == null || current.word != word || online.isEmpty) return;
     final labels = online.map((s) => s.label).toSet();
+    _sessionSections
+      ..removeWhere((s) => labels.contains(s.label))
+      ..addAll(online);
     state = LookupResult(
       word: current.word,
       matchedKey: current.matchedKey,

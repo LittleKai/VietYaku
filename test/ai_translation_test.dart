@@ -25,7 +25,9 @@ void main() {
       final models = AiServiceType.geminiCli.availableModels;
       expect(models, contains('gemini-3-flash-preview'));
       expect(models, contains('假流式-agy-gemini-3.6-flash-low'));
-      expect(models.length, equals(12));
+      expect(models, isNot(contains('agy-gemini-3.5-flash-low')));
+      expect(models, isNot(contains('假流式-agy-gemini-3.5-flash-low')));
+      expect(models.length, equals(10));
     });
 
     test('Gemini API models are accurate', () {
@@ -457,6 +459,7 @@ void main() {
       for (final mode in TranslationMode.values) {
         final prompt = buildAiLookupPrompt('テスト', mode: mode);
         expect(prompt, contains('Không đưa câu ví dụ'));
+        expect(prompt, contains('KHÔNG đưa từ loại vào bất kỳ trường "meaning"'));
         expect(prompt, isNot(contains('Ví dụ sử dụng')));
       }
     });
@@ -508,6 +511,19 @@ void main() {
         aiBodyToMarkdown('チャラ', stored),
         isNot(contains('Đã thêm vào từ điển')),
       );
+    });
+
+    test('Value đưa vào từ điển không kèm từ loại', () {
+      const result = AiLookupResult(
+        word: '背德',
+        meaning: 'phản bội đạo đức/trái với đạo đức',
+        partOfSpeech: 'tính từ/động từ',
+      );
+
+      // Value VietPhrase bị chèn thẳng vào bản dịch → đuôi "(tính từ/động
+      // từ)" chỉ là rác trong câu.
+      expect(result.shortMeaning, equals(result.meaning));
+      expect(result.shortMeaning, isNot(contains('tính từ')));
     });
 
     test('Tolerates ```json fences and surrounding prose', () {

@@ -91,9 +91,11 @@ class AiLookupResult {
   });
 
   /// Nghĩa ngắn dùng làm value khi chính [word] được thêm vào từ điển engine.
-  String get shortMeaning => partOfSpeech.isEmpty
-      ? meaning
-      : '$meaning ($partOfSpeech)';
+  ///
+  /// KHÔNG kèm từ loại: value này được chèn thẳng vào bản dịch, nên đuôi kiểu
+  /// `(tính từ/động từ)` chỉ là rác trong câu. Từ loại vẫn còn trong AiDict để
+  /// hiển thị ở ô Nghĩa.
+  String get shortMeaning => meaning;
 
   /// Render sang Markdown để hiển thị (ô Nghĩa + dialog).
   String toMarkdown() {

@@ -168,6 +168,9 @@ Future<void> showEntryEditDialog(
         .read(translationControllerProvider.notifier)
         .translate(latestTranslation.sourceText);
   }
+  // Ô Nghĩa đang mở vẫn là kết quả tính từ bộ dict cũ — tra lại để nghiĩa vừa
+  // sửa hiện ngay.
+  ref.read(lookupControllerProvider.notifier).refreshCurrent();
 
   if (glossaryAutoUpdated && notifyOnGlossaryUpdate && context.mounted) {
     final lang = GlossaryService.langFor(translation.mode);

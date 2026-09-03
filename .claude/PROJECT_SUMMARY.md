@@ -1,7 +1,7 @@
 # Project Summary — VietYaku
 ---
 
-**Last updated:** 2026-09-02
+**Last updated:** 2026-09-03
 
 ## 1. Project Overview
 
@@ -55,7 +55,7 @@ VietYaku/
 │   │   ├── repair/                 # domain (jp_repair_pipeline, simp2jp_table, repair_report) · application (repair_controller) · presentation (repair_screen, repair_preview)
 │   │   └── settings/               # settings_provider, settings_screen (3 tab: Chung — thuật toán/popup/tra online/dịch AI/tốc độ đọc/sync + thư mục Glossary + màn đồng bộ Glossary ↔ VietPhrase (chỉ admin)/update; Tiếng Nhật — kana+Sudachi+giọng Nhật+repair; Tiếng Trung — phồn→giản+giọng Trung), appearance_screen (cỡ chữ+font/màu kana/hiển thị)
 │   └── shared/widgets/             # tts_button, entry_edit_dialog, app_dialog, feature_help_button (`?` + dialog giải thích), icon_context_menu, settings_layout, markdown_body_view (render nghĩa AI)
-└── test/                           # 482 tests (54 file; integration dữ liệu thật tự skip nếu thiếu path)
+└── test/                           # 487 tests (55 file; integration dữ liệu thật tự skip nếu thiếu path)
 ```
 
 ### Critical Files
@@ -90,6 +90,10 @@ Feature-first: mỗi feature chia `domain/` (thuần Dart, không Flutter) · `d
 - 3 từ điển sinh ra khi tra, mỗi ngôn ngữ một bộ: `AiDict_<mode>.txt` (phân tích đầy đủ, CHỈ cho ô Nghĩa), `AiEntries_<mode>.txt` (`sub_entries` AI tách ra → vào engine dịch, xếp SAU VietPhrase nên không đè từ điển gốc), `VietPhrase_<mode>.txt` (overlay chứa những key VietPhrase gốc chưa có — nằm trên VietPhrase, dưới SharedVietPhrase). Cùng `OnlineDict_<mode>.txt`.
 - **Vì sao mục tra được PHẢI vào overlay VietPhrase:** từ phải tra online/AI chính là từ VietPhrase chưa có → engine greedy cắt nó thành từng chữ (`再入荷` → `[再, 入荷]`) → token sinh ra không bao giờ bằng key đã lưu → click lại `onlineDict.entries[word]` luôn trượt và ô Nghĩa trống. Có mục trong VietPhrase thì engine mới cắt đúng cụm. `tool/backfill_lookup_overlay.dart` (dry-run mặc định, `--apply`, `--mode=`, `--dir=`) bù cho dữ liệu lưu trước khi có cơ chế này.
 - **Bố cục ô Nghĩa tuỳ chỉnh** (`meaning_panel_layout.dart`): người dùng chọn loại từ điển nào hiện và kéo đổi thứ tự, **riêng cho JP và CN**. `MeaningPanelLayout` giữ `order` đầy đủ + tập `hidden` tách rời, nên tắt rồi bật lại vẫn về đúng vị trí cũ và loại thêm về sau không bị hiểu nhầm là "đã tắt". Lưu một khoá `lookup.meaningPanel.<mode>` dạng `name:0|1` cách nhau bằng `,`. Panel dùng `orderMeaningSections` — sắp xếp ỔN ĐỊNH theo vị trí loại nên nhiều mục cùng loại (các nguồn online) giữ nguyên thứ tự `lookup()` sinh ra; mục có nhãn lạ vẫn hiện và xếp cuối.
+- **Từ điển đổi thì ô Nghĩa tự tra lại** (`LookupController.refreshCurrent`): sau `dictionaries.reload()`, panel đang mở vẫn là kết quả tính từ bộ dict cũ nên mục vừa ghi (VietPhrase overlay, `AiEntries`, `AiDict`, `OnlineDict`, UserDict) không hiện — và mục vừa xóa vẫn còn — cho tới khi người dùng bấm lại đúng từ đó. Gọi ở: `executeAiLookup`, `_persist` (online), `DictionarySyncController._reloadCurrentTranslation` (stageLocalEdit/Delete/Bulk + sync), `showEntryEditDialog`.
+  - `lookup()` tách thành vỏ mỏng + `_buildResult()` thuần hàm; `refreshCurrent()` dựng lại kết quả với đúng tham số lần trước.
+  - Chỉ ghép lại mục từ `_sessionSections` (những gì `addOnlineSections` chèn vào trong phiên), KHÔNG phải mọi mục cũ đang hiện: nghĩa máy dịch (Google) cố ý không lưu vào từ điển nên phải giữ, còn mục do `lookup()` sinh ra mà tra lại không còn (vừa xóa) phải biến mất thật.
+- **Value AI đưa vào từ điển dịch KHÔNG kèm từ loại** (`AiLookupResult.shortMeaning` = `meaning`): value VietPhrase được chèn thẳng vào bản dịch nên đuôi `(tính từ/động từ)` chỉ là rác trong câu. Từ loại vẫn nằm trong `AiDict` (trường `pos`) để hiển thị ở ô Nghĩa; prompt cũng cấm model nhét từ loại vào bất kỳ trường `meaning` nào.
 - `AiEntries` tra được như một từ điển thật: `lookup()` sinh section `AI tách từ` (bước 5c) chứ không chỉ nằm im phục vụ engine dịch, và có mặt trong Search Center lẫn danh sách bật/tắt của ô Nghĩa.
 - **Xóa từ**: `stageLocalDelete` gỡ key khỏi `VietPhrase_<mode>.txt` + `AiEntries_<mode>.txt` (userdata, và `generated/` nếu admin) rồi mới xếp hàng xóa ở dict chung. Chạy cả khi chưa đăng nhập admin — không thì từ do AI tạo trong overlay cá nhân không bao giờ xóa được. `AiDict`/`OnlineDict` giữ nguyên.
 - Ba rào chắn trong `translation/domain/dict_entry_filter.dart` trước khi promote vào VietPhrase (value VietPhrase chèn thẳng vào bản dịch nên sai là hỏng cả đoạn): `isWordLikeEntry` (chỉ từ/cụm ≤10 rune, không dấu câu/khoảng trắng — chặn cả câu), `meaningMatchesWord` (nguồn online tra mờ: `再入荷`→mục của `再入`, `一愣`→`eleven; 11`; chỉ nhận khi headword đúng bằng từ đã tra), `vietnameseLookupLabels` (chỉ Mazii trả nghĩa Việt; Jisho/Youdao tiếng Anh, Weblio tiếng Trung bị loại).
@@ -275,7 +279,7 @@ Menu bar trên cùng (chọn Nhật/Trung + Dán & Dịch). Trái (flex 2): tabs
 
 ### Testing checklist:
 - [ ] `flutter analyze` sạch
-- [ ] `flutter test` pass (482 tests; integration tự skip nếu thiếu dữ liệu thật)
+- [ ] `flutter test` pass (487 tests; integration tự skip nếu thiếu dữ liệu thật)
 - [ ] Nếu đụng repair/parser: `dart run tool/export_jp.dart` verify OK
 - [ ] Trước khi release: chạy `.claude/SMOKE_TEST_CHECKLIST.md` trên exe đã build (pipeline hiện chỉ ra bản Windows — xem mục Deployment)
 

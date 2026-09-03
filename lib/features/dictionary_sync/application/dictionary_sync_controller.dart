@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../../dictionary/application/dictionaries_provider.dart';
 import '../../dictionary/data/user_dict_service.dart';
 import '../../settings/settings_provider.dart';
+import '../../translation/application/lookup_controller.dart';
 import '../../translation/application/translation_controller.dart';
 import '../../translation/domain/translation_engine.dart';
 import '../data/dictionary_sync_api.dart';
@@ -375,6 +376,9 @@ class DictionarySyncController extends Notifier<DictionarySyncState> {
           .read(translationControllerProvider.notifier)
           .translate(translation.sourceText);
     }
+    // Ô Nghĩa đang mở vẫn là kết quả tính từ bộ dict cũ — tra lại để mục vừa
+    // sửa hiện ngay và mục vừa xóa biến mất.
+    ref.read(lookupControllerProvider.notifier).refreshCurrent();
   }
 
   Future<void> _clearPersistedSession() async {

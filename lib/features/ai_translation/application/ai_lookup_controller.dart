@@ -36,6 +36,8 @@ CHỈ trả về một object JSON, không lời dẫn, không bọc trong ```:
 }
 
 KHÔNG đưa phiên âm, cách đọc, romaji, pinyin hay âm Hán Việt vào bất kỳ trường nào.
+KHÔNG đưa từ loại vào bất kỳ trường "meaning" nào (không viết "(tính từ)",
+"(động từ)"...) — từ loại chỉ thuộc về trường "pos".
 
 Quy tắc "sub_entries" — đây là các mục sẽ được thêm thẳng vào từ điển:
 - Tách những từ/cụm có nghĩa độc lập nằm trong cụm trên.
@@ -135,6 +137,9 @@ Future<AiApiResponse> executeAiLookup(WidgetRef ref, String rawWord) async {
     }
 
     await dictionaries.reload();
+    // Từ điển vừa có thêm mục AI → tra lại ngay để ô Nghĩa hiện chúng, thay vì
+    // bắt người dùng bấm lại đúng từ đó.
+    lookup.refreshCurrent();
   } catch (_) {
     // Lỗi ghi file: kết quả đã hiện trên dialog + ô Nghĩa là đủ.
   }

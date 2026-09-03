@@ -188,6 +188,9 @@ Future<void> _persist(
     }
 
     await dictionaries.reload();
+    // Từ điển vừa có thêm mục online → tra lại ngay để ô Nghĩa hiện chúng,
+    // thay vì bắt người dùng bấm lại đúng từ đó.
+    lookup.refreshCurrent();
   } catch (_) {
     // Mất mạng / lỗi ghi file: kết quả đã hiện trên dialog là đủ.
   }

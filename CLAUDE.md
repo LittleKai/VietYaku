@@ -160,7 +160,7 @@ Mỗi bản release đi ra **hai nơi cùng lúc**, do skill `.claude/skills/bui
 **Dev Commands:**
 ```bash
 flutter analyze                    # phải sạch trước khi kết thúc task
-flutter test                       # 477 tests (integration tự skip nếu thiếu dữ liệu thật)
+flutter test                       # 487 tests (integration tự skip nếu thiếu dữ liệu thật)
 flutter run -d windows             # chạy debug
 flutter build windows --release    # build exe độc lập
 dart run tool/build_simp2jp.dart   # sinh lại assets mapping (dev, cần mạng)

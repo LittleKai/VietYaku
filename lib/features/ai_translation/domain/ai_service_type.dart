@@ -25,8 +25,6 @@ enum AiServiceType {
       'gemini-3.1-pro-preview',
       'agy-gemini-3-flash',
       '假流式-agy-gemini-3-flash-low',
-      'agy-gemini-3.5-flash-low',
-      '假流式-agy-gemini-3.5-flash-low',
       'agy-gemini-3.6-flash',
       '假流式-agy-gemini-3.6-flash',
       'agy-gemini-3.6-flash-low',
