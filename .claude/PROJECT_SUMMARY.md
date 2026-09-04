@@ -1,7 +1,6 @@
 # Project Summary — VietYaku
 ---
-
-**Last updated:** 2026-09-03
+**Last updated:** 2026-09-04
 
 ## 1. Project Overview
 
@@ -50,12 +49,12 @@ VietYaku/
 │   │   ├── dictionary_search/      # domain exact/prefix/wildcard/full-text + overlay winner · worker isolate sống lâu · Search Center UI
 │   │   ├── dictionary_sync/        # domain shared entry + sync_reminder (chu kỳ nhắc) · typed HTTP API · merge overlay · Riverpod admin session/sync controller · presentation (sync_reminder_dialog)
 │   │   ├── epub_converter/         # đọc EPUB spine/OPF + xuất CSV/XLSX/MD/DOCX/TXT; UI chọn file/xem trước/lưu
-│   │   ├── glossary/               # domain (glossary_term) · data (glossary_service — đọc/ghi `Global Glossary.json` JP/CN của AI_Translation_Bridge) · application (glossary_sync_controller — ghép 2 bên, lọc trùng/created_by) · presentation (glossary_update_dialog — xác nhận trước khi ghi; glossary_sync_screen — đồng bộ hàng loạt 2 chiều, có phân trang)
+│   │   ├── glossary/               # domain (glossary_term, glossary_term_change) · data (glossary_service — đọc/ghi `Global Glossary.json` JP/CN của AI_Translation_Bridge; glossary_term_queue — hàng đợi `PendingGlossary_<mode>.txt` chờ đẩy lên server) · application (glossary_service_provider — service dùng cho MỌI chỗ ghi, tự xếp hàng khi là admin; glossary_sync_controller — ghép 2 bên, lọc trùng/created_by) · presentation (glossary_update_dialog — xác nhận trước khi ghi; glossary_sync_screen — đồng bộ hàng loạt 2 chiều, có phân trang)
 │   │   ├── translation/            # domain (translation_engine, translation_rule, token, vietphrase_value, reading_extractor, online_lookup_source, trad2simp_table, dict_entry_filter, meaning_panel_layout) · data (translation_rule_repository + các API online) · application (translation_controller + currentModeProvider, translation_rules_provider, lookup/online lookup, trad2simp, token_selection, viet_draft) · presentation (translate_screen, source/result/viet/han_viet pane, token_text_view, translation_rule_tester_dialog, lacviet_panel)
 │   │   ├── repair/                 # domain (jp_repair_pipeline, simp2jp_table, repair_report) · application (repair_controller) · presentation (repair_screen, repair_preview)
 │   │   └── settings/               # settings_provider, settings_screen (3 tab: Chung — thuật toán/popup/tra online/dịch AI/tốc độ đọc/sync + thư mục Glossary + màn đồng bộ Glossary ↔ VietPhrase (chỉ admin)/update; Tiếng Nhật — kana+Sudachi+giọng Nhật+repair; Tiếng Trung — phồn→giản+giọng Trung), appearance_screen (cỡ chữ+font/màu kana/hiển thị)
 │   └── shared/widgets/             # tts_button, entry_edit_dialog, app_dialog, feature_help_button (`?` + dialog giải thích), icon_context_menu, settings_layout, markdown_body_view (render nghĩa AI)
-└── test/                           # 487 tests (55 file; integration dữ liệu thật tự skip nếu thiếu path)
+└── test/                           # 497 tests (55 file; integration dữ liệu thật tự skip nếu thiếu path)
 ```
 
 ### Critical Files
@@ -85,6 +84,7 @@ Feature-first: mỗi feature chia `domain/` (thuần Dart, không Flutter) · `d
 - Riverpod manual: `NotifierProvider` (settings, translation, lookup, repair, recent files), `AsyncNotifierProvider` (dictionaries, saved words), `FutureProvider` (appPaths, ttsService, simp2jpTable).
 - `sharedPreferencesProvider` override trong `main()` sau `SharedPreferences.getInstance()`.
 - Đồng bộ từ điển chung chỉ áp dụng cho VietPhrase/Lạc Việt: `GET /api/glossary/sync` kéo các trang delta bằng opaque cursor (public); `POST` publish entry qua JWT admin. `username + JWT` lưu SharedPreferences để khôi phục phiên (không lưu mật khẩu; logout/401 xóa phiên). Admin sửa cục bộ vào `SharedVietPhrase/SharedLacViet_<mode>.txt` và hàng đợi `PendingVietPhrase/PendingLacViet_<mode>.txt`; chỉ bấm `Update` mới upload các mục chờ của cả Nhật/Trung. Cursor lưu riêng theo mode; pull delta xong re-apply pending để không mất sửa đổi chưa upload. Non-admin dùng UserDict; UserNames luôn local.
+- Global Glossary đi kênh riêng `POST /api/glossary/terms/sync` (`kind: 'glossaryTerm'`, không lẫn với từ điển dịch). `glossaryServiceProvider` là `GlossaryService` dùng cho MỌI chỗ ghi `Global Glossary.json`; hook `onChanged` xếp đúng những mục vừa đổi vào `PendingGlossary_<mode>.txt` **chỉ khi đang là phiên admin**, và `publishPending()` đẩy kèm theo lô 100 lúc bấm Update. `pendingCount()` gộp cả hàng đợi từ điển lẫn glossary; sửa **lẻ** một từ glossary đủ ngưỡng 10 là `maybeAutoPublish()` tự Update như `stageLocalEdit`, còn ghi hàng loạt (màn đồng bộ Glossary ↔ VietPhrase) vẫn chờ admin bấm tay đúng quy ước `stageLocalEditsBulk`. Mục có `=`/CR/LF trong key hoặc CR/LF trong nghĩa bị loại ngay lúc xếp hàng — server từ chối cả lô nếu một mục sai thì hàng đợi không bao giờ trống. Chỉ đẩy lên, VietYaku KHÔNG kéo glossary về (AI_Translation_Bridge là bên tiêu thụ).
 - Tra AI: cấu hình ở `userdata/ai_settings.json` (+ mirror SharedPreferences), **không** bao giờ nhúng key vào source/bundle — người dùng tự dán key trong Cài đặt → Dịch AI. Mỗi key mang một `weight`; `AiKeyRotator` (smooth weighted round-robin) chia lượt đúng tỉ lệ weight và rải đều, không bốc ngẫu nhiên. Key trả 401/403 nghỉ 30 phút, 429 nghỉ 1 phút rồi được dùng lại; một lần tra thử tối đa 3 key. `executeAiLookup` đọc hết notifier/service TRƯỚC khi await để đóng dialog giữa chừng vẫn lưu được kết quả; đã có trong AiDict thì nút "Tra AI" tự ẩn để khỏi gọi lặp.
 - Định dạng kết quả AI: prompt yêu cầu **JSON** (`AiLookupResult` — meaning/pos/reading/romaji/han_viet/parts/sub_entries), không ví dụ sử dụng. `AiDict_<mode>.txt` lưu JSON compact một dòng trong khung `<<AI Dịch>>` như OnlineDict; hiển thị thì `aiBodyToMarkdown` đổi sang Markdown rồi `MarkdownBodyView` (flutter_markdown_plus) render — mục cũ lưu Markdown thô vẫn hiện đúng vì được trả nguyên văn. Model không chịu trả JSON thì lưu nguyên văn, không mất kết quả.
 - 3 từ điển sinh ra khi tra, mỗi ngôn ngữ một bộ: `AiDict_<mode>.txt` (phân tích đầy đủ, CHỈ cho ô Nghĩa), `AiEntries_<mode>.txt` (`sub_entries` AI tách ra → vào engine dịch, xếp SAU VietPhrase nên không đè từ điển gốc), `VietPhrase_<mode>.txt` (overlay chứa những key VietPhrase gốc chưa có — nằm trên VietPhrase, dưới SharedVietPhrase). Cùng `OnlineDict_<mode>.txt`.
@@ -194,6 +194,7 @@ Menu bar trên cùng (chọn Nhật/Trung + Dán & Dịch). Trái (flex 2): tabs
 | Tự động kiểm tra cập nhật (GitHub Releases) | ✅ Done | features/update/*, app.dart, settings_provider | Windows: tải ZIP + bat script. Android: `findAndroidApkAsset` khớp asset đuôi `.apk`, tải về temp rồi `OpenFilex.open` mở trình cài đặt (`REQUEST_INSTALL_PACKAGES`, FileProvider của open_filex) |
 | Phát hành lên B2 cho trang tải web | ✅ Done | .claude/skills/build-and-release/scripts/upload-b2.ps1, release.ps1 | Đẩy ZIP + `version.json` lên `vietyaku-app/` để `/studio/vietyaku` tải về |
 | Đẩy từ sang Global Glossary | ✅ Done | features/glossary/*, settings_provider, entry_edit_dialog | Ghi `Global Glossary.json` JP/CN của AI_Translation_Bridge |
+| Đẩy Global Glossary lên server cho AI_Translation_Bridge | ✅ Done | glossary_service_provider, glossary_term_queue, dictionary_sync_api/controller | Phiên admin ghi glossary → xếp hàng `PendingGlossary_<mode>.txt` → `POST /api/glossary/terms/sync` khi bấm Update, hoặc tự Update khi tổng mục chờ (từ điển + glossary) đạt 10 |
 | Đồng bộ hàng loạt Glossary ↔ VietPhrase | ✅ Done | features/glossary/*, dictionary_sync_controller | 2 chiều, phân trang, lọc trùng/không trùng |
 | Kiểm tra: độ phủ + top từ chưa dịch + soát lỗi | ✅ Done | features/analysis/*, translate_screen | Độ phủ CJK, gợi ý tên riêng, cắt cụm lệch, lệch ngoặc |
 | Clipboard reader + global hotkey | ✅ Done | features/clipboard/*, settings_provider | `WM_CLIPBOARDUPDATE` + `Ctrl+Shift+V` |

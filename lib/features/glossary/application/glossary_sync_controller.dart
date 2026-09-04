@@ -11,6 +11,7 @@ import '../../translation/domain/translation_engine.dart';
 import '../data/glossary_service.dart';
 import '../domain/glossary_term.dart';
 import '../presentation/glossary_update_dialog.dart' show glossaryTargetOf;
+import 'glossary_service_provider.dart';
 
 /// Chiều đồng bộ giữa Global Glossary (AI_Translation_Bridge) và VietPhrase.
 enum GlossarySyncDirection {
@@ -202,7 +203,7 @@ Future<void> applyGlossarySyncRows(
           ],
         );
   } else {
-    final service = GlossaryService(ref.read(settingsProvider).glossaryDir);
+    final service = ref.read(glossaryServiceProvider);
     await service.upsertAll(mode, {
       for (final row in rows) row.source: row.target,
     });
@@ -226,7 +227,7 @@ Future<void> deleteGlossarySyncRows(
   final mode = ref.read(translationControllerProvider).mode;
 
   if (deleteFromGlossary) {
-    final service = GlossaryService(ref.read(settingsProvider).glossaryDir);
+    final service = ref.read(glossaryServiceProvider);
     await service.removeAll(mode, rows.map((r) => r.source));
   }
 
@@ -274,7 +275,7 @@ Future<void> editGlossarySyncRow(
   final sourceChanged = source != oldSource;
 
   if (updateGlossary) {
-    final service = GlossaryService(ref.read(settingsProvider).glossaryDir);
+    final service = ref.read(glossaryServiceProvider);
     if (sourceChanged) {
       await service.removeAll(mode, [oldSource]);
     }
@@ -338,7 +339,7 @@ Future<void> bulkEditGlossarySyncRows(
   if (updatedPairs.isEmpty) return;
 
   if (updateGlossary) {
-    final service = GlossaryService(ref.read(settingsProvider).glossaryDir);
+    final service = ref.read(glossaryServiceProvider);
     await service.upsertAll(mode, updatedPairs);
   }
 

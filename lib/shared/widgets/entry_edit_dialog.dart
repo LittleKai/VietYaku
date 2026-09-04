@@ -10,6 +10,7 @@ import '../../features/dictionary/domain/entry_impact.dart';
 import '../../features/dictionary_search/domain/dictionary_search.dart';
 import '../../features/dictionary_sync/application/dictionary_sync_controller.dart';
 import '../../features/dictionary_sync/domain/shared_dictionary_entry.dart';
+import '../../features/glossary/application/glossary_service_provider.dart';
 import '../../features/glossary/application/glossary_sync_controller.dart';
 import '../../features/glossary/data/glossary_service.dart';
 import '../../features/glossary/domain/glossary_term.dart';
@@ -60,7 +61,7 @@ Future<void> showEntryEditDialog(
 
   final settings = ref.read(settingsProvider);
   final glossaryDir = settings.glossaryDir;
-  final glossaryService = GlossaryService(glossaryDir);
+  final glossaryService = ref.read(glossaryServiceProvider);
   final canUpdateGlossary = glossaryService.hasGlossaryFor(translation.mode);
   holder.autoUpdateGlossaryNotifier.value = settings.autoUpdateGlossaryOnSave;
   holder.notifyOnGlossaryUpdateNotifier.value =
@@ -222,7 +223,7 @@ Future<void> showSharedEntryEditDialog(
   final settings = ref.read(settingsProvider);
   final glossaryDir = settings.glossaryDir;
   final glossaryLang = GlossaryService.langFor(mode);
-  final glossaryService = GlossaryService(glossaryDir);
+  final glossaryService = ref.read(glossaryServiceProvider);
   final canUpdateGlossary =
       isVietPhrase && glossaryService.hasGlossaryFor(mode);
   holder.autoUpdateGlossaryNotifier.value = settings.autoUpdateGlossaryOnSave;

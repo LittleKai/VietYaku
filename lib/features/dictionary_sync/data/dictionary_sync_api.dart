@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../../glossary/domain/glossary_term_change.dart';
 import '../../translation/domain/translation_engine.dart';
 import '../domain/shared_dictionary_entry.dart';
 
@@ -121,6 +122,33 @@ class DictionarySyncApi {
           }),
         )
         .timeout(const Duration(seconds: 15));
+    final body = _decode(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw _apiError(response.statusCode, body);
+    }
+  }
+
+  /// Đẩy sửa đổi Global Glossary lên kênh riêng `/glossary/terms/sync`.
+  /// Server nhận tối đa 100 mục một lần, người gọi tự chia lô.
+  Future<void> publishGlossaryTerms(
+    String token,
+    TranslationMode mode,
+    List<GlossaryTermChange> changes,
+  ) async {
+    if (changes.isEmpty) return;
+    final response = await client
+        .post(
+          _uri('/glossary/terms/sync'),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+          body: jsonEncode({
+            'language': mode.name,
+            'items': [for (final change in changes) change.toJson()],
+          }),
+        )
+        .timeout(const Duration(seconds: 20));
     final body = _decode(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw _apiError(response.statusCode, body);

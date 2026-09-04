@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import '../../dictionary/application/dictionaries_provider.dart';
 import '../../dictionary/data/user_dict_service.dart';
+import '../../glossary/data/glossary_term_queue.dart';
 import '../../settings/settings_provider.dart';
 import '../../translation/application/lookup_controller.dart';
 import '../../translation/application/translation_controller.dart';
@@ -13,6 +14,12 @@ import '../data/dictionary_sync_api.dart';
 import '../data/shared_dictionary_service.dart';
 import '../domain/shared_dictionary_entry.dart';
 import '../domain/sync_reminder.dart';
+
+/// Nguồn `http.Client` của mọi lệnh gọi đồng bộ. Tồn tại để test bơm được
+/// `MockClient`; production luôn là client thật.
+final syncHttpClientFactoryProvider = Provider<http.Client Function()>(
+  (ref) => http.Client.new,
+);
 
 class DictionarySyncState {
   final bool isLoggingIn;
@@ -56,6 +63,9 @@ class DictionarySyncController extends Notifier<DictionarySyncState> {
   /// ngoài việc bấm nút Update thủ công.
   static const _autoPublishThreshold = 10;
 
+  /// Giới hạn `items` mỗi request của `/api/glossary/terms/sync`.
+  static const _glossaryBatchSize = 100;
+
   /// Mốc đếm chu kỳ nhắc cập nhật (epoch ms): lần cập nhật gần nhất, hoặc lần
   /// gần nhất người dùng trả lời hộp thoại nhắc.
   static const _reminderBaselineKey = 'dictionarySync.reminderBaseline';
@@ -89,7 +99,7 @@ class DictionarySyncController extends Notifier<DictionarySyncState> {
     required String password,
   }) async {
     state = state.copyWith(isLoggingIn: true, clearMessage: true);
-    final client = http.Client();
+    final client = ref.read(syncHttpClientFactoryProvider)();
     try {
       final session = await DictionarySyncApi(
         serverUrl: serverUrl,
@@ -138,23 +148,39 @@ class DictionarySyncController extends Notifier<DictionarySyncState> {
         ? 'VietPhrase'
         : 'Lạc Việt';
 
-    var pendingCount = 0;
-    for (final m in TranslationMode.values) {
-      pendingCount += (await service.pendingEntries(m)).length;
-    }
-    if (pendingCount >= _autoPublishThreshold) {
-      // Đủ số sửa đổi chờ: tự động Update, không cần bấm nút thủ công.
-      try {
-        await publishPending();
-      } catch (_) {
-        // publishPending() đã ánh xạ lỗi vào state.message.
-      }
-      return;
-    }
+    if (await maybeAutoPublish()) return;
 
     state = state.copyWith(
       message: 'Đã lưu $dictionaryName. Bấm Update để gửi lên server.',
     );
+  }
+
+  /// Tổng số sửa đổi đang chờ Update của cả hai ngôn ngữ — từ điển chung lẫn
+  /// Global Glossary, vì cả hai cùng đi lên trong một lần bấm Update.
+  Future<int> pendingCount() async {
+    final paths = await ref.read(appPathsProvider.future);
+    final service = SharedDictionaryService(paths);
+    final glossaryQueue = GlossaryTermQueue(paths);
+    var count = 0;
+    for (final mode in TranslationMode.values) {
+      count += (await service.pendingEntries(mode)).length;
+      count += (await glossaryQueue.pending(mode)).length;
+    }
+    return count;
+  }
+
+  /// Đủ [_autoPublishThreshold] sửa đổi chờ thì tự Update, không cần bấm nút.
+  /// Trả `true` khi đã chạy publish (kể cả khi publish lỗi — lỗi đã nằm trong
+  /// `state.message`), để người gọi khỏi ghi đè thông báo bằng "Bấm Update".
+  Future<bool> maybeAutoPublish() async {
+    if (!state.isAdmin) return false;
+    if (await pendingCount() < _autoPublishThreshold) return false;
+    try {
+      await publishPending();
+    } catch (_) {
+      // publishPending() đã ánh xạ lỗi vào state.message.
+    }
+    return true;
   }
 
   Future<void> stageLocalDelete({
@@ -227,7 +253,7 @@ class DictionarySyncController extends Notifier<DictionarySyncState> {
     final session = state.session;
     if (session == null || state.isPublishing) return 0;
     state = state.copyWith(isPublishing: true, clearMessage: true);
-    final client = http.Client();
+    final client = ref.read(syncHttpClientFactoryProvider)();
     try {
       final api = DictionarySyncApi(
         serverUrl: ref.read(settingsProvider).syncServerUrl,
@@ -235,7 +261,9 @@ class DictionarySyncController extends Notifier<DictionarySyncState> {
       );
       final paths = await ref.read(appPathsProvider.future);
       final service = SharedDictionaryService(paths);
+      final glossaryQueue = GlossaryTermQueue(paths);
       var published = 0;
+      var glossaryPublished = 0;
       for (final mode in TranslationMode.values) {
         final entries = await service.pendingEntries(mode);
         for (final entry in entries) {
@@ -245,14 +273,35 @@ class DictionarySyncController extends Notifier<DictionarySyncState> {
           await service.clearPending(mode);
           published += entries.length;
         }
+
+        // Glossary đi kênh riêng, gửi theo lô 100 đúng giới hạn của server.
+        final changes = await glossaryQueue.pending(mode);
+        for (var i = 0; i < changes.length; i += _glossaryBatchSize) {
+          await api.publishGlossaryTerms(
+            session.token,
+            mode,
+            changes.sublist(
+              i,
+              (i + _glossaryBatchSize).clamp(0, changes.length),
+            ),
+          );
+        }
+        if (changes.isNotEmpty) {
+          await glossaryQueue.clear(mode);
+          glossaryPublished += changes.length;
+        }
       }
+      final glossaryNote = glossaryPublished == 0
+          ? ''
+          : ' và $glossaryPublished mục Global Glossary';
       state = state.copyWith(
         isPublishing: false,
-        message: published == 0
+        message: published == 0 && glossaryPublished == 0
             ? 'Không có thay đổi nào đang chờ Update.'
-            : 'Đã Update $published mục VietPhrase/Lạc Việt lên server.',
+            : 'Đã Update $published mục VietPhrase/Lạc Việt$glossaryNote lên '
+                  'server.',
       );
-      return published;
+      return published + glossaryPublished;
     } catch (error) {
       if (error is DictionarySyncException && error.statusCode == 401) {
         await _clearPersistedSession();
@@ -279,7 +328,7 @@ class DictionarySyncController extends Notifier<DictionarySyncState> {
     final prefs = ref.read(sharedPreferencesProvider);
     var cursor = prefs.getString(_cursorKey(mode)) ?? '';
     final entries = <SharedDictionaryEntry>[];
-    final client = http.Client();
+    final client = ref.read(syncHttpClientFactoryProvider)();
     try {
       final api = DictionarySyncApi(
         serverUrl: ref.read(settingsProvider).syncServerUrl,

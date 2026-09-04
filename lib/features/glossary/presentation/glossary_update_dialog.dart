@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/widgets/app_dialog.dart';
-import '../../settings/settings_provider.dart';
 import '../../translation/application/translation_controller.dart';
 import '../../translation/domain/vietphrase_value.dart';
+import '../application/glossary_service_provider.dart';
 import '../application/glossary_sync_controller.dart';
 import '../data/glossary_service.dart';
 import '../domain/glossary_term.dart';
@@ -28,7 +28,7 @@ Future<bool> showGlossaryUpdateDialog(
   required String meaning,
 }) async {
   final mode = ref.read(translationControllerProvider).mode;
-  final service = GlossaryService(ref.read(settingsProvider).glossaryDir);
+  final service = ref.read(glossaryServiceProvider);
   final lang = GlossaryService.langFor(mode);
   final target = glossaryTargetOf(meaning);
   if (source.isEmpty || target.isEmpty) {

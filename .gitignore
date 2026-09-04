@@ -59,7 +59,7 @@ data/cn/*
 
 # Generated repair files
 **/*_JP.txt
-.claude\tmp
+.claude/tmp/
 
 # Temporary files (keep UI screenshots)
 /tmp/*

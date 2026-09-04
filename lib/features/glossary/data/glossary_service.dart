@@ -17,7 +17,17 @@ class GlossaryService {
 
   final String rootDir;
 
-  const GlossaryService(this.rootDir);
+  /// Gọi sau mỗi lần file glossary được ghi thành công, kèm đúng những mục đã
+  /// đổi. `glossaryServiceProvider` dùng nó để xếp hàng đẩy lên server; tạo
+  /// service trực tiếp (đọc, test) thì để `null`.
+  final Future<void> Function(
+    TranslationMode mode,
+    Map<String, String> upserts,
+    List<String> deletes,
+  )?
+  onChanged;
+
+  const GlossaryService(this.rootDir, {this.onChanged});
 
   static String langFor(TranslationMode mode) =>
       mode == TranslationMode.japanese ? 'JP' : 'CN';
@@ -69,10 +79,12 @@ class GlossaryService {
       indexByKey.putIfAbsent(key, () => i);
     }
 
+    final applied = <String, String>{};
     for (final entry in targetBySource.entries) {
       final source = entry.key.trim();
       final target = entry.value.trim();
       if (source.isEmpty || target.isEmpty) continue;
+      applied[source] = target;
       final index = indexByKey[source.toLowerCase()];
       if (index != null) {
         terms[index] = GlossaryTerm.fromJson(terms[index])
@@ -99,6 +111,7 @@ class GlossaryService {
       encoding: utf8,
       flush: true,
     );
+    await onChanged?.call(mode, applied, const []);
   }
 
   /// Toàn bộ mục từ trong glossary của [mode] (rỗng nếu chưa trỏ đúng thư mục).
@@ -118,6 +131,14 @@ class GlossaryService {
     if (payload == null) return;
     final keysToRemove = sources.map((s) => s.trim().toLowerCase()).toSet();
     final terms = _termsOf(payload);
+    // Giữ đúng chữ hoa/thường của mục bị xóa: server khớp `source` từng ký tự.
+    final removed = [
+      for (final term in terms)
+        if (keysToRemove.contains(
+          (term['source'] ?? '').toString().trim().toLowerCase(),
+        ))
+          (term['source'] ?? '').toString().trim(),
+    ];
     terms.removeWhere(
       (term) => keysToRemove.contains(
         (term['source'] ?? '').toString().trim().toLowerCase(),
@@ -133,6 +154,7 @@ class GlossaryService {
       encoding: utf8,
       flush: true,
     );
+    await onChanged?.call(mode, const {}, removed);
   }
 
   static String todayStamp() {
