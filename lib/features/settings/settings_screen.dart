@@ -526,7 +526,7 @@ class _MeaningPanelSetting extends ConsumerWidget {
           child: Text(
             visible.isEmpty
                 ? 'Đang tắt hết — ô Nghĩa sẽ trống.'
-                : 'Giữ một thẻ rồi kéo thả lên thẻ khác để đổi thứ tự. Bấm ✕ để ẩn.',
+                : 'Giữ một thẻ rồi kéo thả lên thẻ khác để đổi thứ tự.',
             style: theme.textTheme.bodySmall?.copyWith(
               color: scheme.onSurfaceVariant,
             ),
@@ -554,10 +554,6 @@ class _MeaningPanelSetting extends ConsumerWidget {
                     mode,
                     layout.movedOnto(dragged, visible[i]),
                   ),
-                  onHide: () => notifier.setMeaningPanelLayout(
-                    mode,
-                    layout.withVisibility(visible[i], false),
-                  ),
                 ),
               ActionChip(
                 avatar: const Icon(Icons.tune, size: 16),
@@ -582,13 +578,11 @@ class _DictOrderChip extends StatelessWidget {
     required this.type,
     required this.position,
     required this.onDropped,
-    required this.onHide,
   });
 
   final LookupDictionaryType type;
   final int position;
   final ValueChanged<LookupDictionaryType> onDropped;
-  final VoidCallback onHide;
 
   @override
   Widget build(BuildContext context) {
@@ -622,7 +616,7 @@ class _DictOrderChip extends StatelessWidget {
   }) {
     final scheme = Theme.of(context).colorScheme;
     return Container(
-      padding: const EdgeInsets.fromLTRB(8, 4, 4, 4),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: highlighted ? scheme.primaryContainer : scheme.surface,
         borderRadius: BorderRadius.circular(20),
@@ -647,15 +641,6 @@ class _DictOrderChip extends StatelessWidget {
           ),
           const SizedBox(width: 6),
           Text(type.label),
-          const SizedBox(width: 2),
-          InkWell(
-            borderRadius: BorderRadius.circular(20),
-            onTap: onHide,
-            child: Padding(
-              padding: const EdgeInsets.all(3),
-              child: Icon(Icons.close, size: 14, color: scheme.onSurfaceVariant),
-            ),
-          ),
         ],
       ),
     );
