@@ -178,3 +178,17 @@ int runeLengthAt(String text, int index) {
   }
   return 1;
 }
+
+/// Số code unit của rune kết thúc ngay trước [index] (1 hoặc 2).
+int runeLengthBefore(String text, int index) {
+  if (index <= 0) return 0;
+  if (index >= 2) {
+    final trail = text.codeUnitAt(index - 1);
+    final lead = text.codeUnitAt(index - 2);
+    if (lead >= 0xD800 && lead <= 0xDBFF && trail >= 0xDC00 && trail <= 0xDFFF) {
+      return 2;
+    }
+  }
+  return 1;
+}
+

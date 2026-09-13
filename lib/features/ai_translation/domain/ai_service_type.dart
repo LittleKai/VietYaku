@@ -21,16 +21,20 @@ enum AiServiceType {
   /// Danh sách các model chính xác của từng nhà cung cấp
   List<String> get availableModels => switch (this) {
     AiServiceType.geminiCli => const [
+      // Gemini 3.8 Flash
+      'agy-gemini-3.8-flash-low',
+      '假流式-agy-gemini-3.8-flash-low',
+      'agy-gemini-3.8-flash-medium',
+      '假流式-agy-gemini-3.8-flash-medium',
+      'agy-gemini-3.8-flash-high',
+      '假流式-agy-gemini-3.8-flash-high',
+      // Gemini 3.1 Pro & Preview
+      'agy-gemini-3.1-pro-high',
+      '假流式-agy-gemini-3.1-pro-high',
+      'agy-gemini-3-flash',
+      '假流式-agy-gemini-3-flash',
       'gemini-3-flash-preview',
       'gemini-3.1-pro-preview',
-      'agy-gemini-3-flash',
-      '假流式-agy-gemini-3-flash-low',
-      'agy-gemini-3.6-flash',
-      '假流式-agy-gemini-3.6-flash',
-      'agy-gemini-3.6-flash-low',
-      '假流式-agy-gemini-3.6-flash-low',
-      'agy-gemini-3.1-pro-low',
-      '假流式-agy-gemini-3.1-pro-low',
     ],
     AiServiceType.geminiApi => const [
       'gemini-2.5-flash',

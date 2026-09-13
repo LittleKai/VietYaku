@@ -65,39 +65,43 @@ class LacVietPanel extends ConsumerWidget {
             child: Row(
               children: [
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        result.matchedKey ?? result.word,
-                        style: theme.textTheme.titleLarge,
-                      ),
-                      if (result.reading != null || result.hanViet != null)
-                        Text.rich(
-                          TextSpan(
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant,
-                            ),
-                            children: [
-                              if (result.reading != null)
-                                TextSpan(text: result.reading!),
-                              if (result.reading != null &&
-                                  result.hanViet != null)
-                                const TextSpan(text: ' · '),
-                              if (result.hanViet != null) ...[
-                                const TextSpan(text: '('),
-                                const TextSpan(
-                                  text: 'Hán Việt',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                TextSpan(text: ': ${result.hanViet})'),
-                              ],
-                            ],
-                          ),
+                  // Tô đen + copy được cả cụm từ · phát âm · Hán Việt trong
+                  // một lượt kéo chuột (Ctrl+C hoặc menu chuột phải).
+                  child: SelectionArea(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          result.matchedKey ?? result.word,
+                          style: theme.textTheme.titleLarge,
                         ),
-                    ],
+                        if (result.reading != null || result.hanViet != null)
+                          Text.rich(
+                            TextSpan(
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                              children: [
+                                if (result.reading != null)
+                                  TextSpan(text: result.reading!),
+                                if (result.reading != null &&
+                                    result.hanViet != null)
+                                  const TextSpan(text: ' · '),
+                                if (result.hanViet != null) ...[
+                                  const TextSpan(text: '('),
+                                  const TextSpan(
+                                    text: 'Hán Việt',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  TextSpan(text: ': ${result.hanViet})'),
+                                ],
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
                 _OnlineLookupButton(
@@ -203,6 +207,7 @@ Color meaningLabelColor(String label, ColorScheme scheme) {
       return const Color(0xFF5E35B1); // deep purple
     case 'AI Dịch':
     case 'AI Tra Cứu':
+    case 'AI Dịch (Cả câu)':
     case 'AI tách từ':
       return const Color(0xFF8E24AA); // purple
     default:
@@ -308,7 +313,6 @@ class _MeaningSections extends ConsumerWidget {
 }
 
 /// Nút tra online: mở dialog tra song song Mazii + Google Dịch.
-/// Ẩn khi từ đã tồn tại trong OnlineDict để chống gọi lặp.
 class _OnlineLookupButton extends ConsumerWidget {
   const _OnlineLookupButton({this.color});
 
@@ -322,20 +326,23 @@ class _OnlineLookupButton extends ConsumerWidget {
     if (word.isEmpty) return const SizedBox.shrink();
 
     final dicts = ref.watch(dictionariesProvider).valueOrNull;
-    if (dicts != null && dicts.onlineDict.entries.containsKey(word)) {
-      return const SizedBox.shrink();
-    }
+    final hasOnline =
+        dicts != null && dicts.onlineDict.entries.containsKey(word);
 
     return IconButton(
-      icon: Icon(Icons.travel_explore, color: color),
-      tooltip: 'Tra online (theo nguồn đã bật trong Cài đặt)',
+      icon: Icon(
+        hasOnline ? Icons.travel_explore_outlined : Icons.travel_explore,
+        color: color,
+      ),
+      tooltip: hasOnline
+          ? 'Tra lại online (theo nguồn đã bật trong Cài đặt)'
+          : 'Tra online (theo nguồn đã bật trong Cài đặt)',
       onPressed: () => showOnlineLookupDialog(context, ref, word: word),
     );
   }
 }
 
 /// Nút tra AI: mở dialog gọi AI tra cứu và phân tích ngữ pháp.
-/// Ẩn khi chưa cấu hình key hoặc từ đã tồn tại trong AiDict.
 class _AiLookupButton extends ConsumerWidget {
   const _AiLookupButton({this.color});
 
@@ -354,14 +361,18 @@ class _AiLookupButton extends ConsumerWidget {
     }
 
     final dicts = ref.watch(dictionariesProvider).valueOrNull;
-    if (dicts != null && dicts.aiDict.entries.containsKey(word)) {
-      return const SizedBox.shrink();
-    }
+    final hasAi = dicts != null && dicts.aiDict.entries.containsKey(word);
 
     return IconButton(
-      icon: Icon(Icons.auto_awesome, color: color),
-      tooltip: 'Tra cứu & Phân tích AI (${aiSettings.activeService.label})',
+      icon: Icon(
+        hasAi ? Icons.auto_awesome_outlined : Icons.auto_awesome,
+        color: color,
+      ),
+      tooltip: hasAi
+          ? 'Dịch lại bằng AI (${aiSettings.activeService.label})'
+          : 'Tra cứu & Phân tích AI (${aiSettings.activeService.label})',
       onPressed: () => showAiLookupDialog(context, ref, word: word),
     );
   }
 }
+

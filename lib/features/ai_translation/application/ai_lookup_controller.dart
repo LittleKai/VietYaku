@@ -78,12 +78,13 @@ Future<AiApiResponse> executeAiLookup(WidgetRef ref, String rawWord) async {
   final lookup = ref.read(lookupControllerProvider.notifier);
   final dictionaries = ref.read(dictionariesProvider.notifier);
   final appPaths = ref.read(appPathsProvider.future);
-  final vietPhrase = ref.read(dictionariesProvider).valueOrNull?.vietPhrase;
+  final dicts = ref.read(dictionariesProvider).valueOrNull;
+  final vietPhrase = dicts?.vietPhrase;
+  final lacViet = dicts?.lacViet;
   // Admin ghi vào bộ dict dùng chung của ngôn ngữ để đóng gói theo bản phát
   // hành; người dùng thường ghi vào userdata cá nhân.
-  final targetDir = ref.read(dictionarySyncProvider).isAdmin
-      ? generatedDictDir(mode)
-      : null;
+  final isAdmin = ref.read(dictionarySyncProvider).isAdmin;
+  final targetDir = isAdmin ? generatedDictDir(mode) : null;
 
   final response = await apiClient.callAi(
     prompt: prompt,
@@ -104,12 +105,26 @@ Future<AiApiResponse> executeAiLookup(WidgetRef ref, String rawWord) async {
 
   try {
     final service = UserDictService(await appPaths);
+    final isWord = isWordLikeEntry(word);
+
+    // 1. Luôn lưu vào userdata (để dữ liệu cá nhân luôn có và ô Nghĩa tra được).
     await service.upsertAiDict(
       mode,
       word,
       encodeOnlineSections([section]),
-      inDir: targetDir,
     );
+
+    // 2. Nếu đã đăng nhập admin VÀ là từ vựng (kể cả từ đã có trong VietPhrase),
+    // lưu thêm vào data chính của dự án (data/<lang>/generated) để đóng gói release.
+    // Với full câu dịch (isWord == false), tuyệt đối KHÔNG lưu vào data chính mà chỉ lưu ở userdata.
+    if (isAdmin && isWord) {
+      await service.upsertAiDict(
+        mode,
+        word,
+        encodeOnlineSections([section]),
+        inDir: generatedDictDir(mode),
+      );
+    }
 
     if (parsed != null) {
       // Các từ/cụm con tách ra thành mục từ điển riêng để engine greedy
@@ -121,14 +136,16 @@ Future<AiApiResponse> executeAiLookup(WidgetRef ref, String rawWord) async {
         await service.upsertAiEntries(mode, subEntries, inDir: targetDir);
       }
 
-      // Từ nào VietPhrase chưa có thì thêm luôn vào overlay VietPhrase — có
+      // Từ nào cả VietPhrase VÀ Lạc Việt đều chưa có thì thêm luôn vào overlay VietPhrase — có
       // vậy engine mới cắt ra đúng cụm đó và click lại mới tra được.
+      // Nếu Lạc Việt đã có hoặc VietPhrase đã có thì KHÔNG thêm vào VietPhrase.
       // CHỈ nhận từ/cụm từ: value VietPhrase được chèn thẳng vào bản dịch nên
       // một mệnh đề lọt vào sẽ nuốt trọn cả đoạn.
       final missing = {
         for (final e in {word: parsed.shortMeaning, ...subEntries}.entries)
           if (isWordLikeEntry(e.key) &&
-              (vietPhrase == null || !vietPhrase.entries.containsKey(e.key)))
+              (vietPhrase == null || !vietPhrase.entries.containsKey(e.key)) &&
+              (lacViet == null || !lacViet.entries.containsKey(e.key)))
             e.key: e.value,
       };
       if (missing.isNotEmpty) {

@@ -306,7 +306,7 @@ class SettingsScreen extends ConsumerWidget {
                 SettingsControlRow(
                   title: 'Đánh dấu cụm từ điển phụ',
                   description:
-                      'Cụm kana chỉ có trong Lạc Việt / Nhật Việt / Mazii (không có trong VietPhrase) hiện thế nào trong ô VietPhrase.',
+                      'Cụm kana chỉ có trong Lạc Việt (không có trong VietPhrase) hiện thế nào trong ô VietPhrase.',
                   controlWidth: 430,
                   control: DropdownMenu<SecondaryPhraseDisplay>(
                     expandedInsets: EdgeInsets.zero,

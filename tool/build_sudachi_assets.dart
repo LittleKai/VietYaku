@@ -10,7 +10,8 @@
 //
 // - SudachiVariants.txt: `biến_thể=<value VietPhrase của dạng chuẩn>` khi
 //   trường 12 (正規化表記) khác trường 0 (見出し), dạng chuẩn CÓ trong
-//   VietPhrase còn biến thể thì KHÔNG (và không có trong Names).
+//   VietPhrase còn biến thể thì KHÔNG (và không có trong Names). Chỉ nhận
+//   cặp cùng hệ chữ (Hán→Hán, katakana→katakana) — xem `safeVariant`.
 //   Value copy nguyên byte từ VietPhrase.
 // - SudachiReadings.txt: `từ=katakana` (trường 11, tối đa 3 cách đọc, nối
 //   `/`) cho các key có trong VietPhrase/Names/LacViet chứa ít nhất 1 chữ
@@ -112,19 +113,55 @@ Future<void> main(List<String> args) async {
       names.containsKey(s) ||
       lacViet.containsKey(s);
 
-  // Biến thể an toàn cho greedy match: chứa ≥1 chữ Hán (okurigana/chữ khác),
-  // hoặc thuần katakana ≥2 code unit (từ vựng thật). Biến thể thuần hiragana
-  // (し→四, く→九...) trùng ngữ pháp — Sudachi phân giải bằng lattice theo
-  // ngữ cảnh, VietYaku greedy thì không → PHẢI loại (bug してくれ).
-  bool safeVariant(String s) {
-    if (hasHan(s)) return true;
-    if (s.length < 2) return false;
+  bool hasKatakana(String s) {
+    for (var i = 0; i < s.length; i += runeLengthAt(s, i)) {
+      if (charCategoryOf(codePointAt(s, i)) == CjkCharCategory.katakana) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool kanaOnly(String s) {
+    if (s.isEmpty) return false;
+    for (var i = 0; i < s.length; i += runeLengthAt(s, i)) {
+      final category = charCategoryOf(codePointAt(s, i));
+      if (category != CjkCharCategory.katakana &&
+          category != CjkCharCategory.hiragana) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  bool katakanaOnly(String s) {
+    if (s.isEmpty) return false;
     for (var i = 0; i < s.length; i += runeLengthAt(s, i)) {
       if (charCategoryOf(codePointAt(s, i)) != CjkCharCategory.katakana) {
         return false;
       }
     }
     return true;
+  }
+
+  // Biến thể an toàn cho greedy match, xét theo ĐÚNG CHIỀU dạng chuẩn → biến
+  // thể. Không bao giờ bắc cầu giữa chữ Hán và katakana:
+  // - Biến thể có chữ Hán: dạng chuẩn cũng phải có chữ Hán, và biến thể không
+  //   được lẫn katakana (`花びら` → `花ビラ`, `アラビア` → `亞剌比亞`).
+  // - Biến thể thuần katakana: dạng chuẩn phải thuần kana — cùng chuỗi mora,
+  //   chỉ khác hệ chữ (`ぼろぼろ` → `ボロボロ`, `アラビア` → `アラビヤ`). Dạng
+  //   chuẩn có chữ Hán thì katakana là CÁCH ĐỌC chứ không phải cách viết thay
+  //   thế (`細工` → `ザイク`) — nhận vào là đem nghĩa của từ Hán gán cho phiên
+  //   âm của nó.
+  // - Biến thể có hiragana mà không có chữ Hán: loại. Kana ngắn trùng ngữ pháp
+  //   — Sudachi phân giải bằng lattice theo ngữ cảnh, VietYaku greedy thì
+  //   không (bug してくれ).
+  bool safeVariant(String surface, String normalized) {
+    if (hasHan(surface)) return hasHan(normalized) && !hasKatakana(surface);
+    if (katakanaOnly(surface) && surface.length >= 2) {
+      return kanaOnly(normalized);
+    }
+    return false;
   }
 
   // 3. Quét lexicon: biến thể (0 ≠ 12) + cách đọc (11).
@@ -163,7 +200,7 @@ Future<void> main(List<String> args) async {
       if (normalized.isNotEmpty &&
           normalized != '*' &&
           normalized != surface &&
-          safeVariant(surface) &&
+          safeVariant(surface, normalized) &&
           !variants.containsKey(surface) &&
           !vietPhrase.containsKey(surface) &&
           !names.containsKey(surface)) {

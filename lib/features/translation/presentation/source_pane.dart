@@ -459,26 +459,42 @@ class _SourcePaneState extends ConsumerState<SourcePane> {
               );
             },
           ),
-          if (dicts?.onlineDict.entries.containsKey(savedKey) != true)
-            IconContextMenuItem(
-              icon: Icons.travel_explore,
-              iconColor: meaningLabelColor('Google Dịch', scheme),
-              label: 'Tra online',
-              onPressed: () {
-                hide();
-                ref.read(lookupControllerProvider.notifier).lookup(selection);
+          IconContextMenuItem(
+            icon: Icons.search,
+            iconColor: scheme.primary,
+            label: 'Tra từ điển',
+            onPressed: () {
+              hide();
+              ref.read(lookupControllerProvider.notifier).lookup(selection);
+            },
+          ),
+          IconContextMenuItem(
+            icon: Icons.travel_explore,
+            iconColor: meaningLabelColor('Google Dịch', scheme),
+            label: dicts?.onlineDict.entries.containsKey(savedKey) == true
+                ? 'Xem kết quả online'
+                : 'Tra online',
+            onPressed: () {
+              hide();
+              ref.read(lookupControllerProvider.notifier).lookup(selection);
+              if (dicts?.onlineDict.entries.containsKey(savedKey) != true) {
                 showOnlineLookupDialog(this.context, ref, word: selection);
-              },
-            ),
-          if (aiHasKey && dicts?.aiDict.entries.containsKey(savedKey) != true)
+              }
+            },
+          ),
+          if (aiHasKey)
             IconContextMenuItem(
               icon: Icons.auto_awesome,
               iconColor: meaningLabelColor('AI Dịch', scheme),
-              label: 'Tra AI',
+              label: dicts?.aiDict.entries.containsKey(savedKey) == true
+                  ? 'Xem kết quả AI'
+                  : 'Tra AI',
               onPressed: () {
                 hide();
                 ref.read(lookupControllerProvider.notifier).lookup(selection);
-                showAiLookupDialog(this.context, ref, word: selection);
+                if (dicts?.aiDict.entries.containsKey(savedKey) != true) {
+                  showAiLookupDialog(this.context, ref, word: selection);
+                }
               },
             ),
         ]);

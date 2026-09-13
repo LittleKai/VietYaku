@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/cjk.dart';
 import '../../dictionary/application/dictionaries_provider.dart';
+import '../../dictionary/data/dictionary_repository.dart';
 import '../../settings/settings_provider.dart';
 import '../domain/secondary_phrase.dart';
 import '../domain/token.dart';
@@ -174,9 +175,15 @@ class TokenSelectionNotifier extends Notifier<TokenSelection?> {
   void _apply(int start, int end, String word, TokenSelectionOrigin origin) {
     state = TokenSelection(start: start, end: end, word: word, origin: origin);
     final text = ref.read(translationControllerProvider).sourceText;
+    final dicts = ref.read(dictionariesProvider).valueOrNull;
+    final enclosing = enclosingSentenceAt(text, start, end, dicts: dicts);
     ref
         .read(lookupControllerProvider.notifier)
-        .lookup(word, rawSentence: _sentenceAt(text, start));
+        .lookup(
+          word,
+          rawSentence: _sentenceAt(text, start),
+          rawEnclosingSentence: enclosing,
+        );
   }
 
   /// Đoạn nguồn từ vị trí chọn: tối đa 12 rune, dừng ở dấu ngắt câu.
@@ -193,6 +200,58 @@ class TokenSelectionNotifier extends Notifier<TokenSelection?> {
     }
     return text.substring(start, i).trim();
   }
+}
+
+/// Câu hoặc đoạn bao quanh vị trí [start]..[end] trong [text].
+/// Nếu đã có trong [dicts.aiDict], trả về đúng key trong từ điển đó.
+String enclosingSentenceAt(
+  String text,
+  int start,
+  int end, {
+  LoadedDictionaries? dicts,
+}) {
+  if (text.isEmpty || start < 0 || start > text.length) return '';
+  const enders = {'。', '．', '！', '？', '!', '?', '\n', '\r'};
+
+  var s = start.clamp(0, text.length);
+  while (s > 0) {
+    final prevLen = runeLengthBefore(text, s);
+    final ch = text.substring(s - prevLen, s);
+    if (enders.contains(ch)) break;
+    s -= prevLen;
+  }
+
+  var e = end.clamp(0, text.length);
+  while (e < text.length) {
+    final len = runeLengthAt(text, e);
+    final ch = text.substring(e, e + len);
+    e += len;
+    if (enders.contains(ch)) break;
+  }
+
+  final sentence = text.substring(s, e).trim();
+  if (dicts == null || dicts.aiDict.isEmpty) return sentence;
+
+  // 1. Kiểm tra chính xác câu hoặc câu đã bỏ dấu kết thúc
+  final stripped = sentence.replaceAll(RegExp(r'[。．！？!?…]+$'), '').trim();
+  if (dicts.aiDict.entries.containsKey(sentence)) return sentence;
+  if (stripped.isNotEmpty && dicts.aiDict.entries.containsKey(stripped)) {
+    return stripped;
+  }
+
+  // 2. Tìm xem có đoạn dịch AI nào dài hơn (multi-sentence hoặc đoạn văn)
+  // bao trùm vị trí [start]..[end] này không.
+  for (final entry in dicts.aiDict.entries.entries) {
+    final key = entry.key;
+    if (key.length > 10) {
+      final idx = text.indexOf(key);
+      if (idx != -1 && s >= idx && e <= idx + key.length) {
+        return key;
+      }
+    }
+  }
+
+  return sentence;
 }
 
 final tokenSelectionProvider =

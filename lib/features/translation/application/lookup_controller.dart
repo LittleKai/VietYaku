@@ -131,6 +131,7 @@ class LookupController extends Notifier<LookupResult?> {
   /// Tham số của lần `lookup()` gần nhất, để [refreshCurrent] tra lại y hệt.
   String _lastRawWord = '';
   String _lastRawSentence = '';
+  String _lastRawEnclosingSentence = '';
 
   /// Các mục chèn thêm bằng [addOnlineSections] cho từ đang hiển thị.
   ///
@@ -143,17 +144,27 @@ class LookupController extends Notifier<LookupResult?> {
   LookupResult? build() => null;
 
   /// Tra đa từ điển cho [word]; [sentence] là đoạn nguồn quanh vị trí chọn
-  /// (dùng cho mục Phiên Âm).
-  void lookup(String rawWord, {String rawSentence = ''}) {
-    final result = _buildResult(rawWord, rawSentence);
+  /// (dùng cho mục Phiên Âm), [rawEnclosingSentence] là toàn bộ câu bao quanh
+  /// (dùng để phát hiện nếu câu này đã từng được AI dịch).
+  void lookup(
+    String rawWord, {
+    String rawSentence = '',
+    String rawEnclosingSentence = '',
+  }) {
+    final result = _buildResult(rawWord, rawSentence, rawEnclosingSentence);
     if (result == null) return;
     _lastRawWord = rawWord;
     _lastRawSentence = rawSentence;
+    _lastRawEnclosingSentence = rawEnclosingSentence;
     _sessionSections.clear();
     state = result;
   }
 
-  LookupResult? _buildResult(String rawWord, String rawSentence) {
+  LookupResult? _buildResult(
+    String rawWord,
+    String rawSentence, [
+    String rawEnclosingSentence = '',
+  ]) {
     final dicts = ref.read(dictionariesProvider).valueOrNull;
     if (dicts == null || rawWord.isEmpty) return null;
     final mode = ref.read(currentModeProvider);
@@ -167,6 +178,7 @@ class LookupController extends Notifier<LookupResult?> {
         : Trad2SimpTable.empty;
     final word = trad2Simp.convert(rawWord);
     final sentence = trad2Simp.convert(rawSentence);
+    final enclosing = trad2Simp.convert(rawEnclosingSentence);
 
     final sections = <LookupSection>[];
     final firstChar = word.substring(0, runeLengthAt(word, 0));
@@ -273,6 +285,26 @@ class LookupController extends Notifier<LookupResult?> {
       sections.addAll(decodeOnlineSections(word, ai));
     }
 
+    // 5b-bis. Nếu cả câu/đoạn bao quanh đã từng được AI dịch (và khác với từ đang tra),
+    // hiển thị bản dịch cả câu để người dùng tham khảo lại ngữ cảnh câu.
+    if (enclosing.isNotEmpty && enclosing != word) {
+      final sentCandidate = enclosing.trim();
+      final stripped = _stripSentenceEnders(sentCandidate);
+      final unquoted = _stripQuotes(sentCandidate);
+      final aiSent = dicts.aiDict.entries[sentCandidate] ??
+          (stripped.isNotEmpty ? dicts.aiDict.entries[stripped] : null) ??
+          (unquoted.isNotEmpty ? dicts.aiDict.entries[unquoted] : null);
+      if (aiSent != null) {
+        final key = dicts.aiDict.entries.containsKey(sentCandidate)
+            ? sentCandidate
+            : (dicts.aiDict.entries.containsKey(stripped) ? stripped : unquoted);
+        final decoded = decodeOnlineSections(key, aiSent);
+        for (final s in decoded) {
+          sections.add(LookupSection(s.word, 'AI Dịch (Cả câu)', s.body));
+        }
+      }
+    }
+
     // 5c. Từ/cụm con AI đã tách (AiEntries_<mode>.txt): tra được như một mục
     // từ điển bình thường chứ không chỉ nằm im phục vụ engine dịch.
     final aiEntry = dicts.aiEntries.entries[word];
@@ -340,10 +372,39 @@ class LookupController extends Notifier<LookupResult?> {
   /// sửa/xóa một mục), để ô Nghĩa đổi theo ngay thay vì bắt bấm lại đúng từ đó.
   void refreshCurrent() {
     if (state == null || _lastRawWord.isEmpty) return;
-    final refreshed = _buildResult(_lastRawWord, _lastRawSentence);
+    final refreshed = _buildResult(
+      _lastRawWord,
+      _lastRawSentence,
+      _lastRawEnclosingSentence,
+    );
     if (refreshed == null) return;
     state = _withSessionSections(refreshed);
   }
+
+  static String _stripSentenceEnders(String s) {
+    const enders = {'。', '．', '！', '？', '!', '?', '\n', '\r', '…', '⋯', '.'};
+    var end = s.length;
+    while (end > 0) {
+      final lastCh = s.substring(end - 1, end);
+      if (!enders.contains(lastCh)) break;
+      end--;
+    }
+    return s.substring(0, end).trim();
+  }
+
+  static String _stripQuotes(String s) {
+    var str = s.trim();
+    const leading = {'「', '『', '“', '"', "'", '（', '(', '[', '{'};
+    const trailing = {'」', '』', '”', '"', "'", '）', ')', ']', '}'};
+    while (str.isNotEmpty && leading.contains(str[0])) {
+      str = str.substring(1).trim();
+    }
+    while (str.isNotEmpty && trailing.contains(str[str.length - 1])) {
+      str = str.substring(0, str.length - 1).trim();
+    }
+    return str;
+  }
+
 
   /// Ghép lại các mục chỉ tồn tại trong phiên: nghĩa máy dịch (Google) cố ý
   /// không được lưu vào từ điển nên tra lại sẽ không sinh lại được.

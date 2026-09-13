@@ -2,10 +2,12 @@ import '../../../core/cjk.dart';
 
 /// Mở rộng entry tiếng Nhật bằng nhóm cách viết tương đương từ Sudachi.
 ///
-/// Ba ràng buộc giữ alias sạch:
+/// Bốn ràng buộc giữ alias sạch:
 /// - Nhóm Sudachi chỉ chứa thể chia đầy đủ (`吞み込ま`), còn entry người dùng
 ///   thường là thân từ (`吞み込`) → mỗi nhóm được cắt dần đuôi kana chung để
 ///   sinh thêm nhóm thân từ.
+/// - Alias chỉ đi ĐÚNG CHIỀU kanji → cách viết kana của chính nó, và katakana
+///   không bao giờ đổi qua lại với kanji (xem [_isAllowedVariant]).
 /// - Key khớp trọn một surface thì mọi cách viết trong nhóm là cùng một từ →
 ///   nhận hết. Phải ghép nhiều mảnh thì mảnh phụ chỉ được kana hoá; đổi kanji
 ///   sang kanji tạo ra từ khác nghĩa (`扱い切れ` → `扱い斬れ`, `扱い伐れ` — cùng
@@ -117,7 +119,7 @@ class JapaneseVariantIndex {
     final variants = <String>{surface};
     for (final groupId in _groupIdsBySurface[surface]!) {
       for (final variant in _groups[groupId]) {
-        if (trustGroup || _isKanaReduction(surface, variant)) {
+        if (_isAllowedVariant(surface, variant, trustGroup: trustGroup)) {
           variants.add(variant);
         }
       }
@@ -127,14 +129,46 @@ class JapaneseVariantIndex {
     return result;
   }
 
-  /// Mảnh phụ chỉ được giữ nguyên hoặc kana hoá.
+  /// Alias chỉ được đi từ mặt chữ kanji sang cách viết hiragana của chính nó.
   ///
-  /// Chặn kanji → kanji (`切れ` → `斬れ`: cùng nhóm Sudachi vì chung dạng chuẩn
-  /// và cách đọc, nhưng khác nghĩa) lẫn kana → kanji (một cách đọc ứng với hàng
-  /// chục kanji: `きれ` → `訊れ`, `衣れ`, `気れ`… — nhiễu nhiều và có thể tạo
-  /// alias trùng từ khác nghĩa). Kana hoá thì an toàn vì đi từ mặt chữ cụ thể.
-  static bool _isKanaReduction(String surface, String variant) =>
-      surface == variant || (!_isKanaOnly(surface) && _isKanaOnly(variant));
+  /// - Nguồn có kanji: biến thể KHÔNG được chứa katakana. Katakana trong nhóm
+  ///   Sudachi là CÁCH ĐỌC chứ không phải cách viết thay thế (`細工` ↔ `ザイク`)
+  ///   — nhận vào là đem nghĩa của từ Hán gán cho phiên âm của nó.
+  /// - Nguồn thuần kana: chỉ được đổi hệ chữ kana (`アラビヤ` ↔ `アラビア`,
+  ///   `ぼろぼろ` ↔ `ボロボロ` — cùng chuỗi mora, khác cách chép). KHÔNG có
+  ///   đường ngược lại kana → kanji, nếu không `ザイク=Zaik` dựng ra `細工=Zaik`.
+  ///
+  /// Ngoài ra mảnh phụ (khi phải ghép nhiều mảnh) chỉ được kana hoá: đổi kanji
+  /// sang kanji ở mảnh phụ tạo ra từ khác nghĩa (`切れ` → `斬れ`: cùng nhóm
+  /// Sudachi vì chung dạng chuẩn và cách đọc, nhưng khác nghĩa).
+  static bool _isAllowedVariant(
+    String surface,
+    String variant, {
+    required bool trustGroup,
+  }) {
+    if (surface == variant) return true;
+    if (_hasHan(surface)) {
+      if (_hasKatakana(variant)) return false;
+      return trustGroup || _isKanaOnly(variant);
+    }
+    return _isKanaOnly(surface) && _isKanaOnly(variant);
+  }
+
+  static bool _hasHan(String text) {
+    for (var i = 0; i < text.length; i += runeLengthAt(text, i)) {
+      if (isHanCodePoint(codePointAt(text, i))) return true;
+    }
+    return false;
+  }
+
+  static bool _hasKatakana(String text) {
+    for (var i = 0; i < text.length; i += runeLengthAt(text, i)) {
+      if (charCategoryOf(codePointAt(text, i)) == CjkCharCategory.katakana) {
+        return true;
+      }
+    }
+    return false;
+  }
 
   static bool _isKanaOnly(String text) {
     for (var i = 0; i < text.length; i += runeLengthAt(text, i)) {

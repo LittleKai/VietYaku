@@ -110,11 +110,11 @@ List<OnlineLookupTask> startOnlineLookup(WidgetRef ref, String rawWord) {
   final targetDir = ref.read(dictionarySyncProvider).isAdmin
       ? generatedDictDir(mode)
       : null;
+  final dicts = ref.read(dictionariesProvider).valueOrNull;
   final knownToVietPhrase =
-      ref.read(dictionariesProvider).valueOrNull?.vietPhrase.entries.containsKey(
-        word,
-      ) ??
-      true;
+      dicts?.vietPhrase.entries.containsKey(word) ?? true;
+  final knownToLacViet =
+      dicts?.lacViet.entries.containsKey(word) ?? false;
 
   unawaited(
     _persist(
@@ -126,6 +126,7 @@ List<OnlineLookupTask> startOnlineLookup(WidgetRef ref, String rawWord) {
       appPaths,
       targetDir,
       knownToVietPhrase,
+      knownToLacViet,
     ),
   );
   return tasks;
@@ -140,6 +141,7 @@ Future<void> _persist(
   Future<AppPaths> appPaths,
   String? targetDir,
   bool knownToVietPhrase,
+  bool knownToLacViet,
 ) async {
   try {
     final bodies = await Future.wait(tasks.map((task) => task.body));
@@ -171,7 +173,7 @@ Future<void> _persist(
     // Nguồn online tra mờ: gõ 再入荷 có thể trả mục của 再入 — đọc thì người
     // dùng tự nhận ra lệch, nhưng đưa vào VietPhrase là nhét bản dịch SAI vào
     // từ điển dịch. Chỉ promote khi headword nguồn trả về đúng bằng từ đã tra.
-    if (!knownToVietPhrase && isWordLikeEntry(word)) {
+    if (!knownToVietPhrase && !knownToLacViet && isWordLikeEntry(word)) {
       final exact = toSave
           .where(
             (s) =>

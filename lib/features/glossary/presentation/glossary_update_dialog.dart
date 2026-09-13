@@ -198,3 +198,135 @@ class _GlossaryPreview extends StatelessWidget {
     );
   }
 }
+
+/// Sửa RIÊNG nghĩa (`target`) của một mục đã có trong `Global Glossary.json` —
+/// giá trị tự nhập, KHÔNG lấy theo ô Nghĩa của dialog VietPhrase.
+///
+/// Chỉ có ích khi người dùng TẮT "Tự động cập nhật Glossary khi bấm Lưu từ":
+/// bật thì glossary luôn bám theo VietPhrase, tắt thì hai bên được phép lệch
+/// nhau nên phải sửa được độc lập.
+///
+/// Trả về `true` khi file glossary THỰC SỰ được ghi.
+Future<bool> showGlossaryEditDialog(
+  BuildContext context,
+  WidgetRef ref, {
+  required GlossaryTerm term,
+}) async {
+  final mode = ref.read(translationControllerProvider).mode;
+  final service = ref.read(glossaryServiceProvider);
+  final lang = GlossaryService.langFor(mode);
+  final holder = _TargetHolder(term.target);
+
+  final confirmed = await showAppDialog<bool>(
+    context: context,
+    icon: Icons.edit_calendar_outlined,
+    accentColor: _glossaryAccent,
+    title: 'Sửa Global Glossary $lang',
+    description: 'Chỉ đổi nghĩa bên glossary; nghĩa VietPhrase giữ nguyên.',
+    width: 560,
+    content: _GlossaryTargetEditor(holder: holder, term: term),
+    actionsBuilder: (dialogContext) => [
+      TextButton(
+        onPressed: () => Navigator.pop(dialogContext, false),
+        child: const Text('Hủy'),
+      ),
+      FilledButton.icon(
+        icon: const Icon(Icons.save_outlined, size: 18),
+        onPressed: () => Navigator.pop(dialogContext, true),
+        label: const Text('Lưu glossary'),
+      ),
+    ],
+  );
+  if (confirmed != true) return false;
+
+  final target = holder.text.trim();
+  if (target.isEmpty) {
+    if (context.mounted) {
+      _showMessage(context, 'Nghĩa trong glossary không được để trống.');
+    }
+    return false;
+  }
+  if (target == term.target.trim()) return false;
+
+  try {
+    await service.upsert(mode, source: term.source, target: target);
+  } catch (_) {
+    if (context.mounted) {
+      _showMessage(context, 'Không ghi được Global Glossary $lang.');
+    }
+    return false;
+  }
+  ref.invalidate(
+    glossarySyncRowsProvider(GlossarySyncDirection.glossaryToVietPhrase),
+  );
+  ref.invalidate(
+    glossarySyncRowsProvider(GlossarySyncDirection.vietPhraseToGlossary),
+  );
+  if (!context.mounted) return true;
+  _showMessage(
+    context,
+    'Đã cập nhật Global Glossary $lang: ${term.source} → $target',
+  );
+  return true;
+}
+
+/// Cầu nối đọc nội dung ô Nghĩa sau khi dialog đã đóng (controller sống theo
+/// vòng đời widget, dispose sau animation thoát).
+class _TargetHolder {
+  _TargetHolder(this.text);
+
+  String text;
+}
+
+class _GlossaryTargetEditor extends StatefulWidget {
+  const _GlossaryTargetEditor({required this.holder, required this.term});
+
+  final _TargetHolder holder;
+  final GlossaryTerm term;
+
+  @override
+  State<_GlossaryTargetEditor> createState() => _GlossaryTargetEditorState();
+}
+
+class _GlossaryTargetEditorState extends State<_GlossaryTargetEditor> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.term.target)
+      ..addListener(() => widget.holder.text = _controller.text);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final term = widget.term;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Từ nguồn', style: TextStyle(color: scheme.onSurfaceVariant)),
+        const SizedBox(height: 2),
+        SelectableText(
+          term.source,
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 16),
+        TextField(
+          controller: _controller,
+          decoration: const InputDecoration(
+            labelText: 'Nghĩa trong glossary (target)',
+            helperText: 'Dùng dấu / để ngăn cách nhiều nghĩa.',
+          ),
+          autofocus: true,
+        ),
+      ],
+    );
+  }
+}

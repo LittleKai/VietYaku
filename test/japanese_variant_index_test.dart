@@ -118,18 +118,55 @@ void main() {
 
     test('giới hạn số alias sinh từ một entry', () {
       final index = JapaneseVariantIndex([
-        ['第一語', 'だいいちご', 'ダイイチゴ', 'ダイイチご', 'だいイチゴ'],
-        ['第二語', 'だいにご', 'ダイニゴ', 'ダイニご', 'だいニゴ'],
-        ['第三語', 'だいさんご', 'ダイサンゴ', 'ダイサンご', 'だいサンゴ'],
-        ['第四語', 'だいよんご', 'ダイヨンゴ', 'ダイヨンご', 'だいヨンゴ'],
+        ['第一語', 'だいいちご'],
+        ['第二語', 'だいにご'],
+        ['第三語', 'だいさんご'],
+        ['第四語', 'だいよんご'],
       ]);
 
+      // 2^4 = 16 tổ hợp, bỏ tổ hợp giữ nguyên → 15 alias, cắt còn 8.
       final expanded = index.expandEntries({
         '第一語第二語第三語第四語': 'nghĩa',
-      }, maxAliasesPerEntry: 64);
+      }, maxAliasesPerEntry: 8);
 
-      expect(expanded.length, 65); // 64 alias + 1 entry gốc.
+      expect(expanded.length, 9); // 8 alias + 1 entry gốc.
       expect(expanded['第一語第二語第三語第四語'], 'nghĩa');
+    });
+
+    test('không dựng kanji từ key thuần kana', () {
+      // `ザイク=Zaik` là phiên âm katakana; dựng ngược ra `細工` thì cả từ Hán
+      // bị gán nghĩa của phiên âm.
+      final index = JapaneseVariantIndex([
+        ['ざいく', 'ザイク', '細工'],
+      ]);
+
+      final expanded = index.expandEntries({'ザイク': 'Zaik'});
+
+      expect(expanded['ザイク'], 'Zaik');
+      expect(expanded, isNot(contains('細工')));
+      // Đổi hệ chữ kana thì vẫn là cùng chuỗi mora → giữ.
+      expect(expanded['ざいく'], 'Zaik');
+    });
+
+    test('key kanji sinh alias hiragana nhưng không sinh katakana', () {
+      final index = JapaneseVariantIndex([
+        ['細工師', 'ざいくし', 'ザイクシ'],
+      ]);
+
+      final expanded = index.expandEntries({'細工師': 'thợ thủ công'});
+
+      expect(expanded['ざいくし'], 'thợ thủ công');
+      expect(expanded, isNot(contains('ザイクシ')));
+    });
+
+    test('giữ biến thể katakana ↔ katakana của từ ngoại lai', () {
+      final index = JapaneseVariantIndex([
+        ['アラビア', 'アラビヤ'],
+      ]);
+
+      final expanded = index.expandEntries({'アラビヤ': 'Ả Rập'});
+
+      expect(expanded['アラビア'], 'Ả Rập');
     });
   });
 }

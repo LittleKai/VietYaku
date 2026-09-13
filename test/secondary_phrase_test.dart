@@ -266,4 +266,60 @@ void main() {
     expect(phrase, isNotNull);
     expect(phrase!.label, 'AI Dịch');
   });
+
+  group('bỏ từ điển phụ (ô VietPhrase chỉ đánh dấu theo Lạc Việt)', () {
+    test('không truyền Mazii/Nhật Việt thì さから không bị cắt thành さか + ら', () {
+      const text = 'さから';
+      final mazii = _dict(DictType.mazii, {'さか': 'con dốc'});
+      final withMazii = findSecondaryPhrases(
+        text: text,
+        tokens: _unmatchedRunes(text),
+        lacViet: empty,
+        mazii: mazii,
+      );
+      expect(withMazii, hasLength(1));
+      expect(withMazii.first.source, 'さか');
+
+      final lacVietOnly = findSecondaryPhrases(
+        text: text,
+        tokens: _unmatchedRunes(text),
+        lacViet: empty,
+      );
+      expect(lacVietOnly, isEmpty);
+    });
+
+    test('cụm Lạc Việt bị cụm Mazii dài hơn che vẫn nhận ra khi chỉ tra Lạc Việt', () {
+      const text = 'あいうえ';
+      final lacViet = _dict(DictType.lacViet, {'いうえ': 'lv'});
+      final mazii = _dict(DictType.mazii, {'あいう': 'mz'});
+      final withMazii = findSecondaryPhrases(
+        text: text,
+        tokens: _unmatchedRunes(text),
+        lacViet: lacViet,
+        mazii: mazii,
+      );
+      expect(withMazii, hasLength(1));
+      expect(withMazii.first.source, 'あいう');
+
+      final lacVietOnly = findSecondaryPhrases(
+        text: text,
+        tokens: _unmatchedRunes(text),
+        lacViet: lacViet,
+      );
+      expect(lacVietOnly, hasLength(1));
+      expect(lacVietOnly.first.source, 'いうえ');
+      expect(lacVietOnly.first.label, 'Lạc Việt');
+    });
+
+    test('secondaryPhraseStartingAt bỏ qua Mazii khi không truyền', () {
+      const text = 'さから';
+      final phrase = secondaryPhraseStartingAt(
+        text: text,
+        tokens: _unmatchedRunes(text),
+        offset: 0,
+        lacViet: empty,
+      );
+      expect(phrase, isNull);
+    });
+  });
 }

@@ -7,6 +7,7 @@ import 'package:vietyaku/features/dictionary/domain/dict_type.dart';
 import 'package:vietyaku/features/dictionary/domain/phrase_dictionary.dart';
 import 'package:vietyaku/features/settings/settings_provider.dart';
 import 'package:vietyaku/features/translation/application/lookup_controller.dart';
+import 'package:vietyaku/features/translation/application/token_selection.dart';
 
 /// Bộ dict thay được giữa chừng, mô phỏng `reload()` sau khi tra AI/online ghi
 /// thêm mục vào từ điển.
@@ -133,4 +134,42 @@ void main() {
     container.read(lookupControllerProvider.notifier).refreshCurrent();
     expect(container.read(lookupControllerProvider), isNull);
   });
+
+  test('Hiển thị AI Dịch (Cả câu) khi câu chứa từ tra đã có trong AiDict', () async {
+    const fullSentence = '彼が言ったことは本当だった。';
+    final (container, _) = await setUpContainer(
+      _dicts(
+        vietPhrase: const {'言った': 'đã nói'},
+        aiDict: const {
+          fullSentence:
+              '<<AI Dịch>>\n{"meaning":"Những điều anh ấy nói là sự thật."}',
+        },
+      ),
+    );
+    final lookup = container.read(lookupControllerProvider.notifier);
+
+    lookup.lookup('言った', rawEnclosingSentence: fullSentence);
+
+    final sections = container.read(lookupControllerProvider)!.sections;
+    expect(sections.map((s) => s.label), containsAll(['VietPhrase', 'AI Dịch (Cả câu)']));
+
+    final sentenceSection = sections.singleWhere((s) => s.label == 'AI Dịch (Cả câu)');
+    expect(sentenceSection.word, equals(fullSentence));
+    expect(sentenceSection.body, contains('Những điều anh ấy nói là sự thật.'));
+  });
+
+  test('enclosingSentenceAt trích xuất đúng câu và nhận diện từ điển AiDict', () {
+    const text = 'こんにちは。彼が言ったことは本当だった。信じられない！';
+    final dicts = _dicts(
+      aiDict: const {
+        '彼が言ったことは本当だった。':
+            '<<AI Dịch>>\n{"meaning":"Những điều anh ấy nói là sự thật."}',
+      },
+    );
+
+    // Vị trí "言った" (khoảng index 9-11)
+    final sent = enclosingSentenceAt(text, 9, 11, dicts: dicts);
+    expect(sent, equals('彼が言ったことは本当だった。'));
+  });
 }
+

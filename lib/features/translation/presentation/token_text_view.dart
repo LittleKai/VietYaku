@@ -906,31 +906,47 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
         },
       ),
     );
-    if (dicts?.onlineDict.entries.containsKey(savedKey) != true) {
-      custom.add(
-        IconContextMenuItem(
-          icon: Icons.travel_explore,
-          iconColor: meaningLabelColor('Google Dịch', scheme),
-          label: 'Tra online',
-          onPressed: () {
-            editableTextState.hideToolbar();
-            // Tra key CJK của vùng chọn, không phải nghĩa tiếng Việt hiển thị.
-            ref.read(lookupControllerProvider.notifier).lookup(word);
+    custom.add(
+      IconContextMenuItem(
+        icon: Icons.search,
+        iconColor: scheme.primary,
+        label: 'Tra từ điển',
+        onPressed: () {
+          editableTextState.hideToolbar();
+          ref.read(lookupControllerProvider.notifier).lookup(word);
+        },
+      ),
+    );
+    custom.add(
+      IconContextMenuItem(
+        icon: Icons.travel_explore,
+        iconColor: meaningLabelColor('Google Dịch', scheme),
+        label: dicts?.onlineDict.entries.containsKey(savedKey) == true
+            ? 'Xem kết quả online'
+            : 'Tra online',
+        onPressed: () {
+          editableTextState.hideToolbar();
+          // Tra key CJK của vùng chọn, không phải nghĩa tiếng Việt hiển thị.
+          ref.read(lookupControllerProvider.notifier).lookup(word);
+          if (dicts?.onlineDict.entries.containsKey(savedKey) != true) {
             showOnlineLookupDialog(context, ref, word: word);
-          },
-        ),
-      );
-    }
-    if (_aiHasKey && dicts?.aiDict.entries.containsKey(savedKey) != true) {
+          }
+        },
+      ),
+    );
+    if (_aiHasKey) {
+      final hasAi = dicts?.aiDict.entries.containsKey(savedKey) == true;
       custom.add(
         IconContextMenuItem(
           icon: Icons.auto_awesome,
           iconColor: meaningLabelColor('AI Dịch', scheme),
-          label: 'Tra AI',
+          label: hasAi ? 'Xem kết quả AI' : 'Tra AI',
           onPressed: () {
             editableTextState.hideToolbar();
             ref.read(lookupControllerProvider.notifier).lookup(word);
-            showAiLookupDialog(context, ref, word: word);
+            if (!hasAi) {
+              showAiLookupDialog(context, ref, word: word);
+            }
           },
         ),
       );
@@ -1025,12 +1041,13 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
     );
     final paras = TokenTextView.paragraphs(widget.tokens);
     // Đánh dấu cụm từ điển phụ (chỉ ô VietPhrase): sát khoảng cách / in nghiêng.
+    // Chỉ theo Lạc Việt — xem `vietPhrasePaneSecondaryPhrasesProvider`.
     final secondaryDisplay = widget.paneId == PaneId.vietPhrase
         ? ref.watch(settingsProvider.select((s) => s.secondaryPhraseDisplay))
         : SecondaryPhraseDisplay.off;
     final secondaryPhrases = secondaryDisplay == SecondaryPhraseDisplay.off
         ? const <SecondaryPhrase>[]
-        : ref.watch(secondaryPhrasesProvider);
+        : ref.watch(vietPhrasePaneSecondaryPhrasesProvider);
 
     return Listener(
       // Ghi vị trí chuột phải TRƯỚC khi framework mở toolbar — _contextMenu

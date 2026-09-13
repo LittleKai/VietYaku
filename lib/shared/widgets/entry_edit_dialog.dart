@@ -67,7 +67,7 @@ Future<void> showEntryEditDialog(
   holder.notifyOnGlossaryUpdateNotifier.value =
       settings.notifyOnGlossaryAutoUpdate;
 
-  final saved = await showAppDialog<bool>(
+  final saved = await showAppDialog<String>(
     context: context,
     icon: toNames ? Icons.badge_outlined : Icons.edit_note,
     accentColor: toNames ? const Color(0xFF00897B) : const Color(0xFFEF6C00),
@@ -94,31 +94,179 @@ Future<void> showEntryEditDialog(
       onNotifyOnUpdateChanged: (val) => ref
           .read(settingsProvider.notifier)
           .setNotifyOnGlossaryAutoUpdate(val),
+      onAddToGlossary: canUpdateGlossary
+          ? (fieldContext) async {
+              final meaning = holder.meaningText.trim();
+              final source = holder.keyText.trim();
+              if (source.isEmpty || meaning.isEmpty) {
+                ScaffoldMessenger.of(fieldContext)
+                  ..hideCurrentSnackBar()
+                  ..showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Cần có từ nguồn và nghĩa để thêm vào Global Glossary.',
+                      ),
+                    ),
+                  );
+                return;
+              }
+              final updated = await showGlossaryUpdateDialog(
+                fieldContext,
+                ref,
+                source: source,
+                meaning: meaning,
+              );
+              if (updated) holder.refreshGlossary?.call();
+            }
+          : null,
+      onEditGlossary: canUpdateGlossary
+          ? (fieldContext, term) async {
+              final updated = await showGlossaryEditDialog(
+                fieldContext,
+                ref,
+                term: term,
+              );
+              if (updated) holder.refreshGlossary?.call();
+            }
+          : null,
     ),
     actionsBuilder: (dialogContext) => [
+      // Từ nguồn và trạng thái Glossary đổi khi người dùng gõ →
+      // cập nhật để nút Xóa từ bám theo key hiện tại.
+      ListenableBuilder(
+        listenable: Listenable.merge([
+          holder.glossaryTermNotifier,
+          holder.keyNotifier,
+        ]),
+        builder: (_, _) {
+          final glossaryTerm = holder.glossaryTermNotifier.value;
+          final currentKey = holder.keyNotifier.value.trim();
+          final existsInGlossary = glossaryTerm != null;
+          final canDelete =
+              currentValueOf(currentKey) != null || existsInGlossary;
+
+          if (!canDelete) return const SizedBox.shrink();
+
+          return TextButton.icon(
+            icon: const Icon(
+              Icons.delete_outline,
+              size: 18,
+              color: Colors.red,
+            ),
+            onPressed: () => Navigator.pop(dialogContext, 'delete'),
+            label: const Text(
+              'Xóa từ',
+              style: TextStyle(color: Colors.red),
+            ),
+          );
+        },
+      ),
       TextButton(
-        onPressed: () => Navigator.pop(dialogContext, false),
+        onPressed: () => Navigator.pop(dialogContext, 'cancel'),
         child: const Text('Hủy'),
       ),
       ValueListenableBuilder<bool>(
         valueListenable: holder.canSave,
         builder: (_, canSave, _) => FilledButton.icon(
           icon: const Icon(Icons.save_outlined),
-          onPressed: canSave ? () => Navigator.pop(dialogContext, true) : null,
+          onPressed: canSave
+              ? () => Navigator.pop(dialogContext, 'save')
+              : null,
           label: const Text('Lưu từ'),
         ),
       ),
     ],
   );
 
+  if (saved == 'delete') {
+    final targetKey = holder.keyText.trim().isNotEmpty
+        ? holder.keyText.trim()
+        : word;
+    final inGlossary =
+        canUpdateGlossary &&
+        (await glossaryService.find(translation.mode, targetKey)) != null;
+    final inDict = currentValueOf(targetKey) != null;
+
+    holder.disposeAfterRouteAnimation();
+
+    if (!context.mounted) return;
+    if (!inDict && !inGlossary) return;
+
+    final dictLabel = toNames ? 'Names' : 'UserDict';
+    final glossaryLang = GlossaryService.langFor(translation.mode);
+
+    final deleteScope = await _showDeleteConfirmationDialog(
+      context: context,
+      word: targetKey,
+      dictionaryName: dictLabel,
+      glossaryLang: glossaryLang,
+      inSharedDict: inDict,
+      inGlossary: inGlossary,
+      isShared: false,
+    );
+
+    if (deleteScope == null || !context.mounted) return;
+
+    final paths = await ref.read(appPathsProvider.future);
+    final service = UserDictService(paths);
+    final messages = <String>[];
+
+    if (deleteScope == DeleteScope.vietPhraseOnly ||
+        deleteScope == DeleteScope.both) {
+      try {
+        final removed = toNames
+            ? await service.removeUserName(targetKey)
+            : await service.removeUserDict(targetKey);
+        if (removed) {
+          messages.add('Đã xóa khỏi $dictLabel.');
+        }
+      } catch (_) {}
+    }
+
+    if (deleteScope == DeleteScope.glossaryOnly ||
+        deleteScope == DeleteScope.both) {
+      try {
+        await glossaryService.removeAll(translation.mode, [targetKey]);
+        ref.invalidate(
+          glossarySyncRowsProvider(GlossarySyncDirection.glossaryToVietPhrase),
+        );
+        ref.invalidate(
+          glossarySyncRowsProvider(GlossarySyncDirection.vietPhraseToGlossary),
+        );
+        messages.add('Đã xóa khỏi Global Glossary $glossaryLang.');
+      } catch (_) {
+        messages.add('Không xóa được khỏi Global Glossary $glossaryLang.');
+      }
+    }
+
+    await ref.read(dictionariesProvider.notifier).reload();
+    final latestTranslation = ref.read(translationControllerProvider);
+    if (latestTranslation.sourceText.isNotEmpty) {
+      ref
+          .read(translationControllerProvider.notifier)
+          .translate(latestTranslation.sourceText);
+    }
+    ref.read(lookupControllerProvider.notifier).refreshCurrent();
+
+    if (!context.mounted) return;
+
+    if (messages.isNotEmpty) {
+      final text = messages.join('\n');
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(text)));
+    }
+    return;
+  }
+
   // Đọc giá trị ngay khi dialog vừa đóng — controller vẫn sống trong lúc
   // animation thoát; _EntryFields tự dispose khi widget unmount.
-  final key = saved == true ? holder.keyText.trim() : '';
-  final meaning = saved == true ? holder.meaningText.trim() : '';
+  final key = saved == 'save' ? holder.keyText.trim() : '';
+  final meaning = saved == 'save' ? holder.meaningText.trim() : '';
   final autoUpdateGlossary = holder.autoUpdateGlossaryNotifier.value;
   final notifyOnGlossaryUpdate = holder.notifyOnGlossaryUpdateNotifier.value;
   holder.disposeAfterRouteAnimation();
-  if (saved != true) return;
+  if (saved != 'save') return;
   if (key.isEmpty || meaning.isEmpty) return;
   if (key == word.trim() && meaning == (existing ?? '').trim()) return;
 
@@ -161,31 +309,31 @@ Future<void> showEntryEditDialog(
   }
 
   await ref.read(dictionariesProvider.notifier).reload();
-
-  // Dịch lại ngay để entry mới áp dụng.
   final latestTranslation = ref.read(translationControllerProvider);
   if (latestTranslation.sourceText.isNotEmpty) {
     ref
         .read(translationControllerProvider.notifier)
         .translate(latestTranslation.sourceText);
   }
-  // Ô Nghĩa đang mở vẫn là kết quả tính từ bộ dict cũ — tra lại để nghiĩa vừa
-  // sửa hiện ngay.
   ref.read(lookupControllerProvider.notifier).refreshCurrent();
 
-  if (glossaryAutoUpdated && notifyOnGlossaryUpdate && context.mounted) {
+  if (context.mounted) {
+    final dictLabel = toNames ? 'Names' : 'UserDict';
+    final baseMsg = 'Đã lưu vào $dictLabel.';
     final lang = GlossaryService.langFor(translation.mode);
+    final glossaryPart = glossaryAutoUpdated && notifyOnGlossaryUpdate
+        ? '\nĐã tự động cập nhật Global Glossary $lang: $key → $glossaryNewTarget'
+        : '';
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: Text(
-            'Đã lưu từ điển và tự động cập nhật Global Glossary $lang: $key → $glossaryNewTarget',
-          ),
+          content: Text('$baseMsg$glossaryPart'),
         ),
       );
   }
 }
+
 
 /// Dialog sửa trực tiếp VietPhrase/Lạc Việt cục bộ của admin.
 /// Mục đã sửa chỉ lên server khi admin bấm Update trong Cài đặt.
@@ -272,72 +420,111 @@ Future<void> showSharedEntryEditDialog(
       onNotifyOnUpdateChanged: (val) => ref
           .read(settingsProvider.notifier)
           .setNotifyOnGlossaryAutoUpdate(val),
+      // Tắt tự động cập nhật → glossary được phép lệch nghĩa VietPhrase, nên
+      // phải sửa riêng được. Ghi xong đọc lại để thẻ trạng thái đổi theo.
+      onAddToGlossary: canUpdateGlossary
+          ? (fieldContext) async {
+              final meaning = holder.meaningText.trim();
+              final source = holder.keyText.trim();
+              if (source.isEmpty || meaning.isEmpty) {
+                ScaffoldMessenger.of(fieldContext)
+                  ..hideCurrentSnackBar()
+                  ..showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Cần có từ nguồn và nghĩa để thêm vào Global Glossary.',
+                      ),
+                    ),
+                  );
+                return;
+              }
+              final updated = await showGlossaryUpdateDialog(
+                fieldContext,
+                ref,
+                source: source,
+                meaning: meaning,
+              );
+              if (updated) holder.refreshGlossary?.call();
+            }
+          : null,
+      onUpdateFromVietPhrase: canUpdateGlossary
+          ? (fieldContext) async {
+              final meaning = holder.meaningText.trim();
+              final source = holder.keyText.trim();
+              if (source.isEmpty || meaning.isEmpty) {
+                ScaffoldMessenger.of(fieldContext)
+                  ..hideCurrentSnackBar()
+                  ..showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Cần có từ nguồn và nghĩa để cập nhật Global Glossary.',
+                      ),
+                    ),
+                  );
+                return;
+              }
+              final currentTarget = glossaryTargetOf(meaning);
+              final term = holder.glossaryTermNotifier.value;
+              if (term != null && term.target.trim() == currentTarget.trim()) {
+                ScaffoldMessenger.of(fieldContext)
+                  ..hideCurrentSnackBar()
+                  ..showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'Nghĩa Global Glossary $glossaryLang đã trùng khớp với VietPhrase: "$currentTarget"',
+                      ),
+                    ),
+                  );
+                return;
+              }
+              final updated = await showGlossaryUpdateDialog(
+                fieldContext,
+                ref,
+                source: source,
+                meaning: meaning,
+              );
+              if (updated) holder.refreshGlossary?.call();
+            }
+          : null,
+      onEditGlossary: canUpdateGlossary
+          ? (fieldContext, term) async {
+              final updated = await showGlossaryEditDialog(
+                fieldContext,
+                ref,
+                term: term,
+              );
+              if (updated) holder.refreshGlossary?.call();
+            }
+          : null,
     ),
     actionsBuilder: (dialogContext) => [
-      // Từ nguồn, nghĩa và trạng thái Glossary đều đổi khi người dùng gõ →
-      // gộp làm một listenable để nút Glossary/Xóa từ bám theo key hiện tại.
+      // Từ nguồn và trạng thái Glossary đổi khi người dùng gõ →
+      // cập nhật để nút Xóa từ bám theo key hiện tại.
       ListenableBuilder(
         listenable: Listenable.merge([
           holder.glossaryTermNotifier,
-          holder.meaningNotifier,
           holder.keyNotifier,
         ]),
         builder: (_, _) {
           final glossaryTerm = holder.glossaryTermNotifier.value;
-          final meaningText = holder.meaningNotifier.value;
           final currentKey = holder.keyNotifier.value.trim();
           final existsInGlossary = glossaryTerm != null;
-          final currentTarget = glossaryTargetOf(meaningText);
-          final isIdenticalGlossary =
-              existsInGlossary &&
-              glossaryTerm.target.trim() == currentTarget.trim();
-
-          final showGlossaryButton = canUpdateGlossary && !isIdenticalGlossary;
           final canDelete =
               sharedMeaningOf(currentKey) != null || existsInGlossary;
 
-          return Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (showGlossaryButton)
-                TextButton.icon(
-                  icon: Icon(
-                    existsInGlossary
-                        ? Icons.edit_calendar_outlined
-                        : Icons.menu_book_outlined,
-                    size: 18,
-                  ),
-                  onPressed: () async {
-                    final updated = await showGlossaryUpdateDialog(
-                      dialogContext,
-                      ref,
-                      source: holder.keyText.trim(),
-                      meaning: holder.meaningText.trim(),
-                    );
-                    // Ghi xong thì đọc lại glossary: thẻ trạng thái đổi
-                    // sang "ĐÃ CÓ", nút Thêm/Ghi đè tự ẩn khi đã giống hệt.
-                    if (updated) holder.refreshGlossary?.call();
-                  },
-                  label: Text(
-                    existsInGlossary
-                        ? 'Ghi đè Glossary $glossaryLang'
-                        : 'Thêm vào Glossary $glossaryLang',
-                  ),
-                ),
-              if (canDelete)
-                TextButton.icon(
-                  icon: const Icon(
-                    Icons.delete_outline,
-                    size: 18,
-                    color: Colors.red,
-                  ),
-                  onPressed: () => Navigator.pop(dialogContext, 'delete'),
-                  label: const Text(
-                    'Xóa từ',
-                    style: TextStyle(color: Colors.red),
-                  ),
-                ),
-            ],
+          if (!canDelete) return const SizedBox.shrink();
+
+          return TextButton.icon(
+            icon: const Icon(
+              Icons.delete_outline,
+              size: 18,
+              color: Colors.red,
+            ),
+            onPressed: () => Navigator.pop(dialogContext, 'delete'),
+            label: const Text(
+              'Xóa từ',
+              style: TextStyle(color: Colors.red),
+            ),
           );
         },
       ),
@@ -432,9 +619,12 @@ Future<void> showSharedEntryEditDialog(
   if (key == word.trim() && meaning == (existing ?? '').trim()) return;
 
   try {
-    await ref
-        .read(dictionarySyncProvider.notifier)
-        .stageLocalEdit(mode: mode, kind: kind, source: key, target: meaning);
+    await ref.read(dictionarySyncProvider.notifier).stageLocalEdit(
+      mode: mode,
+      kind: kind,
+      source: key,
+      target: meaning,
+    );
   } catch (_) {
     // Controller giữ thông báo lỗi đã ánh xạ cho UI.
   }
@@ -466,20 +656,20 @@ Future<void> showSharedEntryEditDialog(
   }
 
   if (!context.mounted) return;
-  final syncMsg = ref.read(dictionarySyncProvider).message;
+  final baseMsg =
+      'Đã lưu vào $dictionaryName. Bấm Update trong Cài đặt để gửi lên server.';
+  final lang = GlossaryService.langFor(mode);
+  final glossaryPart = glossaryAutoUpdated && notifyOnGlossaryUpdate
+      ? '\nĐã tự động cập nhật Global Glossary $lang: $key → $glossaryNewTarget'
+      : '';
 
-  if (glossaryAutoUpdated && notifyOnGlossaryUpdate) {
-    final baseMsg = syncMsg ?? 'Đã lưu vào $dictionaryName chung.';
-    final text =
-        '$baseMsg\nĐã tự động cập nhật Global Glossary $glossaryLang: $key → $glossaryNewTarget';
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(text)));
-  } else if (syncMsg != null) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(syncMsg)));
-  }
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(
+      SnackBar(
+        content: Text('$baseMsg$glossaryPart'),
+      ),
+    );
 }
 
 enum DeleteScope { vietPhraseOnly, glossaryOnly, both }
@@ -491,6 +681,7 @@ Future<DeleteScope?> _showDeleteConfirmationDialog({
   required String glossaryLang,
   required bool inSharedDict,
   required bool inGlossary,
+  bool isShared = true,
 }) async {
   DeleteScope selectedScope = (inSharedDict && inGlossary)
       ? DeleteScope.both
@@ -522,7 +713,9 @@ Future<DeleteScope?> _showDeleteConfirmationDialog({
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
                 subtitle: Text(
-                  'Xóa khỏi cả $dictionaryName chung và Global Glossary $glossaryLang.',
+                  isShared
+                      ? 'Xóa khỏi cả $dictionaryName chung và Global Glossary $glossaryLang.'
+                      : 'Xóa khỏi cả $dictionaryName và Global Glossary $glossaryLang.',
                   style: TextStyle(
                     fontSize: 12,
                     color: scheme.onSurfaceVariant,
@@ -549,7 +742,9 @@ Future<DeleteScope?> _showDeleteConfirmationDialog({
                   ),
                 ),
                 subtitle: Text(
-                  'Xóa khỏi từ điển $dictionaryName chung (xếp hàng chờ Update).',
+                  isShared
+                      ? 'Xóa khỏi từ điển $dictionaryName chung (xếp hàng chờ Update).'
+                      : 'Xóa khỏi $dictionaryName trên máy này.',
                   style: TextStyle(
                     fontSize: 12,
                     color: scheme.onSurfaceVariant,
@@ -658,6 +853,9 @@ class _EntryFields extends StatefulWidget {
     this.glossaryDir,
     this.onAutoUpdateChanged,
     this.onNotifyOnUpdateChanged,
+    this.onAddToGlossary,
+    this.onUpdateFromVietPhrase,
+    this.onEditGlossary,
   });
 
   final _EntryFieldControllers holder;
@@ -687,6 +885,16 @@ class _EntryFields extends StatefulWidget {
   final String? glossaryDir;
   final ValueChanged<bool>? onAutoUpdateChanged;
   final ValueChanged<bool>? onNotifyOnUpdateChanged;
+
+  /// Thêm từ nguồn và nghĩa hiện tại vào glossary khi chưa có.
+  final void Function(BuildContext context)? onAddToGlossary;
+
+  /// Cập nhật mục glossary theo nghĩa VietPhrase hiện tại trong dialog.
+  final void Function(BuildContext context)? onUpdateFromVietPhrase;
+
+  /// Mở dialog sửa riêng nghĩa bên glossary (chỉ dialog VietPhrase truyền).
+  /// Nút chỉ hiện khi mục đã có trong glossary và tự động cập nhật đang TẮT.
+  final void Function(BuildContext context, GlossaryTerm term)? onEditGlossary;
 
   @override
   State<_EntryFields> createState() => _EntryFieldsState();
@@ -947,10 +1155,14 @@ class _EntryFieldsState extends State<_EntryFields> {
               return ValueListenableBuilder<bool>(
                 valueListenable: widget.holder.notifyOnGlossaryUpdateNotifier,
                 builder: (_, notifyOnUpdate, _) {
+                  final term = _glossaryTerm;
+                  final onEditGlossary = widget.onEditGlossary;
+                  final onUpdateFromVietPhrase = widget.onUpdateFromVietPhrase;
+                  final onAddToGlossary = widget.onAddToGlossary;
                   return _GlossaryStatusCard(
                     hasGlossaryFile: _hasGlossaryFile,
                     glossaryLang: _glossaryLang,
-                    term: _glossaryTerm,
+                    term: term,
                     isChecking: _isCheckingGlossary,
                     autoUpdate: autoUpdate,
                     onAutoUpdateChanged: (val) {
@@ -962,6 +1174,17 @@ class _EntryFieldsState extends State<_EntryFields> {
                       widget.holder.notifyOnGlossaryUpdateNotifier.value = val;
                       widget.onNotifyOnUpdateChanged?.call(val);
                     },
+                    onAddToGlossary:
+                        onAddToGlossary == null || term != null
+                            ? null
+                            : () => onAddToGlossary(context),
+                    onUpdateFromVietPhrase:
+                        onUpdateFromVietPhrase == null || term == null
+                            ? null
+                            : () => onUpdateFromVietPhrase(context),
+                    onEditGlossary: onEditGlossary == null || term == null
+                        ? null
+                        : () => onEditGlossary(context, term),
                   );
                 },
               );
@@ -1365,6 +1588,9 @@ class _GlossaryStatusCard extends StatelessWidget {
     required this.onAutoUpdateChanged,
     required this.notifyOnUpdate,
     required this.onNotifyOnUpdateChanged,
+    this.onAddToGlossary,
+    this.onUpdateFromVietPhrase,
+    this.onEditGlossary,
   });
 
   final bool hasGlossaryFile;
@@ -1375,6 +1601,16 @@ class _GlossaryStatusCard extends StatelessWidget {
   final ValueChanged<bool> onAutoUpdateChanged;
   final bool notifyOnUpdate;
   final ValueChanged<bool> onNotifyOnUpdateChanged;
+
+  /// Thêm từ nguồn và nghĩa hiện tại vào glossary khi chưa có.
+  final VoidCallback? onAddToGlossary;
+
+  /// Cập nhật mục glossary theo nghĩa VietPhrase hiện tại.
+  final VoidCallback? onUpdateFromVietPhrase;
+
+  /// Sửa riêng nghĩa bên glossary. Chỉ hiện khi [autoUpdate] TẮT — bật thì
+  /// glossary đã bám theo nghĩa VietPhrase lúc lưu, không cần sửa tay.
+  final VoidCallback? onEditGlossary;
 
   @override
   Widget build(BuildContext context) {
@@ -1518,6 +1754,57 @@ class _GlossaryStatusCard extends StatelessWidget {
                 ),
               ),
             ),
+            if (!autoUpdate &&
+                (onUpdateFromVietPhrase != null || onEditGlossary != null))
+              Padding(
+                padding: const EdgeInsets.only(left: 32, top: 4),
+                child: Wrap(
+                  spacing: 10,
+                  runSpacing: 6,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    if (onUpdateFromVietPhrase != null)
+                      TextButton.icon(
+                        onPressed: onUpdateFromVietPhrase,
+                        icon: const Icon(Icons.sync_alt_rounded, size: 18),
+                        label: const Text('Cập nhật theo VietPhrase'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: const Color(0xFF00838F),
+                          backgroundColor:
+                              const Color(0xFF00838F).withValues(alpha: 0.08),
+                          side: BorderSide(
+                            color:
+                                const Color(0xFF00838F).withValues(alpha: 0.35),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                        ),
+                      ),
+                    if (onEditGlossary != null)
+                      TextButton.icon(
+                        onPressed: onEditGlossary,
+                        icon: const Icon(
+                          Icons.drive_file_rename_outline,
+                          size: 18,
+                        ),
+                        label: Text('Sửa nghĩa Glossary $glossaryLang'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: accentColor,
+                          backgroundColor: accentColor.withValues(alpha: 0.08),
+                          side: BorderSide(
+                            color: accentColor.withValues(alpha: 0.35),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             if (autoUpdate) ...[
               const SizedBox(height: 2),
               Padding(
@@ -1548,10 +1835,38 @@ class _GlossaryStatusCard extends StatelessWidget {
               ),
             ],
           ] else if (!isChecking && !exists) ...[
-            const SizedBox(height: 4),
-            Text(
-              'Từ này chưa có trong file Global Glossary $glossaryLang.',
-              style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Từ này chưa có trong file Global Glossary $glossaryLang.',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                if (onAddToGlossary != null) ...[
+                  const SizedBox(width: 8),
+                  TextButton.icon(
+                    onPressed: onAddToGlossary,
+                    icon: const Icon(Icons.menu_book_outlined, size: 18),
+                    label: Text('Thêm vào Glossary $glossaryLang'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: accentColor,
+                      backgroundColor: accentColor.withValues(alpha: 0.08),
+                      side: BorderSide(
+                        color: accentColor.withValues(alpha: 0.35),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ),
           ],
         ],

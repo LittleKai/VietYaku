@@ -28,7 +28,10 @@ enum LookupDictionaryType {
           value == 'Youdao 中英' ||
           value == 'Google Dịch' ||
           value == 'Online',
-    LookupDictionaryType.ai => value == 'AI Dịch' || value == 'AI Tra Cứu',
+    LookupDictionaryType.ai =>
+      value == 'AI Dịch' ||
+      value == 'AI Tra Cứu' ||
+      value == 'AI Dịch (Cả câu)',
     _ => value == label,
   };
 

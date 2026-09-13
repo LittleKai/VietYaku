@@ -25,6 +25,10 @@ class UserDictService {
   Future<void> upsertUserName(String key, String value) =>
       _upsert(userNamesFile, key, value);
 
+  Future<bool> removeUserDict(String key) => _removeKey(userDictFile, key);
+
+  Future<bool> removeUserName(String key) => _removeKey(userNamesFile, key);
+
   /// Ghi nhiều tên riêng một lượt (bảng ứng viên tên riêng) — một lần đọc/ghi
   /// file thay vì mỗi mục một lần.
   Future<void> upsertUserNames(Map<String, String> entries) =>

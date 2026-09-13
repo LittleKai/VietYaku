@@ -254,10 +254,14 @@ class _AiSettingsContentState extends ConsumerState<_AiSettingsContent> {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    Text(
-                      'Xoay vòng theo trọng số (weight ${config.keys.fold(0, (sum, k) => sum + k.weight)} lượt/chu kỳ)',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        'Xoay vòng theo trọng số (weight ${config.keys.fold(0, (sum, k) => sum + k.weight)} lượt/chu kỳ)',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                        textAlign: TextAlign.end,
                       ),
                     ),
                   ],
@@ -265,6 +269,7 @@ class _AiSettingsContentState extends ConsumerState<_AiSettingsContent> {
                 const SizedBox(height: 8),
                 Container(
                   height: 130,
+                  clipBehavior: Clip.antiAlias,
                   decoration: BoxDecoration(
                     color: scheme.surface,
                     borderRadius: BorderRadius.circular(8),
@@ -283,32 +288,35 @@ class _AiSettingsContentState extends ConsumerState<_AiSettingsContent> {
                           itemBuilder: (context, index) {
                             final key = config.keys[index];
                             final isSelected = _selectedKeyIndex == index;
-                            return ListTile(
-                              dense: true,
-                              selected: isSelected,
-                              selectedTileColor:
-                                  scheme.primaryContainer.withValues(alpha: 0.3),
-                              leading: Text(
-                                '#${index + 1}',
-                                style: TextStyle(
-                                  color: scheme.onSurfaceVariant,
-                                  fontWeight: FontWeight.bold,
+                            return Material(
+                              color: Colors.transparent,
+                              child: ListTile(
+                                dense: true,
+                                selected: isSelected,
+                                selectedTileColor:
+                                    scheme.primaryContainer.withValues(alpha: 0.3),
+                                leading: Text(
+                                  '#${index + 1}',
+                                  style: TextStyle(
+                                    color: scheme.onSurfaceVariant,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
-                              ),
-                              title: Text(
-                                AiSettings.maskKey(key.value),
-                                style: const TextStyle(
-                                  fontFamily: 'Consolas',
-                                  fontSize: 13,
+                                title: Text(
+                                  AiSettings.maskKey(key.value),
+                                  style: const TextStyle(
+                                    fontFamily: 'Consolas',
+                                    fontSize: 13,
+                                  ),
                                 ),
+                                trailing: _KeyWeightStepper(
+                                  weight: key.weight,
+                                  onChanged: (w) => _setKeyWeight(index, w),
+                                ),
+                                onTap: () => setState(() {
+                                  _selectedKeyIndex = isSelected ? null : index;
+                                }),
                               ),
-                              trailing: _KeyWeightStepper(
-                                weight: key.weight,
-                                onChanged: (w) => _setKeyWeight(index, w),
-                              ),
-                              onTap: () => setState(() {
-                                _selectedKeyIndex = isSelected ? null : index;
-                              }),
                             );
                           },
                         ),
@@ -395,8 +403,8 @@ class _AiSettingsContentState extends ConsumerState<_AiSettingsContent> {
                     ),
                     child: Text(
                       '• gemini-3-flash-preview: Tiết kiệm token, sạch và nhanh.\n'
-                      '• 假流式-agy-gemini-3.6-flash-low: Chất lượng dịch văn học/tiểu thuyết cao nhất.\n'
-                      '• agy-*: Tiêu chuẩn, thích hợp tra cứu nhanh câu/từ đơn.',
+                      '• agy-gemini-3.8-flash-medium: Khuyến nghị dịch văn học/tiểu thuyết chất lượng cao.\n'
+                      '• agy-*: Tiêu chuẩn, chia theo bậc effort (low / medium / high).',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: scheme.onSurfaceVariant,
                       ),

@@ -1,6 +1,6 @@
 # Important Fixed Bugs
 
-**Last Updated:** 2026-09-02
+**Last Updated:** 2026-09-07
 
 ---
 
@@ -13,6 +13,13 @@ Record only high-impact, hard-to-detect, or likely-to-recur bugs. Do not record 
 ---
 
 ## Fixed Bugs
+
+### 2026-09-07 - Alias biến thể Sudachi dựng ngược kanji từ phiên âm katakana (`細工` → `Zaik`)
+- **Symptom:** `細工` dịch ra `Zaik` (tên riêng) thay vì `tác phẩm/đồ thủ công/…`, dù `VietPhrase.txt` có mục `細工` đúng. Không lỗi, không log — chỉ có bản dịch sai ở đúng một từ, và tra trong Search Center vẫn thấy mục gốc còn nguyên.
+- **Root Cause:** Nhóm Sudachi `ざいく / ザイク / 細工` gom cả CÁCH ĐỌC lẫn mặt chữ. `JapaneseVariantIndex` khi key khớp trọn một surface thì "tin cả nhóm" (`trustGroup`) nên mục `ザイク=Zaik` trong `SharedVietPhrase_japanese.txt` sinh alias `細工=Zaik`; shared VietPhrase merge SAU cùng nên alias này đè luôn mục gốc. Chiều ngược (`細工` → `ザイク`) cũng sai tương tự và đã lọt vào `SudachiVariants.txt` do `safeVariant` cũ nhận mọi biến thể thuần katakana.
+- **Fix:** Alias chỉ đi một chiều và không bắc cầu Hán ⇄ katakana — nguồn có chữ Hán thì biến thể không được chứa katakana; nguồn thuần kana thì chỉ đổi hệ chữ kana, không dựng kanji. Áp ở `_isAllowedVariant` (lúc chạy) và `safeVariant` (lúc sinh asset); đã sinh lại `data/jp/Sudachi*.txt` (13.676 → 11.299 biến thể).
+- **Do Not Repeat:** Trường 11 (読み) của Sudachi là katakana — mọi cơ chế gom "cách viết tương đương" đều kéo cách đọc vào cùng nhóm. Trước khi nhận một cặp biến thể, luôn hỏi "đây là cách VIẾT khác hay cách ĐỌC?". Một alias sai ở tầng overlay đè được cả từ điển gốc vì overlay merge sau cùng.
+- **Related Files:** `lib/features/dictionary/domain/japanese_variant_index.dart`, `tool/build_sudachi_assets.dart`, `test/japanese_variant_index_test.dart`
 
 ### 2026-08-22 - Android release mất sạch tính năng mạng vì `AndroidManifest.xml` (main) thiếu `INTERNET`
 - **Symptom:** Trên bản release APK, tra online (Mazii/Jisho/Weblio/Youdao), tab Google Dịch, kiểm tra cập nhật và đồng bộ từ điển chung đều thất bại im lặng hoặc báo lỗi mạng chung chung. **Chạy `flutter run` (debug) thì mọi thứ bình thường** nên lỗi không bao giờ lộ ra trong lúc phát triển.

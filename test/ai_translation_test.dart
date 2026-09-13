@@ -15,7 +15,10 @@ import 'package:vietyaku/features/ai_translation/domain/ai_lookup_result.dart';
 import 'package:vietyaku/features/ai_translation/domain/ai_service_config.dart';
 import 'package:vietyaku/features/ai_translation/domain/ai_service_type.dart';
 import 'package:vietyaku/features/dictionary/data/user_dict_service.dart';
+import 'package:vietyaku/features/dictionary/domain/dict_type.dart';
+import 'package:vietyaku/features/dictionary/domain/phrase_dictionary.dart';
 import 'package:vietyaku/features/translation/application/lookup_controller.dart';
+import 'package:vietyaku/features/translation/domain/dict_entry_filter.dart';
 import 'package:vietyaku/features/translation/domain/lookup_dictionary_type.dart';
 import 'package:vietyaku/features/translation/domain/translation_engine.dart';
 
@@ -24,10 +27,21 @@ void main() {
     test('Gemini CLI models match exactly', () {
       final models = AiServiceType.geminiCli.availableModels;
       expect(models, contains('gemini-3-flash-preview'));
-      expect(models, contains('假流式-agy-gemini-3.6-flash-low'));
-      expect(models, isNot(contains('agy-gemini-3.5-flash-low')));
-      expect(models, isNot(contains('假流式-agy-gemini-3.5-flash-low')));
-      expect(models.length, equals(10));
+      expect(models, contains('agy-gemini-3.8-flash-low'));
+      expect(models, contains('假流式-agy-gemini-3.8-flash-low'));
+      expect(models, contains('agy-gemini-3.8-flash-medium'));
+      expect(models, contains('agy-gemini-3.8-flash-high'));
+      expect(models, contains('agy-gemini-3.1-pro-high'));
+      expect(models, contains('假流式-agy-gemini-3.1-pro-high'));
+      expect(models, contains('gemini-3.1-pro-preview'));
+      expect(models, isNot(contains('gemini-3.5-flash')));
+      expect(models, isNot(contains('假流式-gemini-3.5-flash')));
+      expect(models, isNot(contains('agy-gemini-3.1-pro-low')));
+      expect(models, isNot(contains('假流式-agy-gemini-3.1-pro-low')));
+      expect(models, isNot(contains('agy-gemini-3.7-flash-low')));
+      expect(models, isNot(contains('agy-gemini-3.7-flash')));
+      expect(models, isNot(contains('agy-gemini-3.6-flash-low')));
+      expect(models.length, equals(12));
     });
 
     test('Gemini API models are accurate', () {
@@ -762,6 +776,33 @@ void main() {
       final content = await service.aiEntriesFile(mode).readAsString();
       expect(content, contains('チャラ=nghĩa mới'));
       expect(content, isNot(contains('nghĩa cũ')));
+    });
+
+    test('Nếu Lạc Việt đã có thì không thêm vào VietPhrase overlay', () {
+      final vietPhrase = PhraseDictionary(DictType.vietPhrase, const {
+        '既知VP': 'có sẵn',
+      });
+      final lacViet = PhraseDictionary(DictType.lacViet, const {
+        '既知LV': 'lạc việt có',
+      });
+
+      const word = '既知LV';
+      const shortMeaning = 'nghĩa tra';
+      final subEntries = {'新語': 'nghĩa mới'};
+
+      final candidates = {word: shortMeaning, ...subEntries};
+      final missing = {
+        for (final e in candidates.entries)
+          if (isWordLikeEntry(e.key) &&
+              !vietPhrase.entries.containsKey(e.key) &&
+              !lacViet.entries.containsKey(e.key))
+            e.key: e.value,
+      };
+
+      // '既知LV' không có trong VietPhrase nhưng ĐÃ CÓ trong Lạc Việt → bị loại
+      expect(missing.containsKey('既知LV'), isFalse);
+      // '新語' cả 2 đều không có → được thêm vào
+      expect(missing.containsKey('新語'), isTrue);
     });
   });
 }

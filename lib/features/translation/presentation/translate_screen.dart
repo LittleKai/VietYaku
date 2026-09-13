@@ -354,9 +354,11 @@ class _MenuBar extends ConsumerWidget {
                 label: const Text('Dịch Lại', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
                 onPressed: dictsLoading
                     ? null
-                    : () => ref
-                          .read(translationControllerProvider.notifier)
-                          .translate(ref.read(sourceDraftProvider)),
+                    : () {
+                        ref
+                            .read(translationControllerProvider.notifier)
+                            .translate(ref.read(sourceDraftProvider));
+                      },
                 style: FilledButton.styleFrom(
                   visualDensity: VisualDensity.compact,
                   padding: const EdgeInsets.symmetric(
@@ -371,9 +373,11 @@ class _MenuBar extends ConsumerWidget {
                 label: const Text('Dán & Dịch', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
                 onPressed: dictsLoading
                     ? null
-                    : () => ref
-                          .read(translationControllerProvider.notifier)
-                          .pasteAndTranslate(),
+                    : () {
+                        ref
+                            .read(translationControllerProvider.notifier)
+                            .pasteAndTranslate();
+                      },
                 style: FilledButton.styleFrom(
                   backgroundColor: pasteBtnBg,
                   foregroundColor: Colors.white,

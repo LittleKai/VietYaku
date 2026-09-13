@@ -32,8 +32,8 @@ List<SecondaryPhrase> findSecondaryPhrases({
   required String text,
   required List<Token> tokens,
   required PhraseDictionary lacViet,
-  required PhraseDictionary jaVi,
-  required PhraseDictionary mazii,
+  PhraseDictionary? jaVi,
+  PhraseDictionary? mazii,
   PhraseDictionary? onlineDict,
   PhraseDictionary? aiDict,
 }) {
@@ -78,8 +78,8 @@ SecondaryPhrase? secondaryPhraseStartingAt({
   required List<Token> tokens,
   required int offset,
   required PhraseDictionary lacViet,
-  required PhraseDictionary jaVi,
-  required PhraseDictionary mazii,
+  PhraseDictionary? jaVi,
+  PhraseDictionary? mazii,
   PhraseDictionary? onlineDict,
   PhraseDictionary? aiDict,
 }) {
@@ -114,8 +114,8 @@ void _matchRun(
   int runStart,
   int runEnd,
   PhraseDictionary lacViet,
-  PhraseDictionary jaVi,
-  PhraseDictionary mazii,
+  PhraseDictionary? jaVi,
+  PhraseDictionary? mazii,
   PhraseDictionary? onlineDict,
   PhraseDictionary? aiDict,
   List<SecondaryPhrase> out,
@@ -147,17 +147,21 @@ SecondaryPhrase? _matchAt(
   int pos,
   int runEnd,
   PhraseDictionary lacViet,
-  PhraseDictionary jaVi,
-  PhraseDictionary mazii,
+  PhraseDictionary? jaVi,
+  PhraseDictionary? mazii,
   PhraseDictionary? onlineDict,
   PhraseDictionary? aiDict,
 ) {
   final firstUnit = text.codeUnitAt(pos);
   var maxLen = lacViet.maxLenFor(firstUnit);
-  final jl = jaVi.maxLenFor(firstUnit);
-  if (jl > maxLen) maxLen = jl;
-  final ml = mazii.maxLenFor(firstUnit);
-  if (ml > maxLen) maxLen = ml;
+  if (jaVi != null) {
+    final jl = jaVi.maxLenFor(firstUnit);
+    if (jl > maxLen) maxLen = jl;
+  }
+  if (mazii != null) {
+    final ml = mazii.maxLenFor(firstUnit);
+    if (ml > maxLen) maxLen = ml;
+  }
   if (onlineDict != null) {
     final ol = onlineDict.maxLenFor(firstUnit);
     if (ol > maxLen) maxLen = ol;
@@ -198,14 +202,14 @@ SecondaryPhrase? _matchAt(
 String? _priorityLabel(
   String key,
   PhraseDictionary lacViet,
-  PhraseDictionary jaVi,
-  PhraseDictionary mazii,
+  PhraseDictionary? jaVi,
+  PhraseDictionary? mazii,
   PhraseDictionary? onlineDict,
   PhraseDictionary? aiDict,
 ) {
   if (lacViet.entries.containsKey(key)) return 'Lạc Việt';
-  if (jaVi.entries.containsKey(key)) return 'Nhật Việt';
-  if (mazii.entries.containsKey(key)) return 'Mazii';
+  if (jaVi != null && jaVi.entries.containsKey(key)) return 'Nhật Việt';
+  if (mazii != null && mazii.entries.containsKey(key)) return 'Mazii';
   if (onlineDict != null && onlineDict.entries.containsKey(key)) return 'Online';
   if (aiDict != null && aiDict.entries.containsKey(key)) return 'AI Dịch';
   return null;
