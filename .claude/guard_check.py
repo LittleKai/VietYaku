@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-r"""
+"""
 guard_check.py - kiem moi RAO CHAN neu trong .claude/IMPORTANT_FIXED_BUGS.md
 con ton tai that trong code.
 
@@ -8,13 +8,6 @@ VI SAO: file bay co mot CUA RA - bay nao da co rao chan trong code thi van
 xuoi duoc chuyen xuong .claude/archive/. Cua ra do chi an toan neu con dam
 bao duoc rang rao chan van con. Xoa mot ham rao chan di ma van xuoi da nam
 duoi archive/ la MAT KIEN THUC LANG LE: khong ai thay, va bay quay lai.
-
-LECH SO VOI BAN MAU v2 (co chu y):
-  1. Dong kiem dung r"\b<fn>(?!\w)" thay vi r"\b<fn>" - ban goc khong co
-     bien phai nen doi ten ensureWindowMaximized -> ensureWindowMaximizedXX van pass.
-  2. O "Rao chan" trong Bang bay phai viet dang `file.dart::symbol`. Dang
-     `file.dart (symbol)` bi regex boc ra duoi file ("dart") thay vi ten ham -
-     ma "dart" thi co mat o moi file nen check pass gia.
 
 CHAY (tu goc repo):    python .claude/guard_check.py
 Exit code 1 khi thieu rao chan -> cam duoc vao CI / pre-commit hook.
@@ -29,6 +22,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # --- CAU HINH: sua 3 dong nay cho dung du an -------------------------------
 SOURCE_GLOBS = ["lib/**/*.dart", "tool/**/*.dart", "test/**/*.dart",
                 "windows/runner/*.cpp"]           # noi rao chan phai ton tai
+# test/ nam trong glob co chu y: nhieu rao chan cua du an nay la test khoa
+# bat bien tren file da sinh (trad2simp.tsv, SudachiVariants.txt, manifest).
 BUGS    = os.path.join(ROOT, ".claude", "IMPORTANT_FIXED_BUGS.md")
 ARCHIVE = os.path.join(ROOT, ".claude", "archive", "FIXED_BUGS_guarded.md")
 # ---------------------------------------------------------------------------
@@ -59,10 +54,16 @@ def parse_rows(md):
 
 
 def guard_names(cell):
-    """Tach symbol tu o: `mod.py::fn`, `Cls.method()`, `cfg.rb (remove_const)`, `fn()`."""
+    """Tach symbol tu o: `mod.py::fn`, `Cls.method()`, `cfg.rb (remove_const)`, `fn()`.
+
+    THU TU PATTERN QUAN TRONG: dang `(symbol)` phai duoc thu TRUOC dang
+    `.method(`, neu khong thi `cfg.rb (remove_const)` bi boc ra "rb" va
+    `util.dart (fixKey)` bi boc ra "dart" - ma "dart"/"ts" thi co mat o moi
+    file nen check se PASS GIA vinh vien.
+    """
     out = []
     for lit in re.findall(r"`([^`]+)`", cell):
-        for pat in (r"::(\w+[!?]?)", r"\.(\w+[!?]?)\s*\(", r"\((\w+[!?]?)\)",
+        for pat in (r"::(\w+[!?]?)", r"\((\w+[!?]?)\)", r"\.(\w+[!?]?)\s*\(",
                     r"^(\w+[!?]?)\s*\(", r"\.(\w+[!?]?)$"):
             m = re.search(pat, lit)
             if m:
