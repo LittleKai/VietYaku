@@ -2,11 +2,27 @@
 ---
 **Last updated:** 2026-09-14
 
+> File này phản ánh **trạng thái hiện tại** của dự án. **Không** dùng làm changelog,
+> recent changes, hay bug-fix log — git history là nguồn lịch sử. Lỗi quan trọng,
+> khó phát hiện hoặc dễ tái phát thì ghi vào `.claude/IMPORTANT_FIXED_BUGS.md`;
+> lỗi vặt thì không ghi đâu cả.
+
+**Cập nhật sau MỌI task đụng tới dự án này:**
+
+- dòng `Last updated` — **luôn**
+- §4 `Features Implementation Status`: đổi ⏳ → 🚧 → ✅ nếu có thay đổi
+- §5 `Known Issues & TODOs`: tick `[x]` mục đã xong, thêm mục mới
+- §2 `File Structure` / §6 `Dependencies & External Resources`: **chỉ khi** có
+  file, thư mục, hay dependency mới
+
+Không tồn tại file này ⇒ coi như task "review toàn bộ dự án". Thấy nó lệch so với
+code ⇒ **hỏi user trước khi làm tiếp**.
+
 ## 1. Project Overview
 
 - **Type:** App đa nền tảng (Windows desktop + Android) — dịch Nhật/Trung→Việt kiểu VietPhrase + công cụ sửa từ điển JP, thay thế QuickTranslator_Jap (WinForms). Dịch chính offline; có thêm tính năng online tùy chọn: tra nghĩa Mazii / Google Dịch (Việt) / Jisho (Nhật→Anh) hoặc 有道词典 (Trung→Anh) / Weblio 日中 (Nhật→Trung) và tab Google Translate (endpoint gtx + fallback crawl translate.google.com/m).
 - **Phạm vi theo nền tảng** (`lib/core/platform_features.dart` — `PlatformFeatures`): Android có Dịch · Tìm kiếm · Giao diện · Cài đặt · tra online · đồng bộ từ điển chung · TTS; **ẩn** Chuyển đổi EPUB (cần hộp thoại lưu file desktop), Đồng bộ Glossary (thư mục AI_Translation_Bridge chỉ có trên máy Windows), Sửa từ điển (repair ghi file cạnh nguồn), Clipboard reader + hotkey (hook Win32).
-- **Tech Stack:** Flutter 3.44.2, Dart ^3.12, Material 3
+- **Tech Stack:** Flutter 3.44.2, Dart ^3.12, Material 3 — SDK tại `D:\3.Flutter\flutter\bin\flutter.bat` (có trong PATH).
 - **Package Manager:** pub (flutter pub)
 - **i18n:** None (UI tiếng Việt cố định)
 - **State Management:** Riverpod 2 — manual providers (Notifier/AsyncNotifier), KHÔNG codegen
@@ -15,7 +31,7 @@
   - **Windows:** `flutter build windows --release` → exe độc lập tại `build\windows\x64\runner\Release\vietyaku.exe`. Từ điển đi kèm dạng assets nên exe lớn thêm ~155MB.
   - **Android:** `flutter build apk --release` → APK. Ký bằng debug key mặc định; thả `android/key.properties` (đã gitignore, 4 khoá `storeFile`/`storePassword`/`keyAlias`/`keyPassword`) vào là `build.gradle.kts` tự dùng keystore thật, không phải sửa code. `minSdk` 24 · `targetSdk`/`compileSdk` 36 · AGP 9.0.1 · Gradle 9.1.0 · Kotlin 2.3.20 · JDK 17.
   - Skill `build-and-release` build **cả hai** target (mặc định `-Targets "windows,android"`), APK ra `build/release/VietYaku-android-v<version>.apk` và chỉ lên GitHub Release (kênh cập nhật trong app); B2 vẫn chỉ nhận ZIP Windows cho link tải web.
-- **Phát hành (2 kênh song song, do skill `build-and-release` lo):** GitHub Release `LittleKai/VietYaku` phục vụ **cập nhật trong app**; Backblaze B2 (`vietyaku-app/version.json` + `vietyaku-app/releases/*.zip`, bucket `alpha-studio`) phục vụ **link tải trên web** tại `giaiphapsangtao.com/studio/vietyaku`. Cùng một file ZIP, B2 gắn thêm version vào tên object. Chi tiết ở mục "PHÁT HÀNH — HAI KÊNH SONG SONG" trong `CLAUDE.md`.
+- **Phát hành (2 kênh song song, do skill `build-and-release` lo):** GitHub Release `LittleKai/VietYaku` phục vụ **cập nhật trong app**; Backblaze B2 (`vietyaku-app/version.json` + `vietyaku-app/releases/*.zip`, bucket `alpha-studio`) phục vụ **link tải trên web** tại `giaiphapsangtao.com/studio/vietyaku`. Cùng một file ZIP, B2 gắn thêm version vào tên object. Chi tiết: `.claude/RELEASE.md`.
 
 Dữ liệu từ điển bundle trong dự án (KHÔNG commit git, đi theo bản phát hành qua `assets:` của pubspec), mỗi ngôn ngữ một bộ tại `data/jp/` và `data/cn/` — đường dẫn hardcode (`defaultDataDir` trong settings_provider), không còn UI chọn file trong Cài đặt:
 - `data/jp/` (nguồn Drive QuickTranslator_Jap, đã repair simp→JP): VietPhrase.txt (187.419 — bản `_JP` repair), LacViet.txt (103.632 — bản `_JP`), Names.txt, JaViDict.txt (172.321), + ThieuChuu/Babylon/cedict_ts.u8/ChinesePhienAm*/Pronouns, SudachiVariants.txt (11.299 — biến thể→value VietPhrase, chỉ cặp cùng hệ chữ), SudachiVariantGroups.txt (110.326 nhóm cách viết kana/kanji cho overlay động), SudachiReadings.txt (43.520 — từ=kana đọc; cả ba sinh bởi tool/build_sudachi_assets.dart), Mazii.txt (từ điển Mazii offline Nhật→Việt, format LacViet — value `\n\t` escaped; đã convert đầy đủ 171.299 entry từ MaziiDict.db sau khi loại bỏ các kana đơn).
@@ -34,7 +50,7 @@ VietYaku/
 ├── CLAUDE.md, .claude/             # docs hệ thống (summary, conventions, fixed bugs, setup report)
 ├── codegraph.json                  # cấu hình loại trừ file/folder khỏi CodeGraph indexer
 ├── docs/                            # nghiên cứu/roadmap; NGHIEN_CUU_DINH_HUONG_PHAT_TRIEN.md, NGHIEN_CUU_SUDACHI.md, NGHIEN_CUU_TINH_NANG_2026-08.md (chấm điểm tính năng đề xuất)
-├── data/jp/, data/cn/              # bộ từ điển theo ngôn ngữ (~123MB; KHÔNG commit git — `.gitignore` có `data/*`, đi theo bản phát hành qua `assets:`). `generated/` là thư mục con app tự ghi khi admin tra AI/online
+├── data/jp/, data/cn/              # bộ từ điển theo ngôn ngữ (~123MB; KHÔNG commit git — `.gitignore` có `data/*`, chỉ chừa `data/cn/LuatNhan.txt`; đi theo bản phát hành qua `assets:`). `generated/` là thư mục con app tự ghi khi admin tra AI/online
 ├── assets/mappings/                # simp2jp.tsv (3.932 + 69 ambiguous), jp_valid_kanji.txt (3.030), simp2jp_overrides.tsv (soạn tay), trad2simp.tsv (2.455 ký tự phồn→giản)
 ├── tool/                           # build_simp2jp.dart (sinh assets, cần mạng), build_trad2simp.dart (sinh trad2simp.tsv từ data/cn/cedict_ts.u8, không cần mạng), export_jp.dart (CLI repair + verify), normalize_vietphrase_values.dart (dry-run/ghi chuẩn hóa value VietPhrase JP+CN, giữ BOM/CRLF), export_vocabflip_dicts.py (sinh JaViDict/ZhViDict.txt từ DB VocabFlip), build_sudachi_assets.dart (sinh SudachiVariants+SudachiVariantGroups+SudachiReadings từ SudachiDict raw, cần mạng), clean_single_kana.dart (lọc bỏ key là 1 ký tự Hiragana/Katakana trong JaViDict.txt), backfill_lookup_overlay.dart (bù overlay VietPhrase cho OnlineDict/AiDict đã lưu trước khi có cơ chế tự thêm)
 ├── lib/

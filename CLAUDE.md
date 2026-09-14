@@ -1,120 +1,46 @@
 # Instructions for Claude Code — VietYaku
 
-Flutter Windows desktop app: dịch Nhật/Trung → Việt kiểu VietPhrase (greedy longest-match) + công cụ sửa từ điển tiếng Nhật bị hỏng của QuickTranslator_Jap. Dịch chính offline, KHÔNG dùng AI. Tính năng online tùy chọn: tra nghĩa Mazii/Google Dịch trong ô Nghĩa, tab Google Translate (gtx + fallback crawl `/m`), và tra cứu/phân tích một từ bằng AI (người dùng tự nhập API key) — AI chỉ tra từ, không tham gia dịch cả văn bản.
+App Flutter (Windows desktop + Android) dịch Nhật/Trung → Việt kiểu VietPhrase
+(greedy longest-match, **offline, không dùng AI để dịch**) + công cụ sửa từ điển
+Nhật bị hỏng của QuickTranslator_Jap. Online là tùy chọn; AI chỉ tra **một từ**.
+
+File này là **bộ định tuyến** — nó nói *đọc gì* và *luật nào không được bỏ qua*.
+Mọi chi tiết nằm ở file nó trỏ tới. Đây là file duy nhất nạp vô điều kiện mỗi
+session, nên mỗi dòng ở đây đắt hơn một dòng bất kỳ chỗ khác: **thêm vào đây là
+lựa chọn cuối cùng, không phải mặc định.**
 
 ---
 
-## 🎯 CORE PRINCIPLE
+## 🎯 ĐẦU RA LÀ GÌ
 
-Read PROJECT_SUMMARY.md FIRST, not the entire codebase.
-Update documentation AFTER every change.
+Artifact bàn giao: **`vietyaku.exe` đã build** (Windows, chạy portable — userdata
+nằm cạnh exe) và **`.apk`** (Android). Source chạy được **không** phải artifact.
 
----
-
-## BEFORE ANY TASK
-
-### 1. Read (in order):
-```
-.claude/PROJECT_SUMMARY.md     → Project state, architecture, active features
-Specific files user mentioned  → Only if needed for implementation
-```
-
-### 2. DON'T Read:
-- ❌ Entire `lib/` folder
-- ❌ All features to "understand project"
-- ❌ Files already summarized in PROJECT_SUMMARY.md
-
-### 3. Context cần biết:
-- Flutter 3.44.2 tại `D:\3.Flutter\flutter\bin\flutter.bat` (có trong PATH).
-- Từ điển app dùng: `data/jp/` và `data/cn/` trong dự án (mỗi ngôn ngữ một bộ; UTF-8 BOM, format `key=nghĩa1/nghĩa2`). **KHÔNG commit git** — `.gitignore` có `data/*`, chỉ chừa `data/cn/LuatNhan.txt`; chúng đi theo bản phát hành qua `assets:` trong pubspec (release → `<exe>/data/flutter_assets/data/`).
-- Nguồn gốc (KHÔNG ghi đè): `C:\Users\XEON\My Drive\JP CN Tool\QuickTranslator_Jap\` và `D:\Software\QuickTranslator\` (bộ Quick Translator Chinese/for Japanese).
+**Bàn giao bắt buộc:** exe/APK chạy độc lập · từ điển đi kèm dạng assets ·
+`flutter analyze` sạch · `flutter test` pass · bằng chứng của **lần chạy này**.
 
 ---
 
-## Quyết định thiết kế đã chốt (không bàn lại)
+## 📖 ĐỌC GÌ — theo việc đang làm
 
-- Engine tra: `HashMap<String,String>` + index `maxLenByFirstUnit: Map<int,int>` per dict (key = UTF-16 code unit đầu). Không trie, không DB.
-- Cache: binary snapshot custom `.vydc` (không SQLite/Isar/Hive). Load qua `Isolate.run()`, transfer bằng `Isolate.exit`.
-- State: Riverpod manual providers (không codegen), `AsyncNotifier` cho dict load.
-- Navigation: NavigationRail + IndexedStack 3 tab. Không GoRouter, không Dio, không codegen.
-- Độ dài đo bằng UTF-16 code unit; surrogate pair advance theo rune.
-- Ưu tiên dict cùng độ dài match: UserDict > Names > VietPhrase.
-- Repair: VALUE KHÔNG ĐỔI 1 BYTE, chỉ sửa key; xuất `*_JP.txt` UTF-8 BOM CRLF cạnh file gốc + copy vào appdata. KHÔNG ghi đè file gốc.
-- Xóa space trong key: khi CẢ HAI ký tự liền kề đều KHÔNG phải ASCII alphanumeric `[A-Za-z0-9]` (không phải quy tắc "hai phía là CJK").
-- Phồn→giản CHỈ mode Trung (mode Nhật quy giản thể là phá kanji Nhật). Chuyển ngầm ngay trước khi tra — `translate()`, `LookupController.lookup()`, `startOnlineLookup()` — ô Nguồn giữ nguyên chữ người dùng dán vào. Bảng `assets/mappings/trad2simp.tsv` sinh từ `data/cn/cedict_ts.u8` bằng `tool/build_trad2simp.dart` (không cần mạng), CHỈ nhận cặp 1 UTF-16 code unit → 1 code unit để `sourceStart` của token còn khớp văn bản gốc. Generator áp invariant "đích không bao giờ là nguồn của cặp khác" — cedict có mục đảo cột/lệch ký tự sinh ra cặp ngược chiều (`尔→爾`) và chuỗi (`託→托` mà `托→度`), bỏ mắt xích nhẹ ký hơn. Setting `convertTraditionalToSimplified`, mặc định bật.
-- Cùng setting đó, mode Trung còn quy luôn KEY của mọi dict CN về giản thể lúc nạp (`normalizeKeysToSimplified` trong `dictionary_loader`, chạy trong isolate trước khi ghi cache). Key giản thể có sẵn LUÔN thắng; key phồn thể bị bỏ vì mọi đường tra đều đã quy văn bản về giản thể nên chúng không bao giờ khớp được. Cache `.vydc` của bộ đã quy giản mang `Trad2SimpTable.signature` trong tên file → sinh lại tsv thì cache cũ tự bị bỏ qua. KHÔNG ghi đè `data/cn/`.
-- **Alias biến thể Nhật (Sudachi) chỉ đi MỘT CHIỀU và không bắc cầu Hán ⇄ katakana.** Katakana trong nhóm Sudachi là CÁCH ĐỌC, không phải cách viết thay thế. Luật (áp cả `japanese_variant_index.dart` lúc chạy lẫn `safeVariant` trong `tool/build_sudachi_assets.dart` lúc sinh `SudachiVariants.txt`): nguồn có chữ Hán → biến thể được đổi kanji/hiragana nhưng KHÔNG được chứa katakana; nguồn thuần kana → chỉ đổi hệ chữ kana, TUYỆT ĐỐI không dựng ra kanji. Bỏ luật này thì `ザイク=Zaik` (phiên âm trong SharedVietPhrase) sinh alias `細工=Zaik` và nuốt luôn nghĩa thật của `細工` — sai âm thầm, người dùng chỉ thấy bản dịch lạ.
-- Bộ dict theo ngôn ngữ: mode Nhật → `data/jp`, mode Trung → `data/cn`; đổi mode reload qua `currentModeProvider` (KHÔNG watch translationController từ dictionariesProvider — vòng phụ thuộc). Override `*_JP.txt` appdata chỉ áp dụng mode Nhật.
-- Online: không key/API trả phí — Mazii (**chỉ dùng được cho Nhật**: `/api/search` bỏ qua tham số `dict`, hỏi `cnvi` vẫn trả mục của từ điển Nhật với `phonetic` là kana và `pinyin` rỗng → `MaziiApi` loại kết quả có cách đọc kana khi `dict != 'javi'`, coi như miss. Đã kiểm chứng bằng gọi API trực tiếp, không phải dữ liệu cũ), Jisho (Nhật→Anh, JMdict), Weblio 日中中日辞典 (Nhật→Trung, crawl thẻ `<meta name="description">` của `cjjc.weblio.jp/content/<từ>` — thân trang đầy quảng cáo và đổi layout liên tục), 有道词典 (Trung→Anh, `dict.youdao.com/jsonapi?q=<từ>&dicts=[["ce"]]` — không key, tự quy phồn→giản, có pinyin + từ loại. KHÔNG dùng `/suggest`: đó là gợi ý ô tìm kiếm, chỉ hiểu giản thể và thiếu phần lớn mục từ), Google gtx + fallback crawl `translate.google.com/m`. Hanzii v2 mã hóa response → không dùng. Đã loại: MOJi辞書 (Parse API nội bộ, `search_v3` đã bỏ, không auth thì trả rỗng), 沪江小D (chặn request), Baidu/Tencent + API dịch trả phí của Youdao (bắt đăng ký key, mà vẫn là máy dịch), 金山词霸 `dict-co.iciba.com` (bắt key).
-- **Chỗ ghi dữ liệu (`AppPaths`) — KHÔNG dùng AppData/Application Support trên desktop:**
-  - release → `<thư mục chứa .exe>/userdata/` (`cache/` + `dictionaries/`), app chạy kiểu portable
-  - debug/profile → `<repo>/data/userdata/` (đã nằm trong `.gitignore` vì `data/` bị ignore)
-  - Android/iOS là ngoại lệ duy nhất: không có thư mục cạnh exe ghi được → vẫn `getApplicationSupportDirectory()`
-  - `AppPaths.init()` tự chép `dictionaries/` từ AppData cũ sang chỗ mới một lần, chỉ khi thư mục mới còn trống
-  - File từ điển nguồn (`VietPhrase.txt`, `LacViet.txt`, … trong `data/jp`, `data/cn`) vẫn chỉ đọc, KHÔNG ghi đè
-  - **Ngoại lệ duy nhất — `data/<lang>/generated/`:** phiên admin ghi `AiDict`, `AiEntries`, `OnlineDict`, `VietPhrase_<mode>` vào đây để chúng được đóng gói theo bản phát hành (assets `data/<lang>/**`). Thư mục con riêng nên không lẫn với file nguồn; an toàn khi cập nhật vì self-update Windows dùng `xcopy /E /Y` (ghi đè, không xoá file thừa) và `seedLanguagePack` trên mobile cũng chép đè chứ không dọn thư mục. Chưa đăng nhập admin thì vẫn ghi vào `userdata/dictionaries/`; app nạp cả hai, mục cá nhân đè mục dùng chung.
-- Ô Nghĩa hiện loại nào và theo thứ tự nào do người dùng đặt trong Cài đặt, **riêng JP và CN** (`MeaningPanelLayout` — `order` đầy đủ + tập `hidden` tách rời để tắt/bật không mất vị trí; lưu `lookup.meaningPanel.<mode>` dạng `name:0|1`). `orderMeaningSections` sắp xếp ỔN ĐỊNH theo vị trí loại nên nhiều mục cùng loại giữ nguyên thứ tự `lookup()` sinh ra; nhãn lạ vẫn hiện, xếp cuối. Thứ tự mặc định = `LookupDictionaryType.defaultPanelOrder`, khớp đúng thứ tự `lookup()` sinh section.
-- `AiEntries` là từ điển tra được, không chỉ phục vụ engine dịch: `lookup()` sinh section `AI tách từ`, và nó có mặt trong Search Center lẫn danh sách bật/tắt của ô Nghĩa.
-- **Mọi chỗ GHI `Global Glossary.json` phải đi qua `glossaryServiceProvider`, không tự `GlossaryService(dir)`.** Provider gắn sẵn hook xếp hàng `PendingGlossary_<mode>.txt` để sửa đổi glossary của phiên admin lên được `POST /api/glossary/terms/sync` (kind riêng `glossaryTerm`, không lẫn từ điển dịch) — AI_Translation_Bridge trên máy khác kéo delta công khai về merge vào `Glossary/<JP|CN>/Global Glossary.json` của nó. Tự dựng service là mất đường đồng bộ, im lặng. Chỗ chỉ ĐỌC (`find`, `readAll`, `hasGlossaryFor`) dựng trực tiếp vẫn được. Chiều đẩy là một chiều: VietYaku publish, không kéo về. Ngưỡng auto-publish (`maybeAutoPublish`, 10 mục) đếm CHUNG hàng đợi từ điển và glossary, nhưng chỉ kích hoạt khi ghi **lẻ một mục** — ghi hàng loạt vẫn chờ admin bấm Update, đúng quy ước `stageLocalEditsBulk`.
-- **Xóa từ phải gỡ cả overlay AI/online, không chỉ SharedVietPhrase.** `stageLocalDelete` gọi `UserDictService.removeGeneratedEntry` để bỏ key khỏi `VietPhrase_<mode>.txt` + `AiEntries_<mode>.txt` (cả userdata lẫn `generated/` nếu là admin) TRƯỚC khi xếp hàng xóa ở dict chung; chạy cho cả người dùng thường vì overlay cá nhân của họ nằm trong userdata. KHÔNG đụng `AiDict`/`OnlineDict` — xóa mục dịch không có nghĩa là vứt luôn kết quả đã tra.
-- Tra AI trả **JSON** (`AiLookupResult`), không phải Markdown: ngắn token, không có ví dụ sử dụng, KHÔNG có phiên âm/romaji/pinyin/âm Hán Việt, và `sub_entries` không được lưu vào `AiDict` (đã thành mục từ điển riêng rồi, giữ lại chỉ làm ô Nghĩa hiện thừa mục "Đã thêm vào từ điển"). App tự render nên bố cục ổn định. `AiDict_<mode>.txt` lưu JSON compact một dòng; mục cũ dạng Markdown vẫn đọc được (`aiBodyToMarkdown` trả nguyên văn). Hiển thị bằng `flutter_markdown_plus` (bản gốc `flutter_markdown` đã discontinued, API giống hệt).
-- `sub_entries` AI trả về được ghi thành mục từ điển riêng: `AiEntries_<mode>.txt` (vào engine dịch, xếp SAU VietPhrase nên không đè từ điển gốc), và những key cả VietPhrase lẫn Lạc Việt chưa có thì thêm luôn vào overlay `VietPhrase_<mode>.txt` (từ đã có trong VietPhrase hoặc Lạc Việt thì không thêm vào VietPhrase). Prompt bắt AI đưa về thân từ ngắn nhất (`チャラい` → `チャラ`) để greedy longest-match nhận ra được, và bỏ trợ từ/đuôi ngữ pháp đứng một mình.
-- **Tra online/AI xong PHẢI thêm key vào overlay VietPhrase (nếu chưa có trong VietPhrase và Lạc Việt), nếu không mục vừa lưu không bao giờ tra lại được.** Từ phải tra online chính là từ VietPhrase chưa có → engine cắt nó thành từng chữ (`再入荷` → `[再, 入荷]`) → token sinh ra không bằng key đã lưu → `onlineDict.entries[word]` luôn trượt. Có mục trong VietPhrase thì engine mới cắt đúng cụm. `tool/backfill_lookup_overlay.dart` bù cho dữ liệu lưu trước khi có cơ chế này.
-- Ba rào chắn BẮT BUỘC trước khi đưa nghĩa tra được vào VietPhrase (`dict_entry_filter.dart`) — value VietPhrase chèn thẳng vào bản dịch nên sai là hỏng cả đoạn:
-  1. `isWordLikeEntry` — chỉ từ/cụm từ (≤10 rune, không dấu câu, không khoảng trắng). Cả câu/mệnh đề bị loại.
-  2. `meaningMatchesWord` — nguồn online tra MỜ: gõ `再入荷` trả mục của `再入`, gõ `一愣` trả `eleven; 11`. Chỉ nhận khi headword nguồn trả về đúng bằng từ đã tra.
-  3. `vietnameseLookupLabels` — chỉ Mazii trả nghĩa Việt; Jisho/Youdao (Anh) và Weblio (Trung) không được vào từ điển dịch tiếng Việt.
-- OnlineDict CHỈ lưu nghĩa từ từ điển thật (Mazii, Jisho, Weblio, Youdao) — cờ `saved` trong `OnlineLookupTask`. Kết quả máy dịch (Google Việt) chỉ hiện trên dialog + ô Nghĩa của lần tra đó, không ghi vào file — nghĩa máy dịch theo ngữ cảnh, lưu lại sẽ làm bẩn từ điển.
+**Luôn luôn, trước mọi việc:** `.claude/PROJECT_SUMMARY.md`
+(trạng thái dự án — đọc nó, đừng đọc lại toàn bộ code).
 
-## Giới hạn đã biết
+| Task đụng tới | Đọc trước |
+|---|---|
+| engine dịch · từ điển · cache `.vydc` · repair · nguồn online/AI · nơi ghi dữ liệu | `.claude/DESIGN_DECISIONS.md` — quyết định **không bàn lại** |
+| repair/parser · trad2simp · Sudachi · provider Riverpod · dialog · theme | `.claude/IMPORTANT_FIXED_BUGS.md` — **BẮT BUỘC**: đây là vùng sinh lỗi im lặng của dự án này |
+| thêm code mới · thêm feature mới | `.claude/CONVENTIONS.md` + tầng dùng chung `lib/core/`, `lib/shared/` |
+| build · release · `version.json` · B2 | `.claude/RELEASE.md` + skill `.claude/skills/build-and-release/` |
+| trước khi giao / release | `.claude/SMOKE_TEST_CHECKLIST.md` |
 
-- Không sửa được biến thể cần ngữ cảnh: `后→後` khi 后 là ký tự hợp lệ tiếng Nhật (quy tắc vàng: ký tự đã nằm trong jp_valid_kanji thì không convert — 芸/后/叶/国/学 giữ nguyên). Các case này ghi vào RepairReport.ambiguous.
-- Furigana per-token cho kanji ngoài từ điển cần MeCab — không có port Dart thuần → backlog v2.
+**KHÔNG đọc:**
 
----
-
-## AFTER ANY TASK
-
-### Update PROJECT_SUMMARY.md
-
-**Always update:**
-- `Active Features & Status`: update feature status (⏳→🚧→✅) if changed
-- `Known Issues & TODOs`: mark [x] completed TODOs, add new current TODOs/issues
-
-**Update if changed:**
-- `File Structure` / `Dependencies & External Resources`: update new files, folders, or dependencies
-
-> PROJECT_SUMMARY.md chỉ phản ánh **trạng thái hiện tại** của dự án. Không dùng PROJECT_SUMMARY.md để ghi lịch sử thay đổi, changelog, recent changes, hoặc bug-fix log. Nếu đã fix một bug quan trọng, khó phát hiện, hoặc dễ tái phát, ghi lại ngắn gọn trong `.claude/IMPORTANT_FIXED_BUGS.md` để tránh tái phạm; không ghi bug fix thông thường và không cập nhật file này sau mọi task.
-
----
-
-## READING PRIORITY
-
-```
-1. ALWAYS  → PROJECT_SUMMARY.md
-2. IF NEEDED → Files mentioned in user request
-3. RARELY  → Other source files
-```
-
----
-
-## SPECIAL CASES
-
-**"Review entire project"** → Exception: read all files, create/update full summary
-**Summary outdated?** → Ask user before proceeding
-**Major refactor** → Update `File Structure` and `Architecture & Patterns` completely
-**PROJECT_SUMMARY.md không tồn tại?** → Treat như "Review entire project" — đọc toàn bộ, tạo mới
-
----
-
-## 🔒 SECURITY RULES
-
-- Tuyệt đối **không** ghi mật khẩu, JWT admin, hay bất kỳ credential thật nào vào file bị Git theo dõi — kể cả `lib/`, `test/`, fixture, comment, hay `.md`. Trong code/docs chỉ dùng placeholder (`<JWT>`, `admin@example`).
-- Phiên admin (`dictionary_sync`): SharedPreferences chỉ lưu `username + JWT`, **không bao giờ lưu mật khẩu**; logout/401 phải xóa phiên. Giữ nguyên hợp đồng này khi sửa `dictionary_sync_controller`.
-- Không `debugPrint`/log token, header `Authorization`, hay response đăng nhập — kể cả khi debug tạm; xóa log trước khi kết thúc task.
-- URL server đặt qua `--dart-define=LITTLEKAI_SERVER_URL=...`, không hardcode URL production vào source.
-- `.env` và `data/userdata/` đã nằm trong `.gitignore` — không gỡ, không commit dữ liệu người dùng thật (từ điển cá nhân, OnlineDict, cache `.vydc`).
-- Giữ nguyên quyết định đã chốt: **không dùng API trả phí / API cần key**. Nếu một nguồn online mới bắt đăng ký key → loại, đừng nhúng key vào app.
+- ❌ toàn bộ `lib/` chỉ để "hiểu dự án"
+- ❌ file đã được tóm tắt trong `PROJECT_SUMMARY.md`
+- ❌ `.claude/archive/` — lịch sử đã hết hiệu lực. Chỉ mở để biết **vì sao** một
+  rào chắn tồn tại, và không bao giờ làm theo hướng dẫn thủ công trong đó
+- ❌ `data/jp/`, `data/cn/` (~123MB từ điển), `build/`, `.dart_tool/`
 
 ---
 
@@ -129,127 +55,90 @@ Specific files user mentioned  → Only if needed for implementation
 
 ---
 
-## 📦 PHÁT HÀNH — HAI KÊNH SONG SONG
+## 🔒 BẢO MẬT
 
-Mỗi bản release đi ra **hai nơi cùng lúc**, do skill `.claude/skills/build-and-release` lo:
-
-| Kênh | Phục vụ | Nguồn |
-|------|---------|-------|
-| **GitHub Release** (`LittleKai/VietYaku`) | **Cập nhật trong app** — `lib/features/update/` gọi `releases/latest`, tự tìm asset chứa `windows` + đuôi `.zip` | Asset đính kèm release |
-| **Backblaze B2** (bucket `alpha-studio`) | **Link tải trên web** — tool `giaiphapsangtao.com/studio/vietyaku` | `vietyaku-app/version.json` + `vietyaku-app/releases/VietYaku-windows-x64-v<version>.zip` |
-
-- Cùng một file ZIP đi lên cả hai nơi; B2 thêm version vào tên object vì mọi bản nằm chung một prefix.
-- `version.json` mang shape giống payload GitHub release (`tag_name`, `body`, `html_url`, `assets[]`) để backend Alpha Studio parse chung một kiểu.
-- Phía web: `alpha-studio-backend` có `GET /api/vietyaku/releases/latest` fetch `version.json` rồi cache vào `SystemSetting` (key `vietyaku_latest_release`). Ra bản mới **không cần deploy lại** frontend hay backend.
-- Đổi cấu trúc `version.json` hoặc tên object trên B2 → phải sửa cả `alpha-studio-backend/server/routes/vietyaku.js` và `alpha-studio/src/services/vietyakuReleaseService.ts` (repo `D:\Dev\NodeJS\alpha-studio`).
-- Credential B2 (`B2_ACCESS_KEY_ID`, `B2_SECRET_ACCESS_KEY`, `B2_BUCKET_NAME`, `CDN_BASE_URL`) đọc từ `.env` — cùng giá trị với `alpha-studio-backend/.env`. **Không hardcode, không log, không commit.**
-
----
-
-## 🗂️ Project Quick Reference
-
-**Tech Stack:** Flutter 3.44.2 (Dart ^3.12) · Windows desktop · Riverpod 2 (manual providers) · Material 3 · flutter_markdown_plus (render nghĩa AI)
-
-**Key Files:**
-- `lib/features/translation/domain/translation_engine.dart` — engine greedy longest-match (chữ ký `translate()` chừa sẵn cho AiTranslationEngine v2)
-- `lib/features/dictionary/data/binary_cache.dart` — format `.vydc` (magic/version/hash/size/mtime/count)
-- `lib/features/dictionary/data/dictionary_loader.dart` — load qua `Isolate.run`, cache invalidation
-- `lib/features/repair/domain/jp_repair_pipeline.dart` — sửa key (space + simp→JP), dedupe, report
-- `tool/build_simp2jp.dart` — sinh lại assets/mappings (cần mạng, chỉ lúc dev)
-- `tool/build_trad2simp.dart` — sinh `assets/mappings/trad2simp.tsv` từ `data/cn/cedict_ts.u8`
-- `tool/export_jp.dart` — CLI repair + verify end-to-end trên dữ liệu thật
-
-**Dev Commands:**
-```bash
-flutter analyze                    # phải sạch trước khi kết thúc task
-flutter test                       # 487 tests (integration tự skip nếu thiếu dữ liệu thật)
-flutter run -d windows             # chạy debug
-flutter build windows --release    # build exe độc lập
-dart run tool/build_simp2jp.dart   # sinh lại assets mapping (dev, cần mạng)
-dart run tool/export_jp.dart       # xuất *_JP.txt + verify với dữ liệu thật
-```
+- **Không** ghi mật khẩu, JWT admin, API key, hay credential thật vào bất kỳ file
+  nào bị Git theo dõi — kể cả `lib/`, `test/`, fixture, comment, `.md`.
+  Chỉ dùng placeholder (`<JWT>`, `admin@example`, `<YOUR_API_KEY>`).
+- Phiên admin (`dictionary_sync`): SharedPreferences chỉ lưu `username + JWT`,
+  **không bao giờ lưu mật khẩu**; logout/401 phải xóa phiên.
+- Không `debugPrint`/log token, header `Authorization`, hay response đăng nhập —
+  kể cả khi debug tạm; xóa log trước khi kết thúc task.
+- URL server đặt qua `--dart-define=LITTLEKAI_SERVER_URL=...`, không hardcode URL
+  production. Credential B2 đọc từ `.env` (đã gitignore) — xem `.claude/RELEASE.md`.
+- `.env` và `data/userdata/` đã nằm trong `.gitignore` — không gỡ, không commit
+  dữ liệu người dùng thật (từ điển cá nhân, OnlineDict, cache `.vydc`).
+- **Không dùng API trả phí / API cần key.** Nguồn online mới bắt đăng ký key ⇒ loại.
 
 ---
 
-## 📝 Documentation Structure
+## 🧭 CÁCH LÀM
 
-```
-VietYaku/
-├── CLAUDE.md (this file)          # Instructions for Claude
-└── .claude/
-    ├── PROJECT_SUMMARY.md          # Detailed project state & architecture
-    ├── CONVENTIONS.md              # Coding standards & patterns
-    ├── IMPORTANT_FIXED_BUGS.md     # Important fixed bugs to avoid repeating
-    ├── SMOKE_TEST_CHECKLIST.md     # Kiểm tra tay trên exe/APK trước khi release
-    └── SETUP_REPORT.md             # Initial setup snapshot
-```
+**1 · Đừng đoán.** Nêu giả định ra thành chữ. Yêu cầu hiểu được theo nhiều cách
+thì **nêu các cách hiểu ra**, đừng tự chọn im lặng. Chưa rõ thì dừng lại và hỏi —
+đặc biệt trước mọi thay đổi cấu trúc.
 
----
+**2 · Ít nhất mà vẫn đúng.** Không thêm thứ ngoài yêu cầu. Không abstraction cho
+code dùng một lần. Không "flexibility" không ai xin. Không xử lý lỗi cho tình
+huống không thể xảy ra. Viết 200 dòng mà 50 dòng là đủ ⇒ viết lại.
 
-## 💡 Notes for Claude
+**3 · Chỉ đụng thứ cần đụng.** Không "tiện tay" đổi format, đổi tên, refactor thứ
+không hỏng. Bám style sẵn có kể cả khi mình thích kiểu khác. Thấy dead code không
+liên quan thì **nói ra, đừng xóa**. Chỉ dọn thứ chính thay đổi của mình làm thừa.
+Mỗi dòng đổi phải truy được về yêu cầu của user.
 
-- Project dùng Riverpod manual providers + feature folders (domain/data/application/presentation) — theo đúng pattern sẵn có, không thêm codegen/GoRouter/DB.
-- Ưu tiên: tính đúng của dữ liệu từ điển (value không đổi 1 byte, không ghi đè file gốc) > tốc độ > UI.
-- When in doubt, ask before making structural changes.
+**4 · Đặt tiêu chí kiểm chứng được rồi lặp tới khi đạt.** "Thêm validation" →
+*"viết test cho input sai, rồi làm nó pass"*. "Sửa bug" → *"viết test tái hiện
+bug trước, rồi làm nó pass"*. Task nhiều bước thì nêu kế hoạch ngắn, **mỗi bước
+kèm cách kiểm chứng**.
 
----
-
-## 1. Think Before Coding
-
-**Don't assume. Don't hide confusion. Surface tradeoffs.**
-
-Before implementing:
-- State your assumptions explicitly. If uncertain, ask.
-- If multiple interpretations exist, present them - don't pick silently.
-- If a simpler approach exists, say so. Push back when warranted.
-- If something is unclear, stop. Name what's confusing. Ask.
-
-## 2. Simplicity First
-
-**Minimum code that solves the problem. Nothing speculative.**
-
-- No features beyond what was asked.
-- No abstractions for single-use code.
-- No "flexibility" or "configurability" that wasn't requested.
-- No error handling for impossible scenarios.
-- If you write 200 lines and it could be 50, rewrite it.
-
-Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
-
-## 3. Surgical Changes
-
-**Touch only what you must. Clean up only your own mess.**
-
-When editing existing code:
-- Don't "improve" adjacent code, comments, or formatting.
-- Don't refactor things that aren't broken.
-- Match existing style, even if you'd do it differently.
-- If you notice unrelated dead code, mention it - don't delete it.
-
-When your changes create orphans:
-- Remove imports/variables/functions that YOUR changes made unused.
-- Don't remove pre-existing dead code unless asked.
-
-The test: Every changed line should trace directly to the user's request.
-
-## 4. Goal-Driven Execution
-
-**Define success criteria. Loop until verified.**
-
-Transform tasks into verifiable goals:
-- "Add validation" → "Write tests for invalid inputs, then make them pass"
-- "Fix the bug" → "Write a test that reproduces it, then make it pass"
-- "Refactor X" → "Ensure tests pass before and after"
-
-For multi-step tasks, state a brief plan:
-```
-1. [Step] → verify: [check]
-2. [Step] → verify: [check]
-3. [Step] → verify: [check]
-```
-
-Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+**Thứ tự ưu tiên khi phải đánh đổi:** tính đúng của dữ liệu từ điển (value không
+đổi 1 byte, không ghi đè file gốc) > tốc độ > UI.
 
 ---
 
-**📌 Remember:** Documentation = Single Source of Truth
+## ✍️ SAU MỖI TASK — viết lại vào đâu
+
+`.claude/PROJECT_SUMMARY.md` — luật cập nhật nằm ngay đầu file đó.
+
+| Loại | Ghi vào | Viết thế nào |
+|---|---|---|
+| Lỗi im lặng, khó phát hiện, dễ tái phát | `.claude/IMPORTANT_FIXED_BUGS.md` | Triệu chứng → nguyên nhân → Do Not Repeat + **một dòng trong Bảng bẫy** |
+| Quy ước code, đặt tên | `.claude/CONVENTIONS.md` | Câu mệnh lệnh + ≥2 ví dụ `file:line` thật |
+| Bước kiểm tra mới trước khi giao | `.claude/SMOKE_TEST_CHECKLIST.md` | Một dòng checkbox |
+| Quyết định thiết kế mới, không bàn lại | `.claude/DESIGN_DECISIONS.md` | Một gạch đầu dòng, kèm **vì sao** |
+| **Hàm** dùng lại được | `lib/core/` hoặc `lib/shared/` — **ngay trong task đó** | Bỏ mọi thứ gắn với một tính năng cụ thể |
+
+**Tài liệu phải có cửa ra, không chỉ có cửa vào.** Viết được một hàm khiến một bẫy
+không xảy ra được nữa ⇒ hạ bẫy đó xuống ✅, **chuyển văn xuôi xuống
+`.claude/archive/`**, để lại một dòng + tên hàm rào chắn. Ba mức ✅/🔶/❌ và luật
+rút gọn: `.claude/IMPORTANT_FIXED_BUGS.md` §"CỬA RA".
+
+Mỗi session nên làm tài liệu **ngắn đi hoặc chặt hơn**, không chỉ dài thêm.
+
+---
+
+## 🗂️ BỘ KHUNG
+
+**Công cụ:** Flutter 3.44.2 · Dart ^3.12 · Riverpod 2 manual providers (KHÔNG
+codegen) · Material 3. Lệnh chạy & file quan trọng: `PROJECT_SUMMARY.md` §2, §9.
+
+| Tầng | Ở đâu | Xóa được? |
+|---|---|---|
+| Điều hướng | `CLAUDE.md` (file này) | ✗ |
+| Văn bản dùng chung | `.claude/*.md` — `archive/` là lịch sử, **không làm theo** | ✗ |
+| Code dùng chung | `lib/core/`, `lib/shared/` | ✗ |
+| Đơn vị công việc | `lib/features/<tên>/` (domain · data · application · presentation) | ✓ |
+
+---
+
+## ⚠️ TRƯỜNG HỢP RIÊNG
+
+- **"Review toàn bộ dự án"** → ngoại lệ: đọc hết, dựng lại summary đầy đủ.
+- **`PROJECT_SUMMARY.md` không có** → coi như "review toàn bộ dự án".
+- **`PROJECT_SUMMARY.md` lệch so với code** → **hỏi user trước khi làm tiếp**.
+- **Refactor lớn** → dựng lại trọn `File Structure` + `Architecture & Patterns`.
+
+---
+
+**📌 Tài liệu = nguồn sự thật duy nhất. exe/APK đã build = bằng chứng duy nhất.**
