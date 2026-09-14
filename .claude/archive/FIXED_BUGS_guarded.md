@@ -132,3 +132,12 @@
 **Sửa:** runner bỏ qua `SetWindowPos` khi `IsZoomed(hwnd)` (Windows tự resize cửa sổ maximize khi đổi DPI), `Show()` dùng `SW_SHOW`. Thêm `ensureWindowMaximized()` (`lib/core/window_maximize.dart`) chạy ở post-frame của `HomeShell`: nếu cờ báo maximized mà diện tích cửa sổ < 90% màn hình thì `unmaximize()` rồi `maximize()` lại.
 
 **Bài học:** `windowManager.isMaximized()` chỉ đọc `WINDOWPLACEMENT.showCmd`, KHÔNG bảo đảm cửa sổ thật sự to — đừng dùng nó một mình làm điều kiện chặn maximize. Và mọi `SetWindowPos` có kích thước trong `win32_window.cpp` đều phải xét `IsZoomed`.
+
+### 2026-08-22 - Android release mất sạch tính năng mạng vì `AndroidManifest.xml` (main) thiếu `INTERNET`
+
+*Đã có rào chắn: `android_manifest_test.dart::manifestPath`. Giữ lại đây để biết vì sao hàm đó tồn tại — không làm theo hướng dẫn thủ công bên dưới nữa.*
+- **Symptom:** Trên bản release APK, tra online (Mazii/Jisho/Weblio/Youdao), tab Google Dịch, kiểm tra cập nhật và đồng bộ từ điển chung đều thất bại im lặng hoặc báo lỗi mạng chung chung. **Chạy `flutter run` (debug) thì mọi thứ bình thường** nên lỗi không bao giờ lộ ra trong lúc phát triển.
+- **Root Cause:** Flutter tự sinh `android/app/src/debug/AndroidManifest.xml` và `src/profile/AndroidManifest.xml` có sẵn `<uses-permission android:name="android.permission.INTERNET"/>` để hot reload chạy được, nhưng **`src/main/AndroidManifest.xml` thì không**. Manifest merger chỉ gộp `debug`/`profile` vào đúng build type tương ứng, nên quyền này biến mất khỏi bản release.
+- **Fix:** Khai báo `INTERNET` trong `src/main/AndroidManifest.xml`. Kèm theo: `android:largeHeap="true"` (bộ dict ~700k entry vượt heap mặc định) và `android:networkSecurityConfig` mở cleartext riêng cho `localhost`/`127.0.0.1`/`10.0.2.2` để test server dev.
+- **Do Not Repeat:** Đừng bao giờ suy ra quyền Android từ việc chạy debug. Sau khi build release, verify bằng `aapt2 dump permissions <apk>` — phải thấy đủ `INTERNET` + `REQUEST_INSTALL_PACKAGES`.
+- **Related Files:** `android/app/src/main/AndroidManifest.xml`, `android/app/src/main/res/xml/network_security_config.xml`

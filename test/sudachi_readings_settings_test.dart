@@ -1,15 +1,15 @@
-import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:vietyaku/features/settings/settings_provider.dart';
 import 'package:vietyaku/features/dictionary/application/dictionaries_provider.dart';
 import 'package:vietyaku/features/dictionary/data/dictionary_repository.dart';
-import 'package:vietyaku/features/dictionary/domain/phrase_dictionary.dart';
 import 'package:vietyaku/features/dictionary/domain/dict_type.dart';
+import 'package:vietyaku/features/dictionary/domain/phrase_dictionary.dart';
+import 'package:vietyaku/features/settings/settings_provider.dart';
 import 'package:vietyaku/features/translation/application/lookup_controller.dart';
 import 'package:vietyaku/features/translation/application/translation_controller.dart';
-import 'package:vietyaku/features/translation/domain/translation_engine.dart';
 import 'package:vietyaku/features/translation/domain/reading_extractor.dart';
+import 'package:vietyaku/features/translation/domain/translation_engine.dart';
 
 class MockDictionariesNotifier extends DictionariesNotifier {
   final LoadedDictionaries data;

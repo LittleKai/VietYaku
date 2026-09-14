@@ -5,9 +5,9 @@ import 'package:path/path.dart' as p;
 import 'package:vietyaku/core/app_paths.dart';
 import 'package:vietyaku/features/dictionary/domain/dict_type.dart';
 import 'package:vietyaku/features/dictionary/domain/phrase_dictionary.dart';
-import 'package:vietyaku/features/translation/domain/translation_rule.dart';
 import 'package:vietyaku/features/translation/data/translation_rule_repository.dart';
 import 'package:vietyaku/features/translation/domain/translation_engine.dart';
+import 'package:vietyaku/features/translation/domain/translation_rule.dart';
 
 PhraseDictionary _dict(DictType type, Map<String, String> entries) =>
     PhraseDictionary(type, entries);

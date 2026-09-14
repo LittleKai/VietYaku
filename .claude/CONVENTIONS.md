@@ -70,13 +70,9 @@ final translationControllerProvider =
 
 ## 🎨 Code Style
 
-### Imports Order (dart style chuẩn, mỗi nhóm cách 1 dòng trống)
-```dart
-// 1. dart: (async, convert, io, isolate, typed_data)
-// 2. package: (flutter trước, third-party sau, alphabetical)
-// 3. Relative imports (../../..., alphabetical)
-```
+### Import
 - `path` import as: `import 'package:path/path.dart' as p;`
+  (thứ tự import đã do lint lo — xem bảng cuối file)
 
 ### Chuỗi
 - Raw string `r'...'` cho chuỗi có `\n\t` literal (không cưỡng chế được bằng lint).
@@ -164,6 +160,7 @@ group('repairFile (test case bắt buộc, nguyên văn dữ liệu thật)', ()
 | `const` constructor · `super.key` trong widget | lint `prefer_const_constructors`, `use_key_in_widget_constructors` |
 | Hằng đặt tên lowerCamelCase | lint `constant_identifier_names` |
 | Nháy đơn `'...'` | lint `prefer_single_quotes` — **bật trong `analysis_options.yaml`** |
+| Thứ tự import: `dart:` → `package:` → tương đối, mỗi nhóm alphabetical | lint `directives_ordering` — **bật trong `analysis_options.yaml`**; `dart fix --apply` sửa tự động |
 | Thụt lề 2 space, xuống dòng ~80 cột, trailing comma | `dart format` |
 | Kiểu trả về, null-safety | type checker |
 | Bất biến VALUE KHÔNG ĐỔI 1 BYTE của repair | `test/repair_pipeline_test.dart` + `dart run tool/export_jp.dart` |

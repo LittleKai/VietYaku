@@ -6,14 +6,14 @@ import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../features/translation/domain/translation_engine.dart';
+import '../dictionary/domain/dict_type.dart';
+import '../dictionary_sync/domain/sync_reminder.dart';
+import '../repair/domain/jp_repair_pipeline.dart';
 import '../translation/domain/lookup_dictionary_type.dart';
 import '../translation/domain/meaning_panel_layout.dart';
 import '../translation/domain/online_lookup_source.dart';
 import '../translation/domain/translation_rule.dart';
 import '../translation/domain/vietphrase_value.dart';
-import '../dictionary/domain/dict_type.dart';
-import '../dictionary_sync/domain/sync_reminder.dart';
-import '../repair/domain/jp_repair_pipeline.dart';
 
 /// Bộ từ điển bundle trong dự án (data/jp, data/cn), đổi được trong Cài đặt.
 ///

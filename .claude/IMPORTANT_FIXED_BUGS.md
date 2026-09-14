@@ -52,7 +52,7 @@ phép kiểm này là điều kiện để cửa ra an toàn. Chạy:
 | # | Bẫy | Rào chắn trong code | Văn xuôi ở đâu |
 |---|---|---|---|
 | 1 | Alias biến thể Sudachi dựng ngược kanji từ phiên âm katakana (`細工`→`Zaik`) | ✅ `japanese_variant_index.dart::_isAllowedVariant` + `build_sudachi_assets.dart::safeVariant` | `archive/FIXED_BUGS_guarded.md` |
-| 2 | Android release mất sạch tính năng mạng — `src/main/AndroidManifest.xml` thiếu `INTERNET` | ❌ chưa có — verify tay bằng `aapt2 dump permissions` | dưới đây |
+| 2 | Android release mất sạch tính năng mạng — `src/main/AndroidManifest.xml` thiếu `INTERNET` | ✅ `android_manifest_test.dart::manifestPath` | `archive/FIXED_BUGS_guarded.md` |
 | 3 | Bôi đen ở ô kết quả sinh key THIẾU token có nghĩa rỗng | ✅ `token_text_view.dart::selectionSourceKey` | `archive/FIXED_BUGS_guarded.md` |
 | 4 | Dispose `TextEditingController` ngay sau `await showAppDialog` ⇒ crash | 🔶 một phần: `entry_edit_dialog.dart::disposeAfterRouteAnimation` — chỉ lo `ValueNotifier` | dưới đây |
 | 5 | `trad2simp.tsv` quy nhầm chữ VỐN ĐÃ giản thể (子→自, 三→叁…) | ✅ `build_trad2simp.dart::selfCounts` | `archive/FIXED_BUGS_guarded.md` |
@@ -85,13 +85,6 @@ phép kiểm này là điều kiện để cửa ra an toàn. Chạy:
 ## Fixed Bugs
 
 > Chỉ còn các bẫy mức 🔶 và ❌. Mức ✅ xem `archive/FIXED_BUGS_guarded.md`.
-
-### 2026-08-22 - Android release mất sạch tính năng mạng vì `AndroidManifest.xml` (main) thiếu `INTERNET`
-- **Symptom:** Trên bản release APK, tra online (Mazii/Jisho/Weblio/Youdao), tab Google Dịch, kiểm tra cập nhật và đồng bộ từ điển chung đều thất bại im lặng hoặc báo lỗi mạng chung chung. **Chạy `flutter run` (debug) thì mọi thứ bình thường** nên lỗi không bao giờ lộ ra trong lúc phát triển.
-- **Root Cause:** Flutter tự sinh `android/app/src/debug/AndroidManifest.xml` và `src/profile/AndroidManifest.xml` có sẵn `<uses-permission android:name="android.permission.INTERNET"/>` để hot reload chạy được, nhưng **`src/main/AndroidManifest.xml` thì không**. Manifest merger chỉ gộp `debug`/`profile` vào đúng build type tương ứng, nên quyền này biến mất khỏi bản release.
-- **Fix:** Khai báo `INTERNET` trong `src/main/AndroidManifest.xml`. Kèm theo: `android:largeHeap="true"` (bộ dict ~700k entry vượt heap mặc định) và `android:networkSecurityConfig` mở cleartext riêng cho `localhost`/`127.0.0.1`/`10.0.2.2` để test server dev.
-- **Do Not Repeat:** Đừng bao giờ suy ra quyền Android từ việc chạy debug. Sau khi build release, verify bằng `aapt2 dump permissions <apk>` — phải thấy đủ `INTERNET` + `REQUEST_INSTALL_PACKAGES`.
-- **Related Files:** `android/app/src/main/AndroidManifest.xml`, `android/app/src/main/res/xml/network_security_config.xml`
 
 ### 2026-08-10 - Disposing `TextEditingController` or `ValueNotifier` in dialog method after `await showAppDialog` causes crash
 - **Symptom:** Exception thrown when interacting with dialogs in `glossary_sync_screen.dart`: `A TextEditingController was used after being disposed. Once you have called dispose() on a TextEditingController, it can no longer be used. The relevant error-causing widget was: TextField at glossary_sync_screen.dart:326:15`.

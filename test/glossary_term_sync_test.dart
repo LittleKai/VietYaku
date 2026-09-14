@@ -12,9 +12,9 @@ import 'package:vietyaku/features/dictionary/application/dictionaries_provider.d
 import 'package:vietyaku/features/dictionary_sync/application/dictionary_sync_controller.dart';
 import 'package:vietyaku/features/glossary/application/glossary_service_provider.dart';
 import 'package:vietyaku/features/glossary/data/glossary_service.dart';
-import 'package:vietyaku/features/settings/settings_provider.dart';
 import 'package:vietyaku/features/glossary/data/glossary_term_queue.dart';
 import 'package:vietyaku/features/glossary/domain/glossary_term_change.dart';
+import 'package:vietyaku/features/settings/settings_provider.dart';
 import 'package:vietyaku/features/translation/domain/translation_engine.dart';
 
 const _glossary =

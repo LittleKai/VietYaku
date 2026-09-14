@@ -84,7 +84,7 @@ VietYaku/
 │   │   ├── repair/                 # domain (jp_repair_pipeline, simp2jp_table, repair_report) · application (repair_controller) · presentation (repair_screen, repair_preview)
 │   │   └── settings/               # settings_provider, settings_screen (3 tab: Chung — thuật toán/popup/tra online/dịch AI/tốc độ đọc/sync + thư mục Glossary + màn đồng bộ Glossary ↔ VietPhrase (chỉ admin)/update; Tiếng Nhật — kana+Sudachi+giọng Nhật+repair; Tiếng Trung — phồn→giản+giọng Trung), appearance_screen (cỡ chữ+font/màu kana/hiển thị)
 │   └── shared/widgets/             # tts_button, entry_edit_dialog, app_dialog, feature_help_button (`?` + dialog giải thích), icon_context_menu, settings_layout, markdown_body_view (render nghĩa AI)
-└── test/                           # 516 tests (58 file; integration dữ liệu thật tự skip nếu thiếu path)
+└── test/                           # 518 tests (59 file; integration dữ liệu thật tự skip nếu thiếu path)
 ```
 
 ### Critical Files
@@ -312,7 +312,7 @@ Menu bar trên cùng (chọn Nhật/Trung + Dán & Dịch). Trái (flex 2): tabs
 
 ### Testing checklist:
 - [ ] `flutter analyze` sạch
-- [ ] `flutter test` pass (516 tests; integration tự skip nếu thiếu dữ liệu thật)
+- [ ] `flutter test` pass (518 tests; integration tự skip nếu thiếu dữ liệu thật)
 - [ ] Nếu đụng repair/parser: `dart run tool/export_jp.dart` verify OK
 - [ ] Trước khi release: chạy `.claude/SMOKE_TEST_CHECKLIST.md` trên exe đã build (pipeline hiện chỉ ra bản Windows — xem mục Deployment)
 
@@ -333,7 +333,7 @@ flutter analyze                    # lint — phải sạch
 flutter build windows --release    # exe tại build\windows\x64\runner\Release\
 
 # Test
-flutter test                       # toàn bộ 516 tests
+flutter test                       # toàn bộ 518 tests
 ```
 
 # Tools (dev)
