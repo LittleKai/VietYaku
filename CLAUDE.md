@@ -44,14 +44,30 @@ nằm cạnh exe) và **`.apk`** (Android). Source chạy được **không** ph
 
 ---
 
-## 🧪 TEST POLICY
+## 🧪 VERIFY — chưa nhìn thấy thì chưa xong
 
-- Mọi tính năng mới hoặc sửa lỗi **logic** trong `lib/features/*/domain/`, `lib/features/*/data/`, hoặc `lib/core/` bắt buộc phải có unit test tương ứng trong `test/` phủ case đó trước khi kết thúc session.
-- Với bug fix: viết test tái hiện bug **trước**, rồi mới sửa.
-- Đụng repair/parser: ngoài `flutter test`, phải chạy `dart run tool/export_jp.dart` để verify trên dữ liệu thật (bất biến VALUE KHÔNG ĐỔI 1 BYTE).
-- Đụng `app_theme.dart`: invariant đang được khoá bởi `test/app_theme_test.dart` — sửa theme phải cập nhật/không phá test này.
-- Thay đổi thuần `presentation/` (bố cục, màu, cỡ chữ) không bắt buộc test; verify tay và ghi vào SMOKE_TEST_CHECKLIST nếu là luồng chính.
-- `flutter analyze` phải sạch trước khi kết thúc task.
+Bằng chứng phải là **của lần chạy này**: một báo cáo build cũ trông y hệt một lần
+chạy thành công. "Code chạy đúng" không phải bằng chứng.
+
+1. **`flutter analyze` sạch** + **`flutter test` pass** — trước khi kết thúc mọi
+   task có sửa code.
+2. **Có test cho thứ vừa sửa.** Tính năng mới hoặc sửa lỗi **logic** trong
+   `lib/features/*/domain/`, `lib/features/*/data/`, `lib/core/` ⇒ bắt buộc có
+   unit test phủ case đó trong `test/`. Bug fix: viết test **tái hiện bug trước**,
+   rồi mới sửa.
+3. **Vùng có bất biến riêng:** đụng repair/parser ⇒ chạy thêm
+   `dart run tool/export_jp.dart`, verify trên dữ liệu thật (bất biến VALUE KHÔNG
+   ĐỔI 1 BYTE). Đụng `app_theme.dart` ⇒ `test/app_theme_test.dart` đang khoá
+   invariant, cập nhật chứ không phá.
+4. **Rào chắn còn nguyên** — `"D:/Dev/conda-envs/py312/python.exe" .claude/guard_check.py`
+   trả `OK` (chạy khi task đụng bất kỳ hàm nào nêu trong Bảng bẫy).
+5. **Chạy artifact đã build** — `vietyaku.exe` / `.apk`, đi hết luồng chính theo
+   `.claude/SMOKE_TEST_CHECKLIST.md`, **xem bằng mắt**. Không kết luận "xong" từ
+   việc đọc code.
+
+**Miễn mục 2, 3, 5:** thay đổi thuần `presentation/` (bố cục, màu, cỡ chữ), đổi
+tên biến, chỉ sửa docs. Nếu là luồng chính thì vẫn thêm một dòng vào
+`.claude/SMOKE_TEST_CHECKLIST.md`.
 
 ---
 
