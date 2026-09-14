@@ -1,13 +1,16 @@
 # Project Conventions — VietYaku
 
-**Last Updated:** 2026-07-15
+**Last Updated:** 2026-09-14
+
+> Chỉ ghi quy ước có ví dụ thật trong repo. Quy ước nào linter/formatter/type-check
+> đã cưỡng chế được thì cấu hình công cụ và XOÁ dòng ở đây — xem bảng cuối file.
+> Quyết định thiết kế đã chốt: `.claude/DESIGN_DECISIONS.md`. Luật verify: `CLAUDE.md` §VERIFY.
 
 ---
 
 ## 📁 File & Folder Naming
 
 ### Files
-- Dart files: `snake_case.dart` (vd: `translation_engine.dart`, `binary_cache.dart`)
 - Widgets/screens: theo vai trò — `*_screen.dart`, `*_pane.dart`, `*_panel.dart`, `*_dialog.dart`, `*_button.dart`
 - Providers/controllers: `*_provider.dart`, `*_controller.dart`, `*_service.dart`
 - Tests: `<đối tượng>_test.dart`; integration dữ liệu thật: `*_real_data_test.dart` / `translate_flow_test.dart`
@@ -45,7 +48,6 @@ class SourcePane extends ConsumerStatefulWidget {
   ConsumerState<SourcePane> createState() => _SourcePaneState();
 }
 ```
-- Luôn `const` constructor + `super.key`.
 - Dispose đầy đủ: `TextEditingController`, `Timer`, `TapGestureRecognizer` (xem `result_pane.dart`).
 - Widget private trong cùng file dùng prefix `_` (vd `_ReportCard`).
 
@@ -76,11 +78,8 @@ final translationControllerProvider =
 ```
 - `path` import as: `import 'package:path/path.dart' as p;`
 
-### Spacing & Formatting
-- Theo `dart format` mặc định: 2 spaces, line ~80
-- Quotes: single `'...'`; raw string `r'...'` cho chuỗi có `\n\t` literal
-- Trailing commas: có (để format đẹp widget tree)
-- Lint: `flutter_lints` ^6.0.0 (analysis_options.yaml mặc định) — `flutter analyze` phải sạch
+### Chuỗi
+- Raw string `r'...'` cho chuỗi có `\n\t` literal (không cưỡng chế được bằng lint).
 
 ### Comments
 - Tiếng Việt, giải thích ràng buộc/quyết định (WHY), không diễn giải code.
@@ -112,7 +111,6 @@ final translationControllerProvider =
 ### Variables & Functions
 - Boolean: tiền tố `is`/`has`/`from` (`isValid`, `hasResult`, `fromCache`)
 - Functions: camelCase, top-level cho pure functions domain (`fixKeySpaces`, `parseEntries`, `extractReading`)
-- Constants: lowerCamelCase (`defaultSourceDir`, `dictFileNames`, `sourceDir` trong test)
 - Event handlers trong widget: `_verb` private (`_translate`, `_openFile`, `_pollClipboard`)
 - Provider: `<tên>Provider`; Notifier: `<Tên>Notifier` hoặc `<Tên>Controller` (controller = có action từ UI)
 
@@ -143,17 +141,35 @@ group('repairFile (test case bắt buộc, nguyên văn dữ liệu thật)', ()
 
 ### Do:
 - ✅ Logic domain thuần Dart, tách khỏi Flutter → test được không cần widget.
-- ✅ Chạy `flutter analyze` + `flutter test` trước khi kết thúc task.
-- ✅ Đụng repair/parser → chạy thêm `dart run tool/export_jp.dart` verify dữ liệu thật.
 - ✅ UI text tiếng Việt, tooltip đầy đủ cho icon button (kể cả lý do disable).
 
 ### Don't:
-- ❌ Không thêm codegen (freezed/riverpod_generator), GoRouter, Dio, SQLite/Isar/Hive — quyết định đã chốt.
-- ❌ Không ghi đè file từ điển gốc trong Google Drive; chỉ xuất `*_JP.txt`.
-- ❌ Không sửa tay `assets/mappings/simp2jp.tsv` — sửa build script/overrides rồi regenerate.
+- ❌ Không thêm codegen (freezed/riverpod_generator), GoRouter, Dio, SQLite/Isar/Hive;
+  không dùng trie/DB cho engine tra — **quyết định đã chốt**, đủ lý do ở
+  `.claude/DESIGN_DECISIONS.md`.
+- ❌ Không ghi đè file từ điển gốc; không sửa tay `assets/mappings/*.tsv` — sửa build
+  script/overrides rồi regenerate (`.claude/PROJECT_SUMMARY.md` §7).
 - ❌ Không đổi format `.vydc` mà quên tăng `BinaryCache.version`.
-- ❌ Không dùng trie/DB cho engine tra — HashMap + maxLenByFirstUnit là thiết kế chốt.
+
+> Luật "chạy gì trước khi kết thúc task" **không** ghi ở đây — một luật một chỗ:
+> `CLAUDE.md` § 🧪 VERIFY.
 
 ---
 
-**📌 NOTE:** These conventions are derived from existing code patterns. When in doubt, follow the pattern of similar existing files.
+## Cưỡng chế bằng công cụ (không cần ghi lại bằng chữ)
+
+| Quy ước | Công cụ cưỡng chế |
+|---|---|
+| Tên file Dart `snake_case.dart` | lint `file_names` (flutter_lints) |
+| `const` constructor · `super.key` trong widget | lint `prefer_const_constructors`, `use_key_in_widget_constructors` |
+| Hằng đặt tên lowerCamelCase | lint `constant_identifier_names` |
+| Nháy đơn `'...'` | lint `prefer_single_quotes` — **bật trong `analysis_options.yaml`** |
+| Thụt lề 2 space, xuống dòng ~80 cột, trailing comma | `dart format` |
+| Kiểu trả về, null-safety | type checker |
+| Bất biến VALUE KHÔNG ĐỔI 1 BYTE của repair | `test/repair_pipeline_test.dart` + `dart run tool/export_jp.dart` |
+| Invariant theme (nhãn chip resolve theo trạng thái, tương phản) | `test/app_theme_test.dart` |
+| Bảng `trad2simp.tsv` không có cặp ngược chiều / quy nhầm | `test/trad2simp_test.dart` |
+| Rào chắn nêu trong Bảng bẫy còn tồn tại | `.claude/guard_check.py` |
+
+> Thêm được một dòng vào bảng này ⇒ xoá dòng văn xuôi tương ứng ở trên. Đó là
+> **cửa ra** của file này: còn viết bằng chữ nghĩa là chưa cưỡng chế được.
