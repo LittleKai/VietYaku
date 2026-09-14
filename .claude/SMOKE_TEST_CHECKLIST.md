@@ -7,7 +7,9 @@ Lý do phải chạy trên bản build: đường dẫn dữ liệu đổi giữ
 
 ## Trước khi test
 
-- [ ] `flutter analyze` sạch và `flutter test` pass (347 tests)
+- [ ] `flutter analyze` sạch và `flutter test` pass — **đọc kết quả của lần chạy NÀY**,
+      không dùng lại báo cáo cũ (một báo cáo cũ trông y hệt một lần chạy thành công)
+- [ ] `"D:/Dev/conda-envs/py312/python.exe" .claude/guard_check.py` trả `OK`
 - [ ] Build: `flutter build windows --release` → chạy `build\windows\x64\runner\Release\vietyaku.exe` **độc lập** (mở từ Explorer, không qua IDE)
 - [ ] Test một lần trên máy/thư mục **chưa có `userdata/`** để bắt lỗi khởi động lần đầu (seed từ điển, tạo thư mục)
 
@@ -37,6 +39,9 @@ Chạy trên **APK release**, không phải `flutter run` — quyền `INTERNET`
 - [ ] Không có exception/stack trace trong console khi chạy exe từ terminal
 - [ ] Thư mục `userdata/` được tạo cạnh exe, có `cache/` (`.vydc`) và `dictionaries/`
 - [ ] File từ điển gốc trong `data/jp` · `data/cn` **không bị sửa** (`git status` sạch)
+- [ ] **Chạy lần hai không sinh rác:** đóng app, mở lại, đi lại luồng chính — `userdata/`
+      không mọc thêm file lạ, `.vydc` được dùng lại chứ không sinh thêm bản mới,
+      `OnlineDict`/`AiDict` không nhân đôi mục đã lưu
 - [ ] Ghi vấn đề phát hiện vào `Known Issues & TODOs` trong `.claude/PROJECT_SUMMARY.md`
 
 ---

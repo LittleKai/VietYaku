@@ -1,6 +1,6 @@
 # Project Summary — VietYaku
 ---
-**Last updated:** 2026-09-14
+**Last updated:** 2026-09-14 (nâng cấp tài liệu lên Setup v2)
 
 > File này phản ánh **trạng thái hiện tại** của dự án. **Không** dùng làm changelog,
 > recent changes, hay bug-fix log — git history là nguồn lịch sử. Lỗi quan trọng,
@@ -10,7 +10,7 @@
 **Cập nhật sau MỌI task đụng tới dự án này:**
 
 - dòng `Last updated` — **luôn**
-- §4 `Features Implementation Status`: đổi ⏳ → 🚧 → ✅ nếu có thay đổi
+- `Features Implementation Status` (trong §3): đổi ⏳ → 🚧 → ✅ nếu có thay đổi
 - §5 `Known Issues & TODOs`: tick `[x]` mục đã xong, thêm mục mới
 - §2 `File Structure` / §6 `Dependencies & External Resources`: **chỉ khi** có
   file, thư mục, hay dependency mới
@@ -41,6 +41,20 @@ Dữ liệu từ điển bundle trong dự án (KHÔNG commit git, đi theo bả
 - Value VietPhrase bundle JP/CN đã được chuẩn hóa thống nhất theo **tầng nghĩa**: dấu `/` thường chỉ ngăn các cách dịch trong cùng tầng (`xào xạc/sà sà/sàn sạt` vẫn là tầng 1); chỉ marker số/từ loại mở tầng mới. Canonical: `(n)/cách 1/cách 2/(2)/(v)/cách 3`. Sau khi phục hồi value gốc rồi migration đúng, 1.145 mục JP + 191 mục CN được sửa; `tool/normalize_vietphrase_values.dart` dry-run hiện `0/187.419` và `0/690.006`. File nguồn ngoài dự án không bị ghi đè.
 
 ---
+
+## 1b. Giả định đang giữ
+
+Mọi con số / quyết định **suy ra chứ không được cho sẵn** nằm ở đây kèm nguồn.
+Nguồn đổi ⇒ kiểm lại dòng tương ứng trước khi tin vào nó.
+
+| Giả định | Giá trị | Suy ra từ đâu |
+|---|---|---|
+| `mazii.net/api/search` bỏ qua tham số `dict` | gửi `cnvi` vẫn trả mục từ điển Nhật (`phonetic` kana, `pinyin` rỗng) | Gọi API trực tiếp, không suy từ tài liệu — vì thế mode Trung coi Mazii là miss |
+| OpenCC `JPShinjitaiCharacters.txt` là `shinjitai<TAB>kyūjitai` | NGƯỢC chiều tên file gợi ý | Kiểm entry cụ thể 歴/歷, 暦/曆 khi dựng `simp2jp.tsv` |
+| Cặp phồn→giản dùng được là 1 UTF-16 code unit → 1 code unit | 2.455 ký tự (từ 85.953 mục cedict) | `tool/build_trad2simp.dart`; cặp lệch độ dài làm `sourceStart` của token trượt khỏi văn bản gốc |
+| Nhóm Sudachi gộp theo **dạng chuẩn + cách đọc**, không phải "cách viết thay thế" | trường 11 (読み) là katakana | Đọc SudachiDict raw — nền của luật alias một chiều |
+| Từ điển bundle làm artifact lớn thêm | ~155MB cho cả exe lẫn APK | `pubspec.yaml` không cho khai báo `assets:` theo nền tảng |
+| `flutter_lints` ^6.0.0 **không** bật `prefer_single_quotes` | phải khai báo tay | `analysis_options.yaml` mặc định để dòng đó ở dạng comment |
 
 ## 2. File Structure
 
@@ -298,7 +312,7 @@ Menu bar trên cùng (chọn Nhật/Trung + Dán & Dịch). Trái (flex 2): tabs
 
 ### Testing checklist:
 - [ ] `flutter analyze` sạch
-- [ ] `flutter test` pass (487 tests; integration tự skip nếu thiếu dữ liệu thật)
+- [ ] `flutter test` pass (516 tests; integration tự skip nếu thiếu dữ liệu thật)
 - [ ] Nếu đụng repair/parser: `dart run tool/export_jp.dart` verify OK
 - [ ] Trước khi release: chạy `.claude/SMOKE_TEST_CHECKLIST.md` trên exe đã build (pipeline hiện chỉ ra bản Windows — xem mục Deployment)
 
@@ -319,7 +333,7 @@ flutter analyze                    # lint — phải sạch
 flutter build windows --release    # exe tại build\windows\x64\runner\Release\
 
 # Test
-flutter test                       # toàn bộ 318 tests
+flutter test                       # toàn bộ 516 tests
 ```
 
 # Tools (dev)
