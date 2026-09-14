@@ -1,25 +1,90 @@
-# Important Fixed Bugs
+# Important Fixed Bugs — VietYaku
 
-**Last Updated:** 2026-09-07
+**Last Updated:** 2026-09-14
+
+## Mục đích
+
+Lỗi **quan trọng, khó phát hiện, hoặc dễ tái phát**, kèm quy tắc để không lặp lại.
+Đặc điểm chung: **không ném exception, không báo lỗi** — chỉ lặng lẽ cho ra kết quả
+sai. Đó là lý do chúng đáng được ghi riêng.
+
+Chỉ ghi bẫy khi thoả ít nhất một điều: tác động cao (dữ liệu / build / deploy /
+security) · khó phát hiện bằng review thường · dễ tái phát · liên quan tới quyết
+định kiến trúc, migration, hay API contract. **Không** ghi lỗi vặt, không dùng làm
+changelog, không thêm entry sau mọi task.
 
 ---
 
-## Purpose
+## 🚪 CỬA RA — file này KHÔNG chỉ được phép dài thêm
 
-This file records important bugs that were fixed and should not be repeated. Keep entries concise and actionable.
+Một bẫy chỉ cần nằm ở đây **chừng nào chưa có gì trong code chặn nó**. Khi đã viết
+được rào chắn thì văn xuôi hết việc:
 
-Record only high-impact, hard-to-detect, or likely-to-recur bugs. Do not record ordinary bug fixes, do not append entries after every task, and do not use this file as a changelog.
+> **Bẫy đã có rào chắn ⇒ chuyển phần kể chuyện xuống
+> `archive/FIXED_BUGS_guarded.md`, ở lại đúng một dòng trong Bảng bẫy + tên hàm
+> rào chắn.**
+
+Vì sao: một luật phải nhắc lại bằng văn xuôi là một luật **không có gì cưỡng chế**.
+Chép nó ra nhiều chỗ không làm nó được tuân thủ hơn — viết được cái hàm khiến bỏ
+qua nó là không thể mới làm được điều đó.
+
+| Mức | Nghĩa là gì | Văn xuôi ở đâu |
+|---|---|---|
+| ✅ | **mọi** Do-Not-Repeat của bẫy đã bị một hàm cưỡng chế | `archive/` |
+| 🔶 | rào chắn lo được một phần, phần còn lại là phán đoán của người | ở lại, rút gọn |
+| ❌ | chưa có gì chặn | ở lại, **đủ dài** |
+
+Đừng rút một bẫy chỉ vì code có hàm *liên quan* — phải là hàm **làm cho lỗi đó
+không xảy ra được nữa**, và đã chạy thật thấy nó bắt được lỗi.
+
+Ngược lại: thấy một bẫy ❌ mà **viết được** rào chắn thì viết luôn trong task đó rồi
+hạ xuống ✅. Đó là cách file này ngắn đi thay vì dài ra.
+
+`.claude/guard_check.py` kiểm mọi hàm nêu ở cột "Rào chắn" còn tồn tại thật — rào
+chắn bị xoá mà văn xuôi đã nằm dưới `archive/` là **mất kiến thức lặng lẽ**, nên
+phép kiểm này là điều kiện để cửa ra an toàn. Chạy:
+`"D:/Dev/conda-envs/py312/python.exe" .claude/guard_check.py`
+
+---
+
+## Bảng bẫy
+
+| # | Bẫy | Rào chắn trong code | Văn xuôi ở đâu |
+|---|---|---|---|
+| 1 | Alias biến thể Sudachi dựng ngược kanji từ phiên âm katakana (`細工`→`Zaik`) | ✅ `japanese_variant_index.dart::_isAllowedVariant` + `build_sudachi_assets.dart::safeVariant` | `archive/FIXED_BUGS_guarded.md` |
+| 2 | Android release mất sạch tính năng mạng — `src/main/AndroidManifest.xml` thiếu `INTERNET` | ❌ chưa có — verify tay bằng `aapt2 dump permissions` | dưới đây |
+| 3 | Bôi đen ở ô kết quả sinh key THIẾU token có nghĩa rỗng | ✅ `token_text_view.dart::selectionSourceKey` | `archive/FIXED_BUGS_guarded.md` |
+| 4 | Dispose `TextEditingController` ngay sau `await showAppDialog` ⇒ crash | 🔶 một phần: `entry_edit_dialog.dart::disposeAfterRouteAnimation` — chỉ lo `ValueNotifier` | dưới đây |
+| 5 | `trad2simp.tsv` quy nhầm chữ VỐN ĐÃ giản thể (子→自, 三→叁…) | ✅ `build_trad2simp.dart::selfCounts` | `archive/FIXED_BUGS_guarded.md` |
+| 6 | `trad2simp.tsv` chứa cặp ngược chiều ⇒ dịch Trung tự biến giản thành phồn | ✅ `trad2simp_test.dart::Trad2SimpTable` — chốt `convert(convert(x)) == convert(x)` | `archive/FIXED_BUGS_guarded.md` |
+| 7 | `WidgetStateTextStyle` trong `ChipThemeData.labelStyle` làm nhãn chip tàng hình | ✅ `app_theme_test.dart::chipTheme` | `archive/FIXED_BUGS_guarded.md` |
+| 8 | `Isolate.run` trong `State` capture cả cây widget | 🔶 một phần: `epub_converter.dart::parseEpubRequest` — chỉ cho EPUB, chỗ khác vẫn tự lo | dưới đây |
+| 9 | Dialog action dùng context của widget gọi đã bị deactive | ✅ `app_dialog.dart::actionsBuilder` — API bắt nhận `dialogContext` | `archive/FIXED_BUGS_guarded.md` |
+| 10 | OpenCC `JPShinjitaiCharacters.txt` map NGƯỢC chiều tên gọi | 🔶 một phần: `build_simp2jp.dart::shinjitai` — đã đảo, nhưng file OpenCC khác vẫn phải tự kiểm | dưới đây |
+| 11 | Riverpod `CircularDependencyError` khi `dictionariesProvider` watch translationController | 🔶 một phần: `translation_controller.dart::currentModeProvider` — Riverpod chỉ assert ở debug | dưới đây |
+| 12 | Flutter Windows accessibility_bridge AXTree crash (app tự tắt) | ✅ `app.dart::ExcludeSemantics` | `archive/FIXED_BUGS_guarded.md` |
+| 13 | Android APK build fail "Could not close incremental caches" (Kotlin/Windows) | ❌ chưa có — `kotlin.incremental=false` trong `android/gradle.properties`, không phải code app | dưới đây |
+| 14 | Chuột phải trong `SelectableText` trên Windows KHÔNG dời caret khi đã focus | 🔶 một phần: `token_text_view.dart::_secondaryTapPosition` — chỉ ở widget này | dưới đây |
+| 15 | `SudachiVariants` sinh key thuần hiragana ⇒ chuỗi ngữ pháp bị dịch bậy | ✅ `build_sudachi_assets.dart::safeVariant` + `sudachi_data_test.dart` chốt trên file đã sinh | `archive/FIXED_BUGS_guarded.md` |
+| 16 | Click giữa một cụm đã ghép luôn tra từ đầu cụm | 🔶 một phần: `translation_engine.dart::matchAt` — đã TÁI PHẠM một lần (bẫy #18) | dưới đây |
+| 17 | Hover tô đỏ trong ô Nguồn lệch vài ký tự so với vị trí chuột | 🔶 một phần: `source_pane.dart::_findRenderEditable` — chỉ ở widget này | dưới đây |
+| 18 | Cụm từ điển phụ TÁI PHẠM bẫy "click giữa cụm tra từ đầu cụm" | 🔶 một phần: `secondary_phrase.dart::secondaryPhraseStartingAt` — lớp ghép mới vẫn phải tự áp lại | dưới đây |
+| 19 | Tab "VietPhrase một nghĩa" render cả tầng nghĩa ⇒ click active cụm lệch dần | 🔶 một phần: `token_text_view.dart::multiMeaning` — span mới vẫn phải tự đo lại | dưới đây |
+| 20 | Alias động Sudachi im lặng không sinh gì cho entry dạng thân từ | 🔶 một phần: `japanese_variant_index.dart::_normalizeGroups` | dưới đây |
+| 21 | Từ tra online/AI lưu rồi nhưng click lại không hiện | ✅ `user_dict_service.dart::upsertVietPhraseOverlay` | `archive/FIXED_BUGS_guarded.md` |
+| 22 | Xóa từ do AI tạo không mất, người dùng thường xóa gì cũng no-op | ✅ `user_dict_service.dart::removeGeneratedEntry` | `archive/FIXED_BUGS_guarded.md` |
+| 23 | Promote nghĩa tra online vào VietPhrase làm bẩn từ điển dịch | ✅ `dict_entry_filter.dart::meaningMatchesWord` + `dict_entry_filter.dart::isWordLikeEntry` + `dict_entry_filter.dart::vietnameseLookupLabels` | `archive/FIXED_BUGS_guarded.md` |
+| 24 | Mazii mode Trung trả kết quả từ điển Nhật | ✅ `mazii_api.dart::_hasKanaReading` | `archive/FIXED_BUGS_guarded.md` |
+| 25 | Khởi động: nút title bar hiện icon Restore nhưng cửa sổ không maximize | ✅ `window_maximize.dart::ensureWindowMaximized` + `win32_window.cpp::IsZoomed` | `archive/FIXED_BUGS_guarded.md` |
+
+> Cột 1 phải là **số**, cột 3 phải bắt đầu bằng ✅/🔶/❌ và bọc tên hàm trong dấu
+> backtick — `guard_check.py` parse đúng định dạng này.
 
 ---
 
 ## Fixed Bugs
 
-### 2026-09-07 - Alias biến thể Sudachi dựng ngược kanji từ phiên âm katakana (`細工` → `Zaik`)
-- **Symptom:** `細工` dịch ra `Zaik` (tên riêng) thay vì `tác phẩm/đồ thủ công/…`, dù `VietPhrase.txt` có mục `細工` đúng. Không lỗi, không log — chỉ có bản dịch sai ở đúng một từ, và tra trong Search Center vẫn thấy mục gốc còn nguyên.
-- **Root Cause:** Nhóm Sudachi `ざいく / ザイク / 細工` gom cả CÁCH ĐỌC lẫn mặt chữ. `JapaneseVariantIndex` khi key khớp trọn một surface thì "tin cả nhóm" (`trustGroup`) nên mục `ザイク=Zaik` trong `SharedVietPhrase_japanese.txt` sinh alias `細工=Zaik`; shared VietPhrase merge SAU cùng nên alias này đè luôn mục gốc. Chiều ngược (`細工` → `ザイク`) cũng sai tương tự và đã lọt vào `SudachiVariants.txt` do `safeVariant` cũ nhận mọi biến thể thuần katakana.
-- **Fix:** Alias chỉ đi một chiều và không bắc cầu Hán ⇄ katakana — nguồn có chữ Hán thì biến thể không được chứa katakana; nguồn thuần kana thì chỉ đổi hệ chữ kana, không dựng kanji. Áp ở `_isAllowedVariant` (lúc chạy) và `safeVariant` (lúc sinh asset); đã sinh lại `data/jp/Sudachi*.txt` (13.676 → 11.299 biến thể).
-- **Do Not Repeat:** Trường 11 (読み) của Sudachi là katakana — mọi cơ chế gom "cách viết tương đương" đều kéo cách đọc vào cùng nhóm. Trước khi nhận một cặp biến thể, luôn hỏi "đây là cách VIẾT khác hay cách ĐỌC?". Một alias sai ở tầng overlay đè được cả từ điển gốc vì overlay merge sau cùng.
-- **Related Files:** `lib/features/dictionary/domain/japanese_variant_index.dart`, `tool/build_sudachi_assets.dart`, `test/japanese_variant_index_test.dart`
+> Chỉ còn các bẫy mức 🔶 và ❌. Mức ✅ xem `archive/FIXED_BUGS_guarded.md`.
 
 ### 2026-08-22 - Android release mất sạch tính năng mạng vì `AndroidManifest.xml` (main) thiếu `INTERNET`
 - **Symptom:** Trên bản release APK, tra online (Mazii/Jisho/Weblio/Youdao), tab Google Dịch, kiểm tra cập nhật và đồng bộ từ điển chung đều thất bại im lặng hoặc báo lỗi mạng chung chung. **Chạy `flutter run` (debug) thì mọi thứ bình thường** nên lỗi không bao giờ lộ ra trong lúc phát triển.
@@ -28,13 +93,6 @@ Record only high-impact, hard-to-detect, or likely-to-recur bugs. Do not record 
 - **Do Not Repeat:** Đừng bao giờ suy ra quyền Android từ việc chạy debug. Sau khi build release, verify bằng `aapt2 dump permissions <apk>` — phải thấy đủ `INTERNET` + `REQUEST_INSTALL_PACKAGES`.
 - **Related Files:** `android/app/src/main/AndroidManifest.xml`, `android/app/src/main/res/xml/network_security_config.xml`
 
-### 2026-08-13 - Bôi đen ở ô kết quả cho key THIẾU token có nghĩa rỗng (`激出了火气` → `激出火气`)
-- **Symptom:** Ô VietPhrase bôi đen "kích động ra hỏa khí" rồi chuột phải → "Sửa vào VietPhrase": ô Từ nguồn chỉ hiện `激出火气`, trong khi ô Nguồn là `激出了火气`. Không lỗi, không cảnh báo — key sai được lưu/publish thẳng vào từ điển chung và không bao giờ khớp lại văn bản.
-- **Root Cause:** `TokenTextView._pieces` bỏ hẳn token có text hiển thị rỗng (`了=` trong VietPhrase CN, `的` ở nhiều bộ) để không tạo khoảng trống thừa; token bị bỏ cũng không vào `ranges`, nên `_contextMenu` ghép key bằng `selectedTokens.map((t) => t.source).join()` mất luôn phần nguồn của nó. Cùng đường này còn cấp `word` cho "Tra online" và "Thêm vào Names".
-- **Fix:** `selectionSourceKey(paragraph, selected)` — lấy biên `[first.sourceStart, last.sourceStart + last.source.length)` từ vùng chọn rồi nối `source` của MỌI token không-passthrough của đoạn nằm trong biên đó (token nghĩa rỗng ở giữa được đưa vào lại; passthrough vẫn bị loại để dấu câu không lọt vào key).
-- **Do Not Repeat:** Key từ điển KHÔNG được suy ra từ danh sách token đã lọc để hiển thị — phần hiển thị và phần nguồn là hai tập khác nhau. Thêm bất kỳ luật lọc/ghép hiển thị mới nào ở `_pieces` thì phải kiểm lại đường sinh key ở `_contextMenu`.
-- **Related Files:** `lib/features/translation/presentation/token_text_view.dart`, `test/token_display_rules_test.dart`
-
 ### 2026-08-10 - Disposing `TextEditingController` or `ValueNotifier` in dialog method after `await showAppDialog` causes crash
 - **Symptom:** Exception thrown when interacting with dialogs in `glossary_sync_screen.dart`: `A TextEditingController was used after being disposed. Once you have called dispose() on a TextEditingController, it can no longer be used. The relevant error-causing widget was: TextField at glossary_sync_screen.dart:326:15`.
 - **Root Cause:** Local `TextEditingController`s and `ValueNotifier`s were created in a helper method, passed into `StatefulBuilder`/`TextField` inside `showAppDialog`, and `.dispose()` was called immediately after `await showAppDialog` returned. Because `showAppDialog` resolves as soon as `Navigator.pop` is invoked, the dialog widget tree (`TextField`) is STILL mounted and rebuilding during the route exit animation. Disposing controllers before element unmount causes `TextField` to access disposed controllers during transition frames.
@@ -42,41 +100,12 @@ Record only high-impact, hard-to-detect, or likely-to-recur bugs. Do not record 
 - **Do Not Repeat:** Never instantiate local `TextEditingController`s outside of a `State` class for dialogs, and never call `.dispose()` on them immediately after `await showAppDialog`. Always let a `StatefulWidget` own and dispose its controllers in `State.dispose()`, or delay disposal until route unmount.
 - **Related Files:** `lib/features/glossary/presentation/glossary_sync_screen.dart`, `lib/shared/widgets/entry_edit_dialog.dart`
 
-### 2026-08-09 - `trad2simp.tsv` quy nhầm chữ VỐN ĐÃ giản thể (子→自, 三→叁, 斯→四…)
-- **Symptom:** Màn Glossary ↔ VietPhrase, mode Trung, tab "Không trùng": bấm Cập nhật xong từ vẫn nằm nguyên trong danh sách, bấm bao nhiêu lần cũng không biến mất (98 mục kẹt vĩnh viễn). Không lỗi, không cảnh báo. Tra online cho các từ chứa những chữ này cũng trả kết quả rác.
-- **Root Cause:** `cedict_ts.u8` có vài mục gõ sai cột giản thể (`鷹爪翻子拳 / 鹰爪翻自拳`, `哈根達斯 / 哈跟达斯`). Generator cũ chỉ đếm vị trí trad≠simp, nên với chữ vốn đã là giản thể, cặp rác duy nhất đó trở thành ứng viên DUY NHẤT và được chọn: `子→自` (1 lần so với 1.123 lần 子 đứng nguyên ở cột giản thể), `斯→四` (1/733), `三→叁` (1/361), `言→讠`, `座→坐`, `哈→加`, `根→跟`, `坦→谈`, `磁→铁`, `份→分`, `殖→植`, `黏→粘`, `甚→什`, `俱→具`… Mode Trung quy CẢ văn bản lẫn key dict nên tra vẫn khớp nhau ⇒ dịch trông vẫn "chạy", chỉ có 48k key bị bóp méo và va nhau (mất mục), còn màn glossary thì so source glossary thô (`小子`) với key dict đã bị quy (`小自`) ⇒ luôn báo "không trùng"; áp dụng xong lưu `小子` rồi lại bị quy thành `小自` ⇒ mục không bao giờ thành "trùng" được.
-- **Fix:** Generator đếm thêm `selfCounts` (số lần ký tự đứng NGUYÊN VẸN ở cột giản thể); nếu cặp hay gặp nhất còn nhẹ ký hơn `selfCounts` thì bỏ hẳn ký tự đó khỏi bảng — 103 ký tự bị loại, bảng 2.538 → 2.455. Thêm `glossary_sync_controller` quy `term.source` phồn→giản trước khi đối chiếu (4 mục còn lại là source phồn thể thật). Sau fix: VietPhrase CN 690.006 → 680.777 key, chỉ 13.413 key bị quy (trước là 61.541 — phần lớn là quy bậy).
-- **Do Not Repeat:** Bảng sinh tự động từ dữ liệu ngoài phải so tần suất với "phương án không đổi", không được lấy đa số của riêng nhánh đổi — một dòng gõ sai đủ để phá chữ thường gặp nhất. Test `chữ vốn đã giản thể không bị quy` trong `test/trad2simp_test.dart` chốt lại điều này. Không sửa tay `assets/mappings/*.tsv`, luôn `dart run tool/build_trad2simp.dart`.
-- **Related Files:** `tool/build_trad2simp.dart`, `assets/mappings/trad2simp.tsv`, `lib/features/glossary/application/glossary_sync_controller.dart`, `test/trad2simp_test.dart`
-
-### 2026-08-07 - `trad2simp.tsv` chứa cặp ngược chiều, dịch Trung tự biến giản thể thành phồn thể
-- **Symptom:** Raw `席尔` (giản thể) qua mode Trung lại tra thành `席爾`, khớp nhầm mục phồn thể trong VietPhrase (`席爾=Llyr`) thay vì các mục `席尔…` đúng. Không lỗi, không cảnh báo — chỉ sai nghĩa.
-- **Root Cause:** `cedict_ts.u8` có vài mục bị đảo cột (vd `提尔 提爾` — cột "phồn" lại là giản thể) hoặc lệch ký tự. `tool/build_trad2simp.dart` ghép ký tự theo vị trí nên sinh ra `尔→爾` (ngược chiều, nằm chung bảng với `爾→尔` đúng chiều) và cả cặp bậy tạo chuỗi (`託→托` trong khi `托→度`; `辛→緬` trong khi `緬→缅`). Tổng cộng 41 mắt xích rác.
-- **Fix:** Generator đếm số lần xuất hiện cho từng cặp, rồi áp invariant "đích không bao giờ là nguồn của cặp khác" — gặp `a→b` mà `b→c` thì bỏ mắt xích nhẹ ký hơn, lặp tới khi hết chuỗi (luật này bao luôn cặp ngược chiều `a→b`/`b→a`). Regenerate bảng: 2579 → 2538 ký tự.
-- **Do Not Repeat:** Bảng ánh xạ sinh tự động từ dữ liệu ngoài phải kiểm tra tính nhất quán, không tin cột nguồn. Invariant: quy đổi hai lần phải ra cùng kết quả (`convert(convert(x)) == convert(x)`) — còn cặp ngược chiều hay chuỗi thì kết quả sẽ dao động. Đã có test trong `test/trad2simp_test.dart`, mẫu thử phải gồm cả ký tự từng dính chuỗi (託麼麽衚鬍辛緬胡托么).
-- **Ghi chú:** Cache `.vydc` của bộ dict Trung đã quy giản mang chữ ký bảng trong tên file (`Trad2SimpTable.signature`), nên sinh lại tsv là cache cũ tự bị bỏ qua — không cần nhớ xóa tay.
-- **Related Files:** `tool/build_trad2simp.dart`, `assets/mappings/trad2simp.tsv`, `test/trad2simp_test.dart`
-
-### 2026-07-25 - `WidgetStateTextStyle` trong `ChipThemeData.labelStyle` làm nhãn chip tàng hình
-- **Symptom:** Toàn bộ FilterChip ("Từ điển trong popup") mất chữ — nhãn render gần trắng trên nền trắng. `flutter analyze` sạch, `flutter test` pass; chỉ thấy được khi chụp màn hình app đang chạy.
-- **Root Cause:** `Chip` resolve nhãn bằng `resolveAs<Color?>(effectiveLabelStyle.color, states)` rồi `effectiveLabelStyle.copyWith(color: resolved)`. Một `WidgetStateTextStyle` có `.color == null`, nên style rút gọn thành `TextStyle` trống và nhãn kế thừa màu ambient. Chip chỉ resolve theo trạng thái ở thuộc tính `color`, KHÔNG ở bản thân TextStyle.
-- **Fix:** Dùng `TextStyle` thường với `color: WidgetStateColor.resolveWith(...)`. Hệ quả: chỉ đổi được MÀU theo trạng thái, không đổi được `fontWeight`.
-- **Do Not Repeat:** Không đặt `WidgetStateTextStyle` vào `ChipThemeData.labelStyle`. Tổng quát hơn: thay đổi thuần theme không được analyzer/unit test bắt lỗi — phải xác minh bằng ảnh chụp app chạy thật hoặc test invariant về màu (xem `test/app_theme_test.dart`).
-- **Related Files:** `lib/core/theme/app_theme.dart`, `lib/features/settings/settings_screen.dart`, `test/app_theme_test.dart`
-
 ### 2026-07-20 - `Isolate.run` trong State capture cả cây widget khi chuyển EPUB
 - **Symptom:** Chọn EPUB ném `Illegal argument in isolate message`, thông báo lần theo `_EpubConverterScreenState`, `SettingsPage` và `ScrollController` dù dữ liệu đầu vào chỉ là bytes.
 - **Root Cause:** Closure khai báo trong phương thức của `State` có thể capture ngầm `this`; isolate cố gửi toàn bộ object graph của widget, trong đó có các object native không sendable.
 - **Fix:** Dùng entry-point top-level `parseEpubRequest`/`exportEpubRequest` với `compute` và request thuần dữ liệu; thêm test parse lẫn export thật qua isolate.
 - **Do Not Repeat:** Tác vụ isolate từ widget phải truyền hàm top-level/static và payload thuần dữ liệu. Không đưa closure của `State`, `BuildContext`, controller hay notifier qua isolate.
 - **Related Files:** `lib/features/epub_converter/domain/epub_converter.dart`, `lib/features/epub_converter/presentation/epub_converter_screen.dart`, `test/epub_converter_test.dart`
-
-### 2026-07-20 - Dialog action dùng context của widget gọi đã bị deactive
-- **Symptom:** Nút Hủy/Lưu trong dialog mở từ context menu báo `Looking up a deactivated widget's ancestor is unsafe` và không đóng dialog.
-- **Root Cause:** Callback action giữ `BuildContext` của menu/widget gọi. Overlay context đó bị gỡ ngay sau khi mở dialog, nên `Navigator.of(context)` không còn hợp lệ.
-- **Fix:** `showAppDialog` nhận `actionsBuilder(dialogContext)` và mọi action đóng bằng context thuộc chính route dialog; có widget test gỡ launcher trước khi bấm Hủy.
-- **Do Not Repeat:** Callback sống lâu hơn overlay/menu mở nó phải dùng context của route/widget còn mounted, không capture context tạm của launcher.
-- **Related Files:** `lib/shared/widgets/app_dialog.dart`, `lib/shared/widgets/entry_edit_dialog.dart`, `test/app_dialog_test.dart`
 
 ### 2026-07-15 - OpenCC JPShinjitaiCharacters.txt map NGƯỢC chiều tên gọi
 - **Symptom:** Bảng simp2jp sinh ra sai — `历` compose ra `歷|曆` (kyūjitai) thay vì `歴|暦` (shinjitai); dict sửa xong vẫn chứa chữ cũ, khó phát hiện vì đa số cặp không qua stage shinjitai vẫn đúng (军→軍 vẫn OK).
@@ -92,14 +121,6 @@ Record only high-impact, hard-to-detect, or likely-to-recur bugs. Do not record 
 - **Do Not Repeat:** Provider A đã bị B `read/watch` thì A không được watch B, kể cả qua `select`. Cần một phần state của B → tách phần đó ra provider riêng.
 - **Related Files:** `translation_controller.dart` (currentModeProvider), `dictionaries_provider.dart`
 
-### 2026-07-18 - Flutter Windows accessibility_bridge AXTree crash (app tự tắt)
-- **Symptom:** Log spam `[ERROR:...accessibility_bridge.cc(114)] Failed to update ui::AXTree, error: N will not be in the tree...` / `Nodes left pending by the update: ...` rồi `Lost connection to device` → app crash. Xuất hiện lúc khởi động và khi tra nghĩa online; số node đổi mỗi lần chạy.
-- **Root Cause:** Bug engine Flutter Windows ở accessibility bridge — reconciliation cây semantics fail khi Windows AT poll (SelectableText.rich, SegmentedButton, NavigationRail, Tooltip đều có thể kích). KHÔNG sửa được bằng Dart, không phải lỗi widget cụ thể.
-- **Fix:** Tắt cây semantics app-wide: `MaterialApp.builder: (c, child) => ExcludeSemantics(child: child ?? SizedBox.shrink())` trong `app.dart`. (Trước đó đã giữ `_OnlineLookupButton` không đổi loại widget khi loading — cần nhưng chưa đủ.)
-- **Do Not Repeat:** Đừng đi tìm widget "thủ phạm" — đây là bug engine, blanket ExcludeSemantics là fix chuẩn. Đánh đổi: mất hỗ trợ screen-reader (chấp nhận cho desktop tool); chọn/copy text vẫn chạy. Nếu cần bật lại accessibility, phải nâng Flutter và test kỹ trên Windows.
-- **Related Files:** `lib/app.dart` (MaterialApp.builder), `lacviet_panel.dart` (_OnlineLookupButton)
-
-
 ### 2026-07-18 - Android APK build fail: "Could not close incremental caches" (Kotlin/Windows)
 - **Symptom:** `flutter build apk` fail exit 1, 3 plugin (flutter_tts, file_selector_android, shared_preferences_android) cùng lỗi `compileDebugKotlin` → `java.lang.Exception: Could not close incremental caches in ...\build\<plugin>\kotlin\compileDebugKotlin\...\class-fq-name-to-source.tab`. Code compile được — lỗi ở bước ĐÓNG incremental cache, không phải lỗi biên dịch.
 - **Root Cause:** Bug Kotlin incremental compilation trên Windows (file `.tab` bị khoá / cache hỏng, thường do antivirus quét `build/` giữa chừng). Không phải lỗi code app.
@@ -113,12 +134,6 @@ Record only high-impact, hard-to-detect, or likely-to-recur bugs. Do not record 
 - **Fix:** `token_text_view.dart`: bọc `Listener.onPointerDown` ghi `event.position` khi `(event.buttons & kSecondaryMouseButton) != 0` vào state (`_secondaryTapPosition`, phải là StatefulWidget vì rebuild xảy ra giữa pointer-down và mở toolbar), rồi trong `contextMenuBuilder` map điểm nhấn → offset bằng `editableTextState.renderEditable.getPositionForPoint(...)`.
 - **Do Not Repeat:** Muốn biết "từ nào bị chuột phải" trong SelectableText/TextField: KHÔNG đọc `textEditingValue.selection` — dùng vị trí pointer + `renderEditable.getPositionForPoint`. Lưu ý `&` với `!=` trong Dart: phải viết `(a & b) != 0`.
 - **Related Files:** `lib/features/translation/presentation/token_text_view.dart`
-### 2026-07-19 - SudachiVariants sinh key thuần hiragana → してくれ dịch thành [tứ/bốn] て [chín] れ
-- **Symptom:** Sau khi merge `data/jp/SudachiVariants.txt`, chuỗi ngữ pháp kana bị dịch bậy: `してくれ` → `し`=[tứ/bốn], `く`=[chín] (trước đó kana không match giữ nguyên).
-- **Root Cause:** SudachiDict chuẩn hoá cả CÁCH ĐỌC kana về kanji (surface `し` normalized `四`, `く` → `九`...). Tool build chỉ lọc "canonical có trong VietPhrase, variant chưa có" nên sinh 6.285 key thuần hiragana; engine greedy match kana đơn giữa chuỗi ngữ pháp — Sudachi phân giải case này bằng lattice theo ngữ cảnh, VietYaku greedy thì không.
-- **Fix:** `tool/build_sudachi_assets.dart` thêm `safeVariant()`: biến thể phải chứa ≥1 chữ Hán (okurigana 打込む→打ち込む) hoặc thuần katakana ≥2 code unit (ヴァイオリン→バイオリン); regenerate (20.465 → 13.677 mục). Test chốt chặn: `test/sudachi_data_test.dart`.
-- **Do Not Repeat:** Mọi nguồn sinh key MỚI cho dict tham gia greedy match (VietPhrase/Names/UserDict) TUYỆT ĐỐI không được thêm key thuần hiragana — hiragana là vùng ngữ pháp. Chuẩn hoá cần ngữ cảnh thì không đưa vào dict tra thẳng (cùng nguyên tắc với quy tắc vàng jp_valid_kanji của repair).
-- **Related Files:** `tool/build_sudachi_assets.dart`, `data/jp/SudachiVariants.txt`, `test/sudachi_data_test.dart`
 
 ### 2026-07-20 - Click giữa 1 cụm đã ghép trong ô Nguồn luôn tra từ đầu cụm, không tra từ ký tự bị click
 - **Symptom:** Cụm `少女達` được engine ghép thành 1 token (VD match VietPhrase/Names dài nhất tại vị trí 少). Click vào 女 (giữa cụm) vẫn tra nghĩa của cả `少女達` thay vì tra lại từ 女.
@@ -154,42 +169,3 @@ Record only high-impact, hard-to-detect, or likely-to-recur bugs. Do not record 
 - **Fix:** `_normalizeGroups` cắt dần đuôi kana chung của cả nhóm để sinh thêm nhóm thân từ; mảnh không thuộc nhóm nào thì giữ nguyên thay vì bỏ cả key. Kèm hai chốt chặn nhiễu + tốc độ: mảnh phụ chỉ được kana hoá (chặn `切れ`→`斬れ` và `きれ`→`訊れ` — cùng nhóm Sudachi vì chung dạng chuẩn + cách đọc), và segmentation đi greedy longest-match + cache biến thể theo surface (expand 2.034 entry: 56s → 0,12s).
 - **Do Not Repeat:** Dữ liệu Sudachi là surface của TỪ, còn entry người dùng thường là thân từ hoặc cụm ghép — test tính năng dựa trên nhóm Sudachi phải có case thân từ (`吞み込`) và case ghép mảnh (`扱い切`), đừng chỉ test dạng từ điển chuẩn. Nhóm Sudachi gộp theo dạng chuẩn + cách đọc nên KHÔNG được coi mọi thành viên là thay thế được cho nhau khi chỉ khớp một mảnh.
 - **Related Files:** `lib/features/dictionary/domain/japanese_variant_index.dart`, `lib/features/dictionary/data/dictionary_repository.dart`, `test/japanese_variant_index_test.dart`, `test/dictionary_repository_variant_test.dart`
-
-## Từ tra online/AI lưu rồi nhưng click lại không hiện, và không xóa được
-
-**Triệu chứng:** OnlineDict/AiDict đã có từ, click vào từ đó thì ô Nghĩa trống. Từ do AI tạo bấm "Xóa từ" cũng không mất (`比如铸铁者的冷面锡德`).
-
-**Hai nguyên nhân độc lập:**
-
-1. *Không tra lại được* — từ phải tra online/AI chính là từ VietPhrase **chưa có**; engine greedy vì thế cắt nó thành từng chữ (`再入荷` → `[再, 入荷]`), token sinh ra không bao giờ bằng key đã lưu nên `onlineDict.entries[word]` luôn trượt. 16/24 mục thật của người dùng dính lỗi này. Sửa: lưu xong thì thêm key vào overlay `VietPhrase_<mode>.txt` để engine cắt đúng cụm.
-
-2. *Không xóa được* — `stageLocalDelete` chỉ gỡ mục khỏi `SharedVietPhrase`; từ do AI tạo nằm ở overlay `VietPhrase_<mode>.txt`/`AiEntries_<mode>.txt` nên lệnh xóa chỉ ghi `__DELETE__` vào hàng chờ mà từ vẫn được dịch. Thêm nữa `if (!state.isAdmin) return;` khiến người dùng thường xóa gì cũng no-op im lặng. Sửa: `removeGeneratedEntry` gỡ cả hai overlay, chạy trước và không phụ thuộc quyền admin.
-
-**Bẫy đi kèm khi promote nghĩa online vào VietPhrase** (value VietPhrase chèn thẳng vào bản dịch nên sai là hỏng cả đoạn) — 3 rào chắn trong `dict_entry_filter.dart`:
-- Nguồn online tra **mờ**: gõ `再入荷` trả mục của `再入`, `一愣` trả `eleven; 11` → `meaningMatchesWord` bắt buộc headword khớp đúng.
-- Jisho/Youdao trả tiếng Anh, Weblio trả tiếng Trung → `vietnameseLookupLabels` chỉ nhận Mazii.
-- Cả câu/mệnh đề không được vào từ điển dịch → `isWordLikeEntry` (≤10 rune, không dấu câu/khoảng trắng).
-
-## Mazii mode Trung trả kết quả từ điển Nhật
-
-**Triệu chứng:** toàn bộ 35 mục `OnlineDict_chinese.txt` có phần Mazii là nghĩa của một từ tiếng Nhật khác hẳn — `一愣` → `eleven; 11`, `小正太` → `short sword`, `幸福` → `happiness` đọc `「こうふく」`.
-
-**Nguyên nhân:** `https://mazii.net/api/search` **bỏ qua tham số `dict`**. Gửi `dict: "cnvi"` vẫn nhận về mục của từ điển Nhật (`phonetic` là kana, `pinyin` rỗng). Đã kiểm chứng bằng gọi API trực tiếp — lỗi còn sống, không phải dữ liệu cũ, nên xoá dữ liệu không thôi thì tra lại vẫn lưu rác.
-
-**Sửa:** `MaziiApi.lookup` trả `null` khi `dict != 'javi'` mà kết quả có cách đọc kana. Mode Trung coi như Mazii miss; nguồn còn lại là 有道词典 (Trung→Anh).
-
-**Bài học:** API không chính thức có thể im lặng bỏ qua tham số. Đừng tin `dict`/`lang` đã được tôn trọng — kiểm tra chính nội dung trả về có đúng ngôn ngữ không.
-
-## Khởi động: nút title bar hiện icon Restore nhưng cửa sổ vẫn không maximize
-
-**Triệu chứng:** thỉnh thoảng mở app, cửa sổ vẫn ở kích thước thường (1200×760) trong khi nút phóng to đã đổi sang icon Restore. Bấm nút đó chỉ "restore" về đúng chỗ cũ; muốn full màn hình phải bấm hai lần. Không lỗi, không log.
-
-**Nguyên nhân:** trạng thái Win32 bị lệch — cờ `WS_MAXIMIZE` còn, nhưng khung cửa sổ đã bị `SetWindowPos` thu nhỏ. Hai chỗ trong runner mặc định của Flutter (`windows/runner/win32_window.cpp`) đụng vào cửa sổ sau khi `main.dart` gọi `windowManager.maximize()`:
-1. `WM_DPICHANGED` gọi `SetWindowPos` với rect gợi ý. `SetWindowPos` đổi kích thước mà **không** xóa `WS_MAXIMIZE` → icon Restore + cửa sổ bé. DPI đổi ngay lúc khởi động khi cửa sổ được center rồi maximize trên máy nhiều màn hình khác mức scale → lỗi chỉ thỉnh thoảng mới xảy ra.
-2. `Win32Window::Show()` dùng `SW_SHOWNORMAL`, mà engine gọi `Show()` qua `SetNextFrameCallback` **sau** khi `main()` đã maximize → `SW_SHOWNORMAL` khôi phục cửa sổ về kích thước thường.
-
-`windowManager.maximize()` là `PostMessage(WM_SYSCOMMAND, SC_MAXIMIZE)` (bất đồng bộ) nên thứ tự với hai chỗ trên không định trước → lỗi không tái hiện đều.
-
-**Sửa:** runner bỏ qua `SetWindowPos` khi `IsZoomed(hwnd)` (Windows tự resize cửa sổ maximize khi đổi DPI), `Show()` dùng `SW_SHOW`. Thêm `ensureWindowMaximized()` (`lib/core/window_maximize.dart`) chạy ở post-frame của `HomeShell`: nếu cờ báo maximized mà diện tích cửa sổ < 90% màn hình thì `unmaximize()` rồi `maximize()` lại.
-
-**Bài học:** `windowManager.isMaximized()` chỉ đọc `WINDOWPLACEMENT.showCmd`, KHÔNG bảo đảm cửa sổ thật sự to — đừng dùng nó một mình làm điều kiện chặn maximize. Và mọi `SetWindowPos` có kích thước trong `win32_window.cpp` đều phải xét `IsZoomed`.
