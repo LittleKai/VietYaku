@@ -130,6 +130,7 @@ class _CoverageBodyState extends ConsumerState<_CoverageBody>
           ref,
           word: word,
           kind: SharedDictionaryKind.vietPhrase,
+          title: 'Thêm vào VietPhrase',
         );
       case _AddTarget.lacViet:
         await showSharedEntryEditDialog(
@@ -137,6 +138,7 @@ class _CoverageBodyState extends ConsumerState<_CoverageBody>
           ref,
           word: word,
           kind: SharedDictionaryKind.lacViet,
+          title: 'Thêm vào Lạc Việt',
         );
       case _AddTarget.userDict:
         await showEntryEditDialog(

@@ -13,8 +13,16 @@ import 'language_pack_provider.dart';
 final appPathsProvider = FutureProvider<AppPaths>((ref) => AppPaths.init());
 
 class DictionariesNotifier extends AsyncNotifier<LoadedDictionaries> {
+  DictionaryBase? _base;
+  String? _baseKey;
+  bool _reuseBase = false;
+
   @override
   Future<LoadedDictionaries> build() async {
+    // Đọc cờ trước mọi await: rebuild do đổi setting/mode chạy song song thì
+    // cũng không được hưởng nhầm.
+    final reuseBase = _reuseBase;
+    _reuseBase = false;
     final paths = await ref.watch(appPathsProvider.future);
     // Bộ dict theo ngôn ngữ đang dịch; đổi mode → nạp lại (cache .vydc giữ nhanh).
     final mode = ref.watch(currentModeProvider);
@@ -44,6 +52,15 @@ class DictionariesNotifier extends AsyncNotifier<LoadedDictionaries> {
     final isAdmin = ref.watch(
       dictionarySyncProvider.select((s) => s.isAdmin),
     );
+    // Mọi thứ quyết định nội dung phần nền; lệch một mục là nạp lại toàn bộ.
+    final baseKey = [
+      paths.dictionariesDir.path,
+      mode.name,
+      useSudachiVariants,
+      trad2simp?.signature,
+      for (final e in dictPaths.entries) '${e.key.name}=${e.value}',
+    ].join('\n');
+    final base = reuseBase && baseKey == _baseKey ? _base : null;
     final sw = Stopwatch()..start();
     final loaded = await DictionaryRepository(paths).loadAll(
       dictPaths,
@@ -51,9 +68,13 @@ class DictionariesNotifier extends AsyncNotifier<LoadedDictionaries> {
       useSudachiVariants: useSudachiVariants,
       trad2simp: trad2simp,
       generatedDir: isAdmin ? generatedDictDir(mode) : null,
+      base: base,
     );
+    _base = loaded.base;
+    _baseKey = baseKey;
     debugPrint(
-      'Dictionaries loaded in ${sw.elapsedMilliseconds}ms: '
+      'Dictionaries ${base == null ? "loaded" : "reloaded overlays"} '
+      'in ${sw.elapsedMilliseconds}ms: '
       '${loaded.stats.entries.map((e) => '${e.key.name} '
           '${e.value.fromCache ? "cache" : "parse"} '
           '${e.value.elapsedMs}ms').join(', ')}',
@@ -61,8 +82,18 @@ class DictionariesNotifier extends AsyncNotifier<LoadedDictionaries> {
     return loaded;
   }
 
-  /// Nạp lại toàn bộ (sau khi sửa dict / thêm entry UserDict).
+  /// Nạp lại sau khi sửa/thêm/xóa từ: chỉ đọc lại các file overlay (UserDict,
+  /// UserNames, Shared*, AiDict/AiEntries/OnlineDict, VietPhrase overlay), dict
+  /// nguồn lớn và nhóm biến thể Sudachi dùng lại bản trong RAM.
   Future<void> reload() async {
+    _reuseBase = true;
+    ref.invalidateSelf();
+    await future;
+  }
+
+  /// Nạp lại toàn bộ từ đĩa — dùng khi dict NGUỒN đổi (Repair xuất `*_JP.txt`).
+  Future<void> reloadAll() async {
+    _reuseBase = false;
     ref.invalidateSelf();
     await future;
   }

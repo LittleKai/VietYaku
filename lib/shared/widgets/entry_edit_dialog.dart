@@ -9,6 +9,7 @@ import '../../features/dictionary/data/user_dict_service.dart';
 import '../../features/dictionary/domain/entry_impact.dart';
 import '../../features/dictionary_search/domain/dictionary_search.dart';
 import '../../features/dictionary_sync/application/dictionary_sync_controller.dart';
+import '../../features/dictionary_sync/data/shared_dictionary_service.dart';
 import '../../features/dictionary_sync/domain/shared_dictionary_entry.dart';
 import '../../features/glossary/application/glossary_service_provider.dart';
 import '../../features/glossary/application/glossary_sync_controller.dart';
@@ -17,6 +18,7 @@ import '../../features/glossary/domain/glossary_term.dart';
 import '../../features/glossary/presentation/glossary_update_dialog.dart';
 import '../../features/settings/settings_provider.dart';
 import '../../features/translation/application/lookup_controller.dart';
+import '../../features/translation/application/trad2simp_provider.dart';
 import '../../features/translation/application/translation_controller.dart';
 import '../../features/translation/domain/reading_extractor.dart';
 import '../../features/translation/domain/translation_engine.dart';
@@ -35,6 +37,21 @@ Future<void> showEntryEditDialog(
   String? initialMeaning,
 }) async {
   final dicts = ref.read(dictionariesProvider).valueOrNull;
+  bool targetDictHasEntry(String key) {
+    if (dicts == null) return false;
+    final val = toNames
+        ? dicts.names.entries[key]
+        : dicts.userDict.entries[key];
+    return val != null && val.trim().isNotEmpty;
+  }
+
+  String? targetDictMeaningOf(String key) {
+    if (dicts == null) return null;
+    return toNames
+        ? dicts.names.entries[key]
+        : dicts.userDict.entries[key];
+  }
+
   String? dictMeaningOf(String key) => dicts == null
       ? null
       : (dicts.userDict.entries[key] ??
@@ -43,6 +60,7 @@ Future<void> showEntryEditDialog(
   final existing = initialMeaning ?? dictMeaningOf(word);
 
   final holder = _EntryFieldControllers();
+  final mode = ref.read(currentModeProvider);
   final translation = ref.read(translationControllerProvider);
   final impactSource = translation.tokens.isEmpty
       ? translation.sourceText
@@ -62,16 +80,19 @@ Future<void> showEntryEditDialog(
   final settings = ref.read(settingsProvider);
   final glossaryDir = settings.glossaryDir;
   final glossaryService = ref.read(glossaryServiceProvider);
-  final canUpdateGlossary = glossaryService.hasGlossaryFor(translation.mode);
+  final canUpdateGlossary = glossaryService.hasGlossaryFor(mode);
   holder.autoUpdateGlossaryNotifier.value = settings.autoUpdateGlossaryOnSave;
   holder.notifyOnGlossaryUpdateNotifier.value =
       settings.notifyOnGlossaryAutoUpdate;
+
+  final resolvedTitle =
+      title ?? (toNames ? 'Thêm vào Names' : 'Sửa nghĩa trong UserDict');
 
   final saved = await showAppDialog<String>(
     context: context,
     icon: toNames ? Icons.badge_outlined : Icons.edit_note,
     accentColor: toNames ? const Color(0xFF00897B) : const Color(0xFFEF6C00),
-    title: title ?? (toNames ? 'Thêm vào Names' : 'Sửa nghĩa trong UserDict'),
+    title: resolvedTitle,
     description: toNames
         ? 'Tên riêng được ưu tiên khi dịch và chỉ lưu trên máy này.'
         : 'Mục UserDict được ưu tiên cao nhất khi dịch.',
@@ -81,9 +102,18 @@ Future<void> showEntryEditDialog(
       initialKey: word,
       initialMeaning: existing ?? '',
       hanVietOf: (key) => dicts == null ? null : hanVietReadingOf(dicts, key),
+      readingOf: (key) => dicts == null
+          ? null
+          : entryPronunciationOf(
+              dicts,
+              key,
+              mode,
+              sudachiMode: settings.sudachiReadings,
+              trad2simp: trad2SimpOf(ref),
+            ),
       meaningForKey: dictMeaningOf,
       meaningHelper: 'Dùng dấu / để ngăn cách nhiều nghĩa.',
-      mode: translation.mode,
+      mode: mode,
       sourceText: impactSource,
       baseValueOf: baseValueOf,
       currentValueOf: currentValueOf,
@@ -142,8 +172,9 @@ Future<void> showEntryEditDialog(
           final glossaryTerm = holder.glossaryTermNotifier.value;
           final currentKey = holder.keyNotifier.value.trim();
           final existsInGlossary = glossaryTerm != null;
-          final canDelete =
-              currentValueOf(currentKey) != null || existsInGlossary;
+          final canDelete = toNames
+              ? currentValueOf(currentKey) != null
+              : (currentValueOf(currentKey) != null || existsInGlossary);
 
           if (!canDelete) return const SizedBox.shrink();
 
@@ -165,15 +196,20 @@ Future<void> showEntryEditDialog(
         onPressed: () => Navigator.pop(dialogContext, 'cancel'),
         child: const Text('Hủy'),
       ),
-      ValueListenableBuilder<bool>(
-        valueListenable: holder.canSave,
-        builder: (_, canSave, _) => FilledButton.icon(
-          icon: const Icon(Icons.save_outlined),
-          onPressed: canSave
-              ? () => Navigator.pop(dialogContext, 'save')
-              : null,
-          label: const Text('Lưu từ'),
-        ),
+      ListenableBuilder(
+        listenable: Listenable.merge([holder.canSave, holder.keyNotifier]),
+        builder: (_, _) {
+          final canSave = holder.canSave.value;
+          final currentKey = holder.keyNotifier.value.trim();
+          final exists = targetDictHasEntry(currentKey);
+          return FilledButton.icon(
+            icon: Icon(exists ? Icons.save_outlined : Icons.add_circle_outline),
+            onPressed: canSave
+                ? () => Navigator.pop(dialogContext, 'save')
+                : null,
+            label: Text(exists ? 'Lưu từ' : 'Thêm từ'),
+          );
+        },
       ),
     ],
   );
@@ -182,7 +218,7 @@ Future<void> showEntryEditDialog(
     final targetKey = holder.keyText.trim().isNotEmpty
         ? holder.keyText.trim()
         : word;
-    final inGlossary =
+    final inGlossary = !toNames &&
         canUpdateGlossary &&
         (await glossaryService.find(translation.mode, targetKey)) != null;
     final inDict = currentValueOf(targetKey) != null;
@@ -223,8 +259,9 @@ Future<void> showEntryEditDialog(
       } catch (_) {}
     }
 
-    if (deleteScope == DeleteScope.glossaryOnly ||
-        deleteScope == DeleteScope.both) {
+    if (!toNames &&
+        (deleteScope == DeleteScope.glossaryOnly ||
+            deleteScope == DeleteScope.both)) {
       try {
         await glossaryService.removeAll(translation.mode, [targetKey]);
         ref.invalidate(
@@ -268,7 +305,11 @@ Future<void> showEntryEditDialog(
   holder.disposeAfterRouteAnimation();
   if (saved != 'save') return;
   if (key.isEmpty || meaning.isEmpty) return;
-  if (key == word.trim() && meaning == (existing ?? '').trim()) return;
+  final isAdd = !targetDictHasEntry(key);
+  final currentInDict = targetDictMeaningOf(key);
+  if (!isAdd && key == word.trim() && meaning == (currentInDict ?? '').trim()) {
+    return;
+  }
 
   final paths = await ref.read(appPathsProvider.future);
   final service = UserDictService(paths);
@@ -319,7 +360,8 @@ Future<void> showEntryEditDialog(
 
   if (context.mounted) {
     final dictLabel = toNames ? 'Names' : 'UserDict';
-    final baseMsg = 'Đã lưu vào $dictLabel.';
+    final actionWord = isAdd ? 'thêm' : 'lưu';
+    final baseMsg = 'Đã $actionWord vào $dictLabel.';
     final lang = GlossaryService.langFor(translation.mode);
     final glossaryPart = glossaryAutoUpdated && notifyOnGlossaryUpdate
         ? '\nĐã tự động cập nhật Global Glossary $lang: $key → $glossaryNewTarget'
@@ -342,10 +384,26 @@ Future<void> showSharedEntryEditDialog(
   WidgetRef ref, {
   required String word,
   required SharedDictionaryKind kind,
+  String? title,
 }) async {
   final isVietPhrase = kind == SharedDictionaryKind.vietPhrase;
   final dictionaryName = isVietPhrase ? 'VietPhrase' : 'Lạc Việt';
   final dicts = ref.read(dictionariesProvider).valueOrNull;
+  bool dictHasEntry(String key) {
+    if (dicts == null) return false;
+    final val = isVietPhrase
+        ? dicts.vietPhrase.entries[key]
+        : dicts.lacViet.entries[key];
+    return val != null && val.trim().isNotEmpty;
+  }
+
+  String? targetDictMeaningOf(String key) {
+    if (dicts == null) return null;
+    return isVietPhrase
+        ? dicts.vietPhrase.entries[key]
+        : dicts.lacViet.entries[key];
+  }
+
   String? sharedMeaningOf(String key) {
     if (dicts == null) return null;
     if (isVietPhrase) return dicts.vietPhrase.entries[key];
@@ -360,7 +418,7 @@ Future<void> showSharedEntryEditDialog(
 
   final existing = sharedMeaningOf(word);
   final holder = _EntryFieldControllers();
-  final mode = ref.read(translationControllerProvider).mode;
+  final mode = ref.read(currentModeProvider);
   final translation = ref.read(translationControllerProvider);
   final sourceText = translation.tokens.isEmpty
       ? translation.sourceText
@@ -378,11 +436,17 @@ Future<void> showSharedEntryEditDialog(
   holder.notifyOnGlossaryUpdateNotifier.value =
       settings.notifyOnGlossaryAutoUpdate;
 
+  final isInitialAdd = !dictHasEntry(word);
+  final resolvedTitle = title ??
+      (isInitialAdd
+          ? 'Thêm vào $dictionaryName'
+          : 'Sửa vào $dictionaryName');
+
   final saved = await showAppDialog<String>(
     context: context,
     icon: Icons.edit_note,
     accentColor: const Color(0xFF00838F),
-    title: 'Sửa vào $dictionaryName',
+    title: resolvedTitle,
     description:
         'Lưu cục bộ trước; bấm Update trong Cài đặt để gửi lên server.',
     width: isVietPhrase ? 760 : 700,
@@ -391,6 +455,15 @@ Future<void> showSharedEntryEditDialog(
       initialKey: word,
       initialMeaning: existing ?? '',
       hanVietOf: (key) => dicts == null ? null : hanVietReadingOf(dicts, key),
+      readingOf: (key) => dicts == null
+          ? null
+          : entryPronunciationOf(
+              dicts,
+              key,
+              mode,
+              sudachiMode: settings.sudachiReadings,
+              trad2simp: trad2SimpOf(ref),
+            ),
       meaningForKey: sharedMeaningOf,
       vietPhraseFormat: isVietPhrase,
       lacVietFormat: !isVietPhrase,
@@ -509,8 +582,9 @@ Future<void> showSharedEntryEditDialog(
           final glossaryTerm = holder.glossaryTermNotifier.value;
           final currentKey = holder.keyNotifier.value.trim();
           final existsInGlossary = glossaryTerm != null;
-          final canDelete =
-              sharedMeaningOf(currentKey) != null || existsInGlossary;
+          final canDelete = isVietPhrase
+              ? (dictHasEntry(currentKey) || existsInGlossary)
+              : dictHasEntry(currentKey);
 
           if (!canDelete) return const SizedBox.shrink();
 
@@ -532,15 +606,20 @@ Future<void> showSharedEntryEditDialog(
         onPressed: () => Navigator.pop(dialogContext, 'cancel'),
         child: const Text('Hủy'),
       ),
-      ValueListenableBuilder<bool>(
-        valueListenable: holder.canSave,
-        builder: (_, canSave, _) => FilledButton.icon(
-          icon: const Icon(Icons.save_outlined),
-          onPressed: canSave
-              ? () => Navigator.pop(dialogContext, 'save')
-              : null,
-          label: const Text('Lưu từ'),
-        ),
+      ListenableBuilder(
+        listenable: Listenable.merge([holder.canSave, holder.keyNotifier]),
+        builder: (_, _) {
+          final canSave = holder.canSave.value;
+          final currentKey = holder.keyNotifier.value.trim();
+          final exists = dictHasEntry(currentKey);
+          return FilledButton.icon(
+            icon: Icon(exists ? Icons.save_outlined : Icons.add_circle_outline),
+            onPressed: canSave
+                ? () => Navigator.pop(dialogContext, 'save')
+                : null,
+            label: Text(exists ? 'Lưu từ' : 'Thêm từ'),
+          );
+        },
       ),
     ],
   );
@@ -552,7 +631,7 @@ Future<void> showSharedEntryEditDialog(
     final inGlossary =
         canUpdateGlossary &&
         (await glossaryService.find(mode, targetKey)) != null;
-    final inSharedDict = sharedMeaningOf(targetKey) != null;
+    final inSharedDict = dictHasEntry(targetKey);
 
     holder.disposeAfterRouteAnimation();
 
@@ -616,7 +695,11 @@ Future<void> showSharedEntryEditDialog(
   holder.disposeAfterRouteAnimation();
   if (saved != 'save') return;
   if (key.isEmpty || meaning.isEmpty) return;
-  if (key == word.trim() && meaning == (existing ?? '').trim()) return;
+  final isAdd = !dictHasEntry(key);
+  final currentInDict = targetDictMeaningOf(key);
+  if (!isAdd && key == word.trim() && meaning == (currentInDict ?? '').trim()) {
+    return;
+  }
 
   try {
     await ref.read(dictionarySyncProvider.notifier).stageLocalEdit(
@@ -656,8 +739,9 @@ Future<void> showSharedEntryEditDialog(
   }
 
   if (!context.mounted) return;
+  final actionWord = isAdd ? 'thêm' : 'lưu';
   final baseMsg =
-      'Đã lưu vào $dictionaryName. Bấm Update trong Cài đặt để gửi lên server.';
+      'Đã $actionWord vào $dictionaryName. Bấm Update trong Cài đặt để gửi lên server.';
   final lang = GlossaryService.langFor(mode);
   final glossaryPart = glossaryAutoUpdated && notifyOnGlossaryUpdate
       ? '\nĐã tự động cập nhật Global Glossary $lang: $key → $glossaryNewTarget'
@@ -846,6 +930,7 @@ class _EntryFields extends StatefulWidget {
     required this.currentValueOf,
     required this.currentLayerLabel,
     this.hanVietOf,
+    this.readingOf,
     this.meaningForKey,
     this.vietPhraseFormat = false,
     this.lacVietFormat = false,
@@ -869,6 +954,9 @@ class _EntryFields extends StatefulWidget {
 
   /// Âm Hán Việt của key đang gõ; null (hoặc trả null) thì không hiện dòng này.
   final String? Function(String key)? hanVietOf;
+
+  /// Phát âm của key đang gõ; null (hoặc trả null) thì không hiện phần này.
+  final String? Function(String key)? readingOf;
 
   /// Value thô của key trong từ điển đang sửa. Gõ lại ô Từ nguồn thì ô Nghĩa
   /// nạp lại theo key mới (chỉ khi người dùng chưa tự sửa ô Nghĩa).
@@ -917,6 +1005,7 @@ class _EntryFieldsState extends State<_EntryFields> {
   bool _autofocusFirstMeaning = true;
   late EntryImpact _impact;
   String? _hanViet;
+  String? _reading;
   GlossaryTerm? _glossaryTerm;
   bool _isCheckingGlossary = false;
   String? _lastGlossaryKey;
@@ -1017,6 +1106,7 @@ class _EntryFieldsState extends State<_EntryFields> {
     widget.holder.meaningNotifier.value = meaning;
     final key = _keyController.text.trim();
     _hanViet = key.isEmpty ? null : widget.hanVietOf?.call(key);
+    _reading = key.isEmpty ? null : widget.readingOf?.call(key);
     _impact = previewEntryImpact(
       rawKey: _keyController.text,
       rawMeaning: meaning,
@@ -1120,7 +1210,11 @@ class _EntryFieldsState extends State<_EntryFields> {
           controller: _keyController,
           decoration: const InputDecoration(labelText: 'Từ nguồn'),
         ),
-        if (_hanViet != null) _HanVietRow(hanViet: _hanViet!),
+        if (_hanViet != null || _reading != null)
+          _HanVietRow(
+            hanViet: _hanViet,
+            reading: _reading,
+          ),
         const SizedBox(height: 12),
         if (widget.vietPhraseFormat)
           _VietPhraseMeaningEditor(
@@ -1530,14 +1624,18 @@ class _MeaningRowState extends State<_MeaningRow> {
   }
 }
 
-/// Âm Hán Việt của từ nguồn (ChinesePhienAmWords), cập nhật theo ô Từ nguồn.
+/// Âm Hán Việt và phát âm của từ nguồn, cập nhật theo ô Từ nguồn.
 class _HanVietRow extends StatelessWidget {
-  const _HanVietRow({required this.hanViet});
+  const _HanVietRow({this.hanViet, this.reading});
 
-  final String hanViet;
+  final String? hanViet;
+  final String? reading;
 
   @override
   Widget build(BuildContext context) {
+    if (hanViet == null && reading == null) {
+      return const SizedBox.shrink();
+    }
     final scheme = Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.only(top: 6),
@@ -1549,29 +1647,65 @@ class _HanVietRow extends StatelessWidget {
           color: scheme.primary.withValues(alpha: 0.25),
         ),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
+      child: Wrap(
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 16,
+        runSpacing: 4,
         children: [
-          Icon(Icons.translate, size: 15, color: scheme.primary),
-          const SizedBox(width: 6),
-          Text(
-            'Hán Việt: ',
-            style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w500,
-              color: scheme.onSurfaceVariant,
+          if (hanViet != null)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Icon(Icons.translate, size: 15, color: scheme.primary),
+                const SizedBox(width: 6),
+                Text(
+                  'Hán Việt: ',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w500,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+                SelectableText(
+                  hanViet!,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: scheme.primary,
+                  ),
+                ),
+              ],
             ),
-          ),
-          Expanded(
-            child: SelectableText(
-              hanViet,
-              style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w700,
-                color: scheme.primary,
-              ),
+          if (reading != null)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.record_voice_over_outlined,
+                  size: 15,
+                  color: scheme.secondary,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  'Phát âm: ',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w500,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+                SelectableText(
+                  reading!,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: scheme.secondary,
+                  ),
+                ),
+              ],
             ),
-          ),
         ],
       ),
     );
@@ -2100,7 +2234,11 @@ String? _layerValue(
   String key,
 ) {
   for (final layer in layers) {
-    if (layer.id == layerId) return layer.entries[key];
+    if (layer.id == layerId) {
+      final value = layer.entries[key];
+      if (value == SharedDictionaryService.deleteSentinel) return null;
+      return value;
+    }
   }
   return null;
 }

@@ -76,6 +76,8 @@ phép kiểm này là điều kiện để cửa ra an toàn. Chạy:
 | 23 | Promote nghĩa tra online vào VietPhrase làm bẩn từ điển dịch | ✅ `dict_entry_filter.dart::meaningMatchesWord` + `dict_entry_filter.dart::isWordLikeEntry` + `dict_entry_filter.dart::vietnameseLookupLabels` | `archive/FIXED_BUGS_guarded.md` |
 | 24 | Mazii mode Trung trả kết quả từ điển Nhật | ✅ `mazii_api.dart::_hasKanaReading` | `archive/FIXED_BUGS_guarded.md` |
 | 25 | Khởi động: nút title bar hiện icon Restore nhưng cửa sổ không maximize | ✅ `window_maximize.dart::ensureWindowMaximized` + `win32_window.cpp::IsZoomed` | `archive/FIXED_BUGS_guarded.md` |
+| 26 | Xóa từ khỏi VietPhrase/Lạc Việt không mất từ trong từ điển nạp | ✅ `shared_dictionary_service.dart::deleteSentinel` + `shared_dictionary_service.dart::replayPending` | `archive/FIXED_BUGS_guarded.md` |
+| 27 | Sửa từ cùng độ dài trong vòng 1 giây ⇒ cache `.vydc` trả nghĩa CŨ (mtime Windows làm tròn giây) | ✅ `binary_cache.dart::trustsMtime` | `archive/FIXED_BUGS_guarded.md` |
 
 > Cột 1 phải là **số**, cột 3 phải bắt đầu bằng ✅/🔶/❌ và bọc tên hàm trong dấu
 > backtick — `guard_check.py` parse đúng định dạng này.

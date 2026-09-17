@@ -14,6 +14,7 @@ import 'package:vietyaku/features/dictionary/domain/dict_type.dart';
 import 'package:vietyaku/features/dictionary/domain/phrase_dictionary.dart';
 import 'package:vietyaku/features/dictionary_search/domain/dictionary_search.dart';
 import 'package:vietyaku/features/dictionary_sync/application/dictionary_sync_controller.dart';
+import 'package:vietyaku/features/dictionary_sync/data/dictionary_sync_api.dart';
 import 'package:vietyaku/features/dictionary_sync/domain/shared_dictionary_entry.dart';
 import 'package:vietyaku/features/glossary/data/glossary_service.dart';
 import 'package:vietyaku/features/settings/settings_provider.dart';
@@ -51,6 +52,35 @@ class MockDictionariesNotifier extends DictionariesNotifier {
   Future<void> reload() async {}
 }
 
+class MockDictionarySyncController extends DictionarySyncController {
+  SharedDictionaryEntry? lastStagedEntry;
+  TranslationMode? lastStagedMode;
+
+  @override
+  DictionarySyncState build() => DictionarySyncState(
+    session: AdminSession(username: 'admin', token: 'token'),
+  );
+
+  @override
+  Future<void> stageLocalEdit({
+    required TranslationMode mode,
+    required SharedDictionaryKind kind,
+    required String source,
+    required String target,
+  }) async {
+    lastStagedMode = mode;
+    lastStagedEntry = SharedDictionaryEntry(
+      kind: kind,
+      source: source,
+      target: target,
+    );
+    state = state.copyWith(
+      message:
+          'Đã lưu ${kind == SharedDictionaryKind.vietPhrase ? 'VietPhrase' : 'Lạc Việt'}. Bấm Update để gửi lên server.',
+    );
+  }
+}
+
 LoadedDictionaries _createMock({
   Map<String, String>? userDictEntries,
   Map<String, String>? userNamesEntries,
@@ -58,6 +88,10 @@ LoadedDictionaries _createMock({
   Map<String, String>? vietPhraseEntries,
   Map<String, String>? lacVietEntries,
   Map<String, String>? chinesePhienAmEntries,
+  Map<String, String>? jaViEntries,
+  Map<String, String>? maziiEntries,
+  Map<String, String>? cedictEntries,
+  Map<String, String>? sudachiReadingsEntries,
 }) {
   final empty = PhraseDictionary(DictType.vietPhrase, const {});
   return LoadedDictionaries(
@@ -79,16 +113,26 @@ LoadedDictionaries _createMock({
     lacViet: lacVietEntries == null
         ? empty
         : PhraseDictionary(DictType.lacViet, lacVietEntries),
+    mazii: maziiEntries == null
+        ? null
+        : PhraseDictionary(DictType.mazii, maziiEntries),
     chinesePhienAm: chinesePhienAmEntries == null
         ? empty
         : PhraseDictionary(DictType.chinesePhienAm, chinesePhienAmEntries),
     pronouns: empty,
     babylon: empty,
     thieuChuu: empty,
-    cedict: empty,
+    cedict: cedictEntries == null
+        ? empty
+        : PhraseDictionary(DictType.cedict, cedictEntries),
     chinesePhienAmEnglish: empty,
-    jaVi: empty,
+    jaVi: jaViEntries == null
+        ? empty
+        : PhraseDictionary(DictType.jaVi, jaViEntries),
     zhVi: empty,
+    sudachiReadings: sudachiReadingsEntries == null
+        ? empty
+        : PhraseDictionary(DictType.jaVi, sudachiReadingsEntries),
     searchLayers: [
       DictionarySearchLayer(
         id: 'userDict',
@@ -1409,6 +1453,598 @@ void main() {
       await tester.runAsync(() async {
         final content = await service.userNamesFile.readAsString();
         expect(content.contains('佐助='), isFalse);
+      });
+
+      await tester.pump(const Duration(milliseconds: 600));
+    },
+  );
+
+  testWidgets(
+    'Dialog Thêm vào Names: từ chỉ có trong Glossary không hiện nút Xóa từ; có cả hai thì xóa chỉ xóa UserNames và giữ nguyên Glossary',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({'glossary.dir': tempDir.path});
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('glossary.dir', tempDir.path);
+
+      final glossaryService = GlossaryService(tempDir.path);
+      final service = UserDictService(AppPaths(tempDir));
+      await tester.runAsync(() async {
+        await service.upsertUserName('佐助', 'Sasuke');
+        await glossaryService.upsert(
+          TranslationMode.japanese,
+          source: '佐助',
+          target: 'Sasuke (Glossary)',
+        );
+        await glossaryService.upsert(
+          TranslationMode.japanese,
+          source: '鳴人',
+          target: 'Naruto (Glossary)',
+        );
+      });
+
+      final mockData = _createMock(
+        userNamesEntries: {'佐助': 'Sasuke'},
+      );
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          appPathsProvider.overrideWith((ref) async => AppPaths(tempDir)),
+          dictionariesProvider.overrideWith(
+            () => MockDictionariesNotifier(mockData),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.read(currentModeProvider.notifier).state =
+          TranslationMode.japanese;
+      await container.read(appPathsProvider.future);
+      await container.read(dictionariesProvider.future);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: Scaffold(
+              body: Builder(
+                builder: (context) {
+                  return ElevatedButton(
+                    onPressed: () => showEntryEditDialog(
+                      context,
+                      WidgetRefContext(context, container),
+                      word: '鳴人',
+                      toNames: true,
+                    ),
+                    child: const Text('Open Names Dialog'),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+
+      // Mở với '鳴人' (chỉ có trong Glossary, KHÔNG có trong UserNames)
+      await tester.tap(find.text('Open Names Dialog'));
+      await tester.pumpAndSettle();
+
+      // Nút Xóa từ KHÔNG được xuất hiện
+      expect(find.text('Xóa từ'), findsNothing);
+
+      // Đổi sang '佐助' (có trong cả UserNames và Glossary)
+      final keyField = find.widgetWithText(TextField, 'Từ nguồn');
+      await tester.enterText(keyField, '佐助');
+      await tester.pumpAndSettle();
+
+      // Nút Xóa từ xuất hiện vì có trong UserNames
+      expect(find.text('Xóa từ'), findsOneWidget);
+
+      await tester.tap(find.text('Xóa từ'));
+      await tester.pump();
+      await tester.runAsync(() async {
+        await Future.delayed(const Duration(milliseconds: 200));
+      });
+      await tester.pumpAndSettle();
+
+      // Dialog xác nhận xóa xuất hiện, chỉ có lựa chọn xóa Names, KHÔNG có lựa chọn xóa Glossary
+      expect(find.text('Xác nhận xóa từ "佐助"'), findsOneWidget);
+      expect(find.text('Xóa khỏi Names trên máy này.'), findsOneWidget);
+      expect(find.textContaining('Glossary'), findsNothing);
+
+      // Bấm Xác nhận xóa
+      final confirmBtn = find.text('Xác nhận xóa');
+      expect(confirmBtn, findsOneWidget);
+      await tester.tap(confirmBtn);
+      await tester.pumpAndSettle();
+      for (var i = 0; i < 8; i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)),
+        );
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      await tester.pumpAndSettle();
+
+      // Kiểm tra file UserNames.txt đã bị xóa key, nhưng Glossary VẪN CÒN NGUYÊN '佐助'
+      await tester.runAsync(() async {
+        final content = await service.userNamesFile.readAsString();
+        expect(content.contains('佐助='), isFalse);
+
+        final glossaryTerm = await glossaryService.find(
+          TranslationMode.japanese,
+          '佐助',
+        );
+        expect(glossaryTerm, isNotNull);
+        expect(glossaryTerm!.target, 'Sasuke (Glossary)');
+      });
+
+      await tester.pump(const Duration(milliseconds: 600));
+    },
+  );
+
+  testWidgets(
+    'Dialog Lạc Việt: từ chưa có trong Lạc Việt (dù có trong VietPhrase) -> không hiện nút Xóa từ',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final mockData = _createMock(
+        vietPhraseEntries: {'水晶宫': 'thủy tinh cung'},
+        lacVietEntries: {'学校': 'trường học'},
+      );
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          dictionariesProvider.overrideWith(
+            () => MockDictionariesNotifier(mockData),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.read(currentModeProvider.notifier).state =
+          TranslationMode.chinese;
+      await container.read(dictionariesProvider.future);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: Scaffold(
+              body: Builder(
+                builder: (context) {
+                  return ElevatedButton(
+                    onPressed: () => showSharedEntryEditDialog(
+                      context,
+                      WidgetRefContext(context, container),
+                      word: '水晶宫',
+                      kind: SharedDictionaryKind.lacViet,
+                    ),
+                    child: const Text('Open LacViet Dialog'),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Open LacViet Dialog'));
+      await tester.pumpAndSettle();
+
+      // '水晶宫' có trong VietPhrase nhưng KHÔNG có trong Lạc Việt -> KHÔNG có nút Xóa từ
+      expect(find.text('Xóa từ'), findsNothing);
+
+      // Đổi sang '学校' (có trong Lạc Việt) -> nút Xóa từ xuất hiện
+      final keyField = find.widgetWithText(TextField, 'Từ nguồn');
+      await tester.enterText(keyField, '学校');
+      await tester.pumpAndSettle();
+      expect(find.text('Xóa từ'), findsOneWidget);
+
+      // Đổi lại '水晶宫' -> nút Xóa từ biến mất
+      await tester.enterText(keyField, '水晶宫');
+      await tester.pumpAndSettle();
+      expect(find.text('Xóa từ'), findsNothing);
+
+      final cancel = find.text('Hủy');
+      await tester.tap(cancel);
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 600));
+    },
+  );
+
+  testWidgets(
+    'Dialog VietPhrase tiếng Trung: hiện Hán Việt và Phát âm bên phải, đổi key thì cập nhật theo',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final mockData = _createMock(
+        vietPhraseEntries: {'重大': 'trọng đại'},
+        chinesePhienAmEntries: {'重': 'trọng', '大': 'đại'},
+        lacVietEntries: {
+          '重大': '[zhòngdà]\\n\\t trọng đại',
+          '重': '[chóng]\\n\\t trùng',
+          '大': '[dà]\\n\\t to lớn',
+          '美': '[měi]',
+          '丽': '[lì]',
+        },
+      );
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          dictionariesProvider.overrideWith(
+            () => MockDictionariesNotifier(mockData),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.read(currentModeProvider.notifier).state =
+          TranslationMode.chinese;
+      await container.read(dictionariesProvider.future);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: Scaffold(
+              body: Builder(
+                builder: (context) {
+                  return ElevatedButton(
+                    onPressed: () => showSharedEntryEditDialog(
+                      context,
+                      WidgetRefContext(context, container),
+                      word: '重大',
+                      kind: SharedDictionaryKind.vietPhrase,
+                    ),
+                    child: const Text('Open Dialog'),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      // Cả Hán Việt và Phát âm cùng hiển thị (phát âm có cả phrase và ghép khác nhau)
+      expect(find.text('Hán Việt: '), findsOneWidget);
+      expect(find.text('Trọng Đại'), findsOneWidget);
+      expect(find.text('Phát âm: '), findsOneWidget);
+      expect(find.text('zhòngdà (ghép: chóng dà)'), findsOneWidget);
+
+      // Đổi sang '美丽' (chỉ có phát âm ghép từ từng chữ)
+      final keyField = find.widgetWithText(TextField, 'Từ nguồn');
+      await tester.enterText(keyField, '美丽');
+      await tester.pumpAndSettle();
+      expect(find.text('Phát âm: '), findsOneWidget);
+      expect(find.text('měi lì'), findsOneWidget);
+
+      // Đổi sang chuỗi > 10 chữ -> bỏ qua ghép từng chữ, không có phát âm -> ẩn
+      await tester.enterText(keyField, '一二三四五六七八九十一');
+      await tester.pumpAndSettle();
+      expect(find.text('Phát âm: '), findsNothing);
+
+      final cancel = find.text('Hủy');
+      await tester.tap(cancel);
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 600));
+    },
+  );
+
+  testWidgets(
+    'Dialog VietPhrase tiếng Nhật: hiện Hán Việt và Phát âm bên phải (Sudachi / thuần kana)',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final mockData = _createMock(
+        vietPhraseEntries: {'学校': 'trường học'},
+        chinesePhienAmEntries: {'学': 'học', '校': 'hiệu'},
+        sudachiReadingsEntries: {'学校': 'がっこう'},
+      );
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          dictionariesProvider.overrideWith(
+            () => MockDictionariesNotifier(mockData),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.read(currentModeProvider.notifier).state =
+          TranslationMode.japanese;
+      await container.read(dictionariesProvider.future);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: Scaffold(
+              body: Builder(
+                builder: (context) {
+                  return ElevatedButton(
+                    onPressed: () => showSharedEntryEditDialog(
+                      context,
+                      WidgetRefContext(context, container),
+                      word: '学校',
+                      kind: SharedDictionaryKind.vietPhrase,
+                    ),
+                    child: const Text('Open Dialog'),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      // Hiện cả Hán Việt và Phát âm Sudachi
+      expect(find.text('Hán Việt: '), findsOneWidget);
+      expect(find.text('Học Hiệu'), findsOneWidget);
+      expect(find.text('Phát âm: '), findsOneWidget);
+      expect(find.text('がっこう'), findsOneWidget);
+
+      // Đổi sang thuần kana 'ありがとう' -> ẩn Hán Việt, phát âm hiện chính chuỗi kana
+      final keyField = find.widgetWithText(TextField, 'Từ nguồn');
+      await tester.enterText(keyField, 'ありがとう');
+      await tester.pumpAndSettle();
+      expect(find.text('Hán Việt: '), findsNothing);
+      expect(find.text('Phát âm: '), findsOneWidget);
+      expect(find.widgetWithText(SelectableText, 'ありがとう'), findsOneWidget);
+
+      final cancel = find.text('Hủy');
+      await tester.tap(cancel);
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 600));
+    },
+  );
+
+  testWidgets(
+    'Dialog Lạc Việt: từ chưa có trong Lạc Việt nhưng có trong VietPhrase -> tiêu đề "Thêm vào Lạc Việt", nút "Thêm từ", bấm "Thêm từ" thì lưu vào từ điển',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({
+        'dictionarySync.admin.username': 'admin',
+        'dictionarySync.admin.token': 'jwt-token',
+      });
+      final prefs = await SharedPreferences.getInstance();
+      final mockPaths = AppPaths(tempDir);
+      final mockData = _createMock(
+        vietPhraseEntries: {'再入荷': 'tái nhập hàng'},
+        lacVietEntries: const {},
+      );
+      final mockSyncController = MockDictionarySyncController();
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          appPathsProvider.overrideWith((ref) async => mockPaths),
+          dictionariesProvider.overrideWith(
+            () => MockDictionariesNotifier(mockData),
+          ),
+          dictionarySyncProvider.overrideWith(() => mockSyncController),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.read(currentModeProvider.notifier).state =
+          TranslationMode.japanese;
+      await container.read(dictionariesProvider.future);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: Scaffold(
+              body: Builder(
+                builder: (context) {
+                  return ElevatedButton(
+                    onPressed: () => showSharedEntryEditDialog(
+                      context,
+                      WidgetRefContext(context, container),
+                      word: '再入荷',
+                      kind: SharedDictionaryKind.lacViet,
+                    ),
+                    child: const Text('Open Dialog'),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      // Tiêu đề hiển thị "Thêm vào Lạc Việt"
+      expect(find.text('Thêm vào Lạc Việt'), findsOneWidget);
+      expect(find.text('Sửa vào Lạc Việt'), findsNothing);
+
+      // Nghĩa tự động lấy từ VietPhrase qua: 'tái nhập hàng'
+      expect(find.widgetWithText(TextField, 'tái nhập hàng'), findsOneWidget);
+
+      // Nút là "Thêm từ"
+      final addBtn = find.text('Thêm từ');
+      expect(addBtn, findsOneWidget);
+      expect(find.text('Lưu từ'), findsNothing);
+
+      // Bấm nút "Thêm từ" mà không cần sửa đổi gì
+      await tester.tap(addBtn);
+      await tester.pumpAndSettle();
+
+      // Phải thực hiện lưu và cập nhật từ điển (gọi stageLocalEdit với đúng thông tin)
+      expect(mockSyncController.lastStagedEntry, isNotNull);
+      expect(mockSyncController.lastStagedEntry?.source, '再入荷');
+      expect(mockSyncController.lastStagedEntry?.target, 'tái nhập hàng');
+      expect(
+        mockSyncController.lastStagedEntry?.kind,
+        SharedDictionaryKind.lacViet,
+      );
+      expect(mockSyncController.lastStagedMode, TranslationMode.japanese);
+
+      final syncState = container.read(dictionarySyncProvider);
+      expect(syncState.message, contains('Đã lưu Lạc Việt'));
+
+      await tester.pump(const Duration(milliseconds: 600));
+
+      await tester.pump(const Duration(milliseconds: 600));
+    },
+  );
+
+  testWidgets(
+    'Dialog Lạc Việt: đổi Từ nguồn sang từ đã có trong Lạc Việt thì nút tự đổi thành "Lưu từ", đổi lại từ chưa có thì thành "Thêm từ"',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({
+        'dictionarySync.admin.username': 'admin',
+        'dictionarySync.admin.token': 'jwt-token',
+      });
+      final prefs = await SharedPreferences.getInstance();
+      final mockPaths = AppPaths(tempDir);
+      final mockData = _createMock(
+        vietPhraseEntries: {'再入荷': 'tái nhập hàng'},
+        lacVietEntries: {'学校': 'trường học'},
+      );
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          appPathsProvider.overrideWith((ref) async => mockPaths),
+          dictionariesProvider.overrideWith(
+            () => MockDictionariesNotifier(mockData),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.read(currentModeProvider.notifier).state =
+          TranslationMode.japanese;
+      await container.read(dictionariesProvider.future);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: Scaffold(
+              body: Builder(
+                builder: (context) {
+                  return ElevatedButton(
+                    onPressed: () => showSharedEntryEditDialog(
+                      context,
+                      WidgetRefContext(context, container),
+                      word: '再入荷',
+                      kind: SharedDictionaryKind.lacViet,
+                    ),
+                    child: const Text('Open Dialog'),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      // Ban đầu: '再入荷' chưa có trong Lạc Việt -> nút 'Thêm từ'
+      expect(find.text('Thêm từ'), findsOneWidget);
+      expect(find.text('Lưu từ'), findsNothing);
+
+      // Đổi sang '学校' (đã có trong Lạc Việt) -> nút đổi thành 'Lưu từ'
+      final keyField = find.widgetWithText(TextField, 'Từ nguồn');
+      await tester.enterText(keyField, '学校');
+      await tester.pumpAndSettle();
+      expect(find.text('Lưu từ'), findsOneWidget);
+      expect(find.text('Thêm từ'), findsNothing);
+
+      // Đổi lại '再入荷' (chưa có trong Lạc Việt) -> nút đổi lại thành 'Thêm từ'
+      await tester.enterText(keyField, '再入荷');
+      await tester.pumpAndSettle();
+      expect(find.text('Thêm từ'), findsOneWidget);
+      expect(find.text('Lưu từ'), findsNothing);
+
+      final cancel = find.text('Hủy');
+      await tester.tap(cancel);
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 600));
+    },
+  );
+
+  testWidgets(
+    'Dialog UserDict: từ chưa có trong UserDict nhưng có trong VietPhrase -> tiêu đề "Thêm vào UserDict", nút "Thêm từ", bấm "Thêm từ" thì lưu vào UserDict',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final mockPaths = AppPaths(tempDir);
+      final mockData = _createMock(
+        vietPhraseEntries: {'再入荷': 'tái nhập hàng'},
+        userDictEntries: const {},
+      );
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          appPathsProvider.overrideWith((ref) async => mockPaths),
+          dictionariesProvider.overrideWith(
+            () => MockDictionariesNotifier(mockData),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.read(currentModeProvider.notifier).state =
+          TranslationMode.japanese;
+      await container.read(dictionariesProvider.future);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: Scaffold(
+              body: Builder(
+                builder: (context) {
+                  return ElevatedButton(
+                    onPressed: () => showEntryEditDialog(
+                      context,
+                      WidgetRefContext(context, container),
+                      word: '再入荷',
+                      toNames: false,
+                      title: 'Thêm vào UserDict',
+                    ),
+                    child: const Text('Open Dialog'),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      // Tiêu đề hiển thị "Thêm vào UserDict"
+      expect(find.text('Thêm vào UserDict'), findsOneWidget);
+      expect(find.text('Sửa vào UserDict'), findsNothing);
+
+      // Nút là "Thêm từ"
+      final addBtn = find.text('Thêm từ');
+      expect(addBtn, findsOneWidget);
+      expect(find.text('Lưu từ'), findsNothing);
+
+      // Bấm nút "Thêm từ" mà không cần sửa đổi gì
+      await tester.tap(addBtn);
+      await tester.pumpAndSettle();
+      for (var i = 0; i < 8; i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)),
+        );
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      await tester.pumpAndSettle();
+
+      // File UserDict.txt phải được ghi với từ mới
+      final userDictFile = File(
+        p.join(tempDir.path, 'dictionaries', 'UserDict.txt'),
+      );
+      await tester.runAsync(() async {
+        expect(await userDictFile.exists(), isTrue);
+        final content = await userDictFile.readAsString();
+        expect(content, contains('再入荷=tái nhập hàng'));
       });
 
       await tester.pump(const Duration(milliseconds: 600));

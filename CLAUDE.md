@@ -54,7 +54,8 @@ thành công. "Code chạy đúng" không phải bằng chứng.
    trên dữ liệu thật (VALUE KHÔNG ĐỔI 1 BYTE); đụng `app_theme.dart` ⇒
    `test/app_theme_test.dart` đang khoá invariant, cập nhật chứ không phá.
 4. **Rào chắn còn nguyên:** `"D:/Dev/conda-envs/py312/python.exe" .claude/guard_check.py`
-   trả `OK`, khi task đụng hàm nào nêu trong Bảng bẫy.
+   trả `OK`, khi task đụng hàm nào nêu trong Bảng bẫy. CI `.github/workflows/guard.yml`
+   chạy lại trên mỗi push.
 5. **Chạy artifact đã build** (`vietyaku.exe` / `.apk`) theo
    `.claude/SMOKE_TEST_CHECKLIST.md` và **xem bằng mắt** — không kết luận từ đọc code.
 

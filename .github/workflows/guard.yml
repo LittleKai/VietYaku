@@ -1,0 +1,14 @@
+# Rào chắn của Bảng bẫy (.claude/IMPORTANT_FIXED_BUGS.md) phải còn trong code.
+# Chỉ cần Python stdlib — không cài Flutter, không cần data/ (không commit).
+name: guard_check
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 .claude/guard_check.py

@@ -1,4 +1,5 @@
 import '../../dictionary/domain/dict_type.dart';
+import '../../dictionary_sync/data/shared_dictionary_service.dart';
 
 enum DictionarySearchMode { exactKey, prefixKey, wildcardKey, fullTextValue }
 
@@ -95,6 +96,7 @@ DictionarySearchResponse searchDictionaryLayers(
       continue;
     }
     for (final entry in layer.entries.entries) {
+      if (entry.value == SharedDictionaryService.deleteSentinel) continue;
       final matches = switch (query.mode) {
         DictionarySearchMode.exactKey => entry.key == needle,
         DictionarySearchMode.prefixKey => entry.key.startsWith(needle),

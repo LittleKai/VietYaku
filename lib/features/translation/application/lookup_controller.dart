@@ -524,5 +524,144 @@ String? hanVietReadingOf(LoadedDictionaries dicts, String text) {
 String _capitalizeFirst(String s) =>
     s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
 
+final _maziiReadingPattern = RegExp(r'「([^」]+)」');
+final _kanaOnlyPattern = RegExp(r'^[぀-ヿ\s]+$');
+
+String? _extractMaziiKanaReading(String value) {
+  final match = _maziiReadingPattern.firstMatch(value);
+  if (match != null) {
+    final text = match.group(1)!.trim();
+    if (_kanaOnlyPattern.hasMatch(text)) return text;
+  }
+  return null;
+}
+
+bool _isAllKanaText(String text) {
+  if (text.isEmpty) return false;
+  return _kanaOnlyPattern.hasMatch(text);
+}
+
+/// Phát âm của [text] (cụm được chọn):
+/// - Mode Nhật: SudachiReadings -> JaVi (kana) -> LacViet (romaji) -> Mazii.
+///   Nếu từ thuần kana mà chưa tra được thì trả về chính từ đó.
+/// - Mode Trung:
+///   + Phát âm cả cụm (nếu có trong LacViet hoặc CEDICT).
+///   + Phát âm kiểu ghép từ phát âm của từng chữ (nếu cụm <= [maxChineseRunes],
+///     mặc định 10; quá số từ này thì bỏ qua).
+///   + Kết hợp: nếu có cả hai và là cụm >= 2 chữ:
+///     `$phraseReading (ghép: $charReading)`
+///     Nếu chỉ có 1 trong 2: trả về phát âm đó.
+///     Nếu là 1 chữ đơn: trả về phát âm của chữ đó.
+String? entryPronunciationOf(
+  LoadedDictionaries dicts,
+  String text,
+  TranslationMode mode, {
+  SudachiReadingsMode sudachiMode = SudachiReadingsMode.sudachiFirst,
+  Trad2SimpTable? trad2simp,
+  int maxChineseRunes = 10,
+}) {
+  final trimmed = text.trim();
+  if (trimmed.isEmpty) return null;
+
+  if (mode == TranslationMode.japanese) {
+    String? reading;
+    if (sudachiMode == SudachiReadingsMode.sudachiFirst) {
+      reading = dicts.sudachiReadings.entries[trimmed];
+      reading ??= extractKanaReading(dicts.jaVi.entries[trimmed] ?? '')?.text;
+      reading ??= extractReading(dicts.lacViet.entries[trimmed] ?? '')?.text;
+      reading ??= _extractMaziiKanaReading(dicts.mazii.entries[trimmed] ?? '');
+    } else if (sudachiMode == SudachiReadingsMode.jaViFirst) {
+      reading = extractKanaReading(dicts.jaVi.entries[trimmed] ?? '')?.text;
+      reading ??= dicts.sudachiReadings.entries[trimmed];
+      reading ??= extractReading(dicts.lacViet.entries[trimmed] ?? '')?.text;
+      reading ??= _extractMaziiKanaReading(dicts.mazii.entries[trimmed] ?? '');
+    } else {
+      reading = extractKanaReading(dicts.jaVi.entries[trimmed] ?? '')?.text;
+      reading ??= extractReading(dicts.lacViet.entries[trimmed] ?? '')?.text;
+      reading ??= _extractMaziiKanaReading(dicts.mazii.entries[trimmed] ?? '');
+    }
+    if (reading != null && reading.isNotEmpty) return reading;
+    if (_isAllKanaText(trimmed)) return trimmed;
+    return null;
+  }
+
+  // Mode Trung
+  final runes = trimmed.runes.toList();
+  final len = runes.length;
+
+  // 1. Phát âm cả cụm (phrase reading)
+  String? phraseReading;
+  final lvEntry = dicts.lacViet.entries[trimmed] ??
+      (trad2simp != null
+          ? dicts.lacViet.entries[trad2simp.convert(trimmed)]
+          : null);
+  if (lvEntry != null) {
+    phraseReading = extractReading(lvEntry)?.text;
+  }
+  if (phraseReading == null || phraseReading.isEmpty) {
+    final cdEntry = dicts.cedict.entries[trimmed] ??
+        (trad2simp != null
+            ? dicts.cedict.entries[trad2simp.convert(trimmed)]
+            : null);
+    if (cdEntry != null) {
+      phraseReading = extractReading(cdEntry)?.text;
+    }
+  }
+
+  // 2. Phát âm kiểu ghép từ phát âm của từng chữ (char reading)
+  // "nếu cụm có quá nhiều từ thì bỏ qua"
+  String? charReading;
+  if (len <= maxChineseRunes) {
+    final parts = <String>[];
+    var hasHit = false;
+    for (final rune in runes) {
+      final ch = String.fromCharCode(rune);
+      if (isHanCodePoint(rune)) {
+        final lv = dicts.lacViet.entries[ch] ??
+            (trad2simp != null
+                ? dicts.lacViet.entries[trad2simp.convert(ch)]
+                : null);
+        var r = lv == null ? null : extractReading(lv)?.text;
+        if (r == null || r.isEmpty) {
+          final cd = dicts.cedict.entries[ch] ??
+              (trad2simp != null
+                  ? dicts.cedict.entries[trad2simp.convert(ch)]
+                  : null);
+          r = cd == null ? null : extractReading(cd)?.text;
+        }
+        if (r != null && r.isNotEmpty) {
+          parts.add(r);
+          hasHit = true;
+        } else {
+          parts.add(ch);
+        }
+      } else if (ch.trim().isNotEmpty) {
+        parts.add(ch);
+      }
+    }
+    if (hasHit) {
+      charReading = parts.join(' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+    }
+  }
+
+  // 3. Kết hợp kết quả
+  if (phraseReading != null && phraseReading.isNotEmpty) {
+    if (charReading != null && charReading.isNotEmpty && len >= 2) {
+      final normPhrase =
+          phraseReading.toLowerCase().replaceAll(RegExp(r"['\s\-]"), '');
+      final normChar =
+          charReading.toLowerCase().replaceAll(RegExp(r"['\s\-]"), '');
+      if (normPhrase != normChar) {
+        return '$phraseReading (ghép: $charReading)';
+      }
+      return phraseReading;
+    }
+    return phraseReading;
+  }
+
+  return charReading;
+}
+
 final lookupControllerProvider =
     NotifierProvider<LookupController, LookupResult?>(LookupController.new);
+

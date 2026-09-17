@@ -7,7 +7,7 @@ import '../../translation/domain/translation_engine.dart';
 import '../domain/shared_dictionary_entry.dart';
 
 class SharedDictionaryService {
-  static const _deleteSentinel = '\x7F__DELETE__';
+  static const deleteSentinel = '\x7F__DELETE__';
   final AppPaths paths;
 
   SharedDictionaryService(this.paths);
@@ -45,12 +45,7 @@ class SharedDictionaryService {
     for (final kind in SharedDictionaryKind.values) {
       final ofKind = entries.where((entry) => entry.kind == kind).toList();
       if (ofKind.isEmpty) continue;
-      final pendingOfKind = ofKind.map((e) => e.isDelete ? SharedDictionaryEntry(
-        kind: e.kind,
-        source: e.source,
-        target: _deleteSentinel,
-      ) : e).toList();
-      await _applyEntries(pendingFileFor(mode, kind), pendingOfKind);
+      await _applyEntries(pendingFileFor(mode, kind), ofKind);
     }
     await applyDelta(mode, entries);
   }
@@ -63,7 +58,7 @@ class SharedDictionaryService {
       final values = await _read(pendingFileFor(mode, kind));
       result.addAll(
         values.entries.map(
-          (entry) => entry.value == _deleteSentinel
+          (entry) => entry.value == deleteSentinel
               ? SharedDictionaryEntry(
                   kind: kind,
                   source: entry.key,
@@ -78,6 +73,14 @@ class SharedDictionaryService {
       );
     }
     return result;
+  }
+
+  /// Đảm bảo mọi sửa đổi/xóa đang chờ trong Pending file đã được áp dụng
+  /// vào Shared file tương ứng.
+  Future<int> replayPending(TranslationMode mode) async {
+    final pending = await pendingEntries(mode);
+    if (pending.isEmpty) return 0;
+    return applyDelta(mode, pending);
   }
 
   Future<void> clearPending(TranslationMode mode) async {
@@ -109,7 +112,10 @@ class SharedDictionaryService {
     var changed = 0;
     for (final entry in entries) {
       if (entry.isDelete) {
-        if (values.remove(entry.source) != null) changed++;
+        if (values[entry.source] != deleteSentinel) {
+          values[entry.source] = deleteSentinel;
+          changed++;
+        }
       } else {
         if (values[entry.source] == entry.target) continue;
         values[entry.source] = entry.target;

@@ -95,14 +95,31 @@ LoadResult loadDictionarySync({
   final cacheFile = File(cachePath);
   if (cacheFile.existsSync()) {
     final cacheBytes = cacheFile.readAsBytesSync();
+    final cacheMtimeMs = cacheFile.lastModifiedSync().millisecondsSinceEpoch;
     if (BinaryCache.isValid(
       cacheBytes,
       srcSize: srcSize,
       srcMtimeMs: srcMtimeMs,
+      cacheMtimeMs: cacheMtimeMs,
       readSrcBytes: readSrcBytes,
     )) {
       final entries = BinaryCache.decode(cacheBytes);
       if (entries != null) {
+        // Cache ghi cùng lúc với nguồn (vd. seed Android rồi parse ngay) nên
+        // vừa phải hash. Nguồn nay đã đủ cũ: đóng dấu lại cache để lần sau đi
+        // đường mtime, khỏi đọc và hash lại cả file lớn.
+        final nowMs = DateTime.now().millisecondsSinceEpoch;
+        if (!BinaryCache.trustsMtime(
+              srcMtimeMs: srcMtimeMs,
+              cacheMtimeMs: cacheMtimeMs,
+            ) &&
+            srcMtimeMs + BinaryCache.mtimeSlackMs <= nowMs) {
+          try {
+            cacheFile.setLastModifiedSync(DateTime.now());
+          } on FileSystemException {
+            // Không đóng dấu được thì lần sau hash tiếp, vẫn đúng.
+          }
+        }
         return LoadResult(
           PhraseDictionary(type, entries),
           fromCache: true,

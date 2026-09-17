@@ -850,6 +850,7 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
               ref,
               word: word,
               kind: SharedDictionaryKind.vietPhrase,
+              title: '${verb(vpMeaning != null)} vào VietPhrase',
             );
           },
         ),
@@ -864,6 +865,7 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
               ref,
               word: word,
               kind: SharedDictionaryKind.lacViet,
+              title: '${verb(lacVietMeaning != null)} vào Lạc Việt',
             );
           },
         ),

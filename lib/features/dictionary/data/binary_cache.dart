@@ -86,16 +86,33 @@ class BinaryCache {
   ///
   /// So size trước; size khớp mà mtime lệch mới tính FNV-1a của nguồn
   /// (Google Drive sync hay đổi mtime dù nội dung y nguyên).
+  ///
+  /// mtime trùng chỉ được tin khi nguồn đã cũ hơn file cache ít nhất
+  /// [mtimeSlackMs] — Windows trả mtime làm tròn giây, nên một lần ghi lại
+  /// cùng giây, cùng kích thước sẽ giữ y mtime mà nội dung đã khác.
   static bool isValid(
     Uint8List cacheBytes, {
     required int srcSize,
     required int srcMtimeMs,
+    required int cacheMtimeMs,
     required Uint8List Function() readSrcBytes,
   }) {
     final header = readHeader(cacheBytes);
     if (header == null) return false;
     if (header.srcSize != srcSize) return false;
-    if (header.srcMtimeMs == srcMtimeMs) return true;
+    if (header.srcMtimeMs == srcMtimeMs &&
+        trustsMtime(srcMtimeMs: srcMtimeMs, cacheMtimeMs: cacheMtimeMs)) {
+      return true;
+    }
     return fnv1a64(readSrcBytes()) == header.srcHash;
   }
+
+  /// Khoảng an toàn cho mtime làm tròn giây (và lệch đồng hồ ghi file).
+  static const int mtimeSlackMs = 2000;
+
+  /// Mọi lần ghi nguồn SAU khi cache được ghi đều mang mtime khác header.
+  static bool trustsMtime({
+    required int srcMtimeMs,
+    required int cacheMtimeMs,
+  }) => srcMtimeMs + mtimeSlackMs <= cacheMtimeMs;
 }

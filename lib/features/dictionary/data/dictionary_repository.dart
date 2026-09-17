@@ -5,10 +5,12 @@ import 'package:path/path.dart' as p;
 import '../../../core/app_paths.dart';
 import '../../../core/concurrency.dart';
 import '../../dictionary_search/domain/dictionary_search.dart';
+import '../../dictionary_sync/data/shared_dictionary_service.dart';
 import '../../translation/domain/trad2simp_table.dart';
 import '../../translation/domain/translation_engine.dart';
 import '../../translation/domain/translation_rule.dart';
 import '../domain/dict_type.dart';
+import '../domain/japanese_variant_index.dart';
 import '../domain/phrase_dictionary.dart';
 import 'dictionary_loader.dart';
 import 'japanese_variant_loader.dart';
@@ -53,6 +55,10 @@ class LoadedDictionaries {
   /// fromCache + thời gian load từng dict (log/hiển thị).
   final Map<DictType, ({bool fromCache, int elapsedMs})> stats;
 
+  /// Phần nặng đã nạp, truyền lại vào `loadAll(base:)` để sửa một từ chỉ phải
+  /// đọc lại các file overlay nhỏ. Null với bộ dict dựng tay (test).
+  final DictionaryBase? base;
+
   LoadedDictionaries({
     required this.userDict,
     required this.names,
@@ -74,6 +80,7 @@ class LoadedDictionaries {
     TranslationRuleEngine? ruleEngine,
     this.searchLayers = const [],
     required this.stats,
+    this.base,
   }) : mazii = mazii ?? PhraseDictionary(DictType.mazii, const {}),
        onlineDict =
            onlineDict ?? PhraseDictionary(DictType.onlineDict, const {}),
@@ -119,6 +126,18 @@ class LoadedDictionaries {
   /// Engine phiên âm Hán Việt toàn văn (tab Hán Việt).
   TranslationEngine get hanVietEngine =>
       TranslationEngine(dicts: const [], hanVietFallback: chinesePhienAm);
+}
+
+/// Các dict nguồn lớn (VietPhrase/Lạc Việt/Mazii/JaVi… gốc, Sudachi, LuatNhan)
+/// cùng nhóm biến thể Sudachi — lúc app chạy không có thao tác sửa từ nào ghi
+/// vào chúng, nên nạp lại sau khi sửa một từ được phép dùng lại bản trong RAM.
+/// Repair ghi `*_JP.txt` ⇒ KHÔNG được dùng lại, phải nạp toàn bộ.
+class DictionaryBase {
+  final List<LoadResult> _results;
+  final JapaneseVariantIndex? _variantIndex;
+  final RuleDocument<PersonTranslationRule> _personRules;
+
+  DictionaryBase._(this._results, this._variantIndex, this._personRules);
 }
 
 class DictionaryRepository {
@@ -173,7 +192,12 @@ class DictionaryRepository {
     bool useSudachiVariants = true,
     Trad2SimpTable? trad2simp,
     String? generatedDir,
+    DictionaryBase? base,
   }) async {
+    // Áp dụng mọi mục pending (bao gồm cả các từ đã xóa) vào file Shared trước khi nạp.
+    final sharedService = SharedDictionaryService(paths);
+    await sharedService.replayPending(mode);
+
     // Bộ dict đã quy giản dùng cache riêng; chữ ký bảng nằm trong tên file nên
     // sinh lại trad2simp.tsv là cache cũ tự bị bỏ qua.
     final cacheVariant = trad2simp == null ? '' : 'simp${trad2simp.signature}';
@@ -202,37 +226,50 @@ class DictionaryRepository {
       return loadPath(type, source);
     }
 
+    // Dict nền: có `base` thì lấy lại kết quả cũ theo đúng chỉ số, không đọc đĩa.
+    Future<LoadResult> Function() fromBase(
+      int index,
+      Future<LoadResult> Function() loader,
+    ) => base == null ? loader : () async => base._results[index];
+
     // Dựng index biến thể mất vài giây; chạy song song với các dict để không
     // cộng thẳng vào thời gian mở app.
-    final variantIndexFuture =
-        mode == TranslationMode.japanese && useSudachiVariants
+    final Future<JapaneseVariantIndex?> variantIndexFuture = base != null
+        ? Future.value(base._variantIndex)
+        : mode == TranslationMode.japanese && useSudachiVariants
         ? loadJapaneseVariantIndex(sudachiPath('SudachiVariantGroups.txt'))
-        : null;
+        : Future.value(null);
 
     // Mobile: 20 isolate cùng lúc = 20 bộ (bytes nguồn + map đã parse) nằm
     // trong RAM một lúc → vượt heap Android. Chạy tối đa 2; desktop giữ nguyên
     // song song hết. Thứ tự kết quả không đổi nên các chỉ số bên dưới vẫn đúng.
     final results = await runWithConcurrency<LoadResult>([
       () => load(DictType.userDict), // 0
-      () => load(DictType.names), // 1
-      () => load(DictType.vietPhrase), // 2
-      () => load(DictType.lacViet), // 3
-      () => load(DictType.chinesePhienAm), // 4
-      () => load(DictType.pronouns), // 5
-      () => load(DictType.babylon), // 6
-      () => load(DictType.thieuChuu), // 7
-      () => load(DictType.cedict), // 8
-      () => load(DictType.chinesePhienAmEnglish), // 9
-      () => load(DictType.jaVi), // 10
-      () => load(DictType.zhVi), // 11
+      fromBase(1, () => load(DictType.names)), // 1
+      fromBase(2, () => load(DictType.vietPhrase)), // 2
+      fromBase(3, () => load(DictType.lacViet)), // 3
+      fromBase(4, () => load(DictType.chinesePhienAm)), // 4
+      fromBase(5, () => load(DictType.pronouns)), // 5
+      fromBase(6, () => load(DictType.babylon)), // 6
+      fromBase(7, () => load(DictType.thieuChuu)), // 7
+      fromBase(8, () => load(DictType.cedict)), // 8
+      fromBase(9, () => load(DictType.chinesePhienAmEnglish)), // 9
+      fromBase(10, () => load(DictType.jaVi)), // 10
+      fromBase(11, () => load(DictType.zhVi)), // 11
       () => loadPath(DictType.names, userNamesPath), // 12 (overlay "Thêm vào Names")
       () => loadPath(DictType.vietPhrase, sharedVietPhrasePath(mode)), // 13
       () => loadPath(DictType.lacViet, sharedLacVietPath(mode)), // 14
-      () => useSudachiVariants
-          ? loadPath(DictType.vietPhrase, sudachiPath('SudachiVariants.txt'))
-          : emptyResult(DictType.vietPhrase), // 15
-      () => loadPath(DictType.jaVi, sudachiPath('SudachiReadings.txt')), // 16
-      () => load(DictType.mazii), // 17
+      fromBase(
+        15,
+        () => useSudachiVariants
+            ? loadPath(DictType.vietPhrase, sudachiPath('SudachiVariants.txt'))
+            : emptyResult(DictType.vietPhrase),
+      ), // 15
+      fromBase(
+        16,
+        () => loadPath(DictType.jaVi, sudachiPath('SudachiReadings.txt')),
+      ), // 16
+      fromBase(17, () => load(DictType.mazii)), // 17
       () => loadPath(DictType.onlineDict, onlineDictPath(mode)), // 18
       () => loadPath(DictType.aiDict, aiDictPath(mode)), // 19
       () => loadPath(DictType.aiEntries, aiEntriesPath(mode)), // 20
@@ -277,13 +314,17 @@ class DictionaryRepository {
       );
     }
 
-    final personRuleFile = File(
-      p.join(p.dirname(dictPaths[DictType.vietPhrase]!), 'LuatNhan.txt'),
-    );
-    final personRuleSource = await personRuleFile.exists()
-        ? await personRuleFile.readAsString()
-        : '';
-    final personRules = parsePersonRules(personRuleSource);
+    Future<RuleDocument<PersonTranslationRule>> loadPersonRules() async {
+      final personRuleFile = File(
+        p.join(p.dirname(dictPaths[DictType.vietPhrase]!), 'LuatNhan.txt'),
+      );
+      final personRuleSource = await personRuleFile.exists()
+          ? await personRuleFile.readAsString()
+          : '';
+      return parsePersonRules(personRuleSource);
+    }
+
+    final personRules = base?._personRules ?? await loadPersonRules();
 
     // Từ điển sinh khi tra: bản dùng chung (data/<lang>/generated) nằm dưới,
     // mục cá nhân trong userdata đè lên khi trùng key.
@@ -327,7 +368,7 @@ class DictionaryRepository {
         ...vietPhrase.entries,
         ...vietPhraseOverlay.entries,
         ...sharedVietPhrase.entries,
-      });
+      }..removeWhere((k, v) => v == SharedDictionaryService.deleteSentinel));
     }
 
     var lacViet = results[3].dictionary;
@@ -336,7 +377,7 @@ class DictionaryRepository {
       lacViet = PhraseDictionary(DictType.lacViet, {
         ...lacViet.entries,
         ...sharedLacViet.entries,
-      });
+      }..removeWhere((k, v) => v == SharedDictionaryService.deleteSentinel));
     }
 
     final onlineDict = mergeGenerated(
@@ -474,6 +515,7 @@ class DictionaryRepository {
           elapsedMs: results[19].elapsedMs,
         ),
       },
+      base: DictionaryBase._(results, variantIndex, personRules),
     );
   }
 }

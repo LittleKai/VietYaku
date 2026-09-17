@@ -176,7 +176,7 @@ class RepairController extends Notifier<RepairState> {
   /// Nạp dict đã sửa vào app (reload toàn bộ providers).
   Future<void> loadIntoApp() async {
     if (state.exportedPath == null) await export();
-    await ref.read(dictionariesProvider.notifier).reload();
+    await ref.read(dictionariesProvider.notifier).reloadAll();
   }
 }
 

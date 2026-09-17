@@ -166,7 +166,7 @@ group('repairFile (test case bắt buộc, nguyên văn dữ liệu thật)', ()
 | Bất biến VALUE KHÔNG ĐỔI 1 BYTE của repair | `test/repair_pipeline_test.dart` + `dart run tool/export_jp.dart` |
 | Invariant theme (nhãn chip resolve theo trạng thái, tương phản) | `test/app_theme_test.dart` |
 | Bảng `trad2simp.tsv` không có cặp ngược chiều / quy nhầm | `test/trad2simp_test.dart` |
-| Rào chắn nêu trong Bảng bẫy còn tồn tại | `.claude/guard_check.py` |
+| Rào chắn nêu trong Bảng bẫy còn tồn tại | `.claude/guard_check.py` — GitHub Actions `.github/workflows/guard.yml` chạy trên mỗi push/PR |
 
 > Thêm được một dòng vào bảng này ⇒ xoá dòng văn xuôi tương ứng ở trên. Đó là
 > **cửa ra** của file này: còn viết bằng chữ nghĩa là chưa cưỡng chế được.

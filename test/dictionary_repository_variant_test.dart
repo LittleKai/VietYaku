@@ -126,4 +126,75 @@ void main() {
     expect(loaded.vietPhrase.entries['吞み込ま'], 'nuốt chửng');
     expect(loaded.vietPhrase.entries['のみこま'], isNull);
   });
+
+  group('nạp lại tái dùng phần nền (sửa một từ)', () {
+    Map<String, Map<String, String>> snapshot(LoadedDictionaries d) => {
+      'userDict': d.userDict.entries,
+      'names': d.names.entries,
+      'vietPhrase': d.vietPhrase.entries,
+      'lacViet': d.lacViet.entries,
+      'aiEntries': d.aiEntries.entries,
+      for (final layer in d.searchLayers) 'layer:${layer.id}': layer.entries,
+    };
+
+    test('kết quả giống hệt nạp lại toàn bộ sau khi sửa overlay', () async {
+      File(p.join(dataDir.path, 'VietPhrase.txt'))
+          .writeAsStringSync('扱い=xử lý\r\n吞み込ま=gốc\r\n');
+      final repo = DictionaryRepository(paths);
+      final first = await repo.loadAll(
+        dictPaths,
+        mode: TranslationMode.japanese,
+      );
+      expect(first.base, isNotNull);
+
+      // Mô phỏng thêm từ UserDict, UserNames và ghi đè/xóa ở dict chung.
+      File(p.join(paths.dictionariesDir.path, 'UserDict.txt'))
+          .writeAsStringSync('﻿扱い切れ=xử lý được\r\n切れ=đứt\r\n');
+      File(p.join(paths.dictionariesDir.path, 'UserNames.txt'))
+          .writeAsStringSync('太郎=Taro\r\n');
+      File(
+        p.join(paths.dictionariesDir.path, 'SharedVietPhrase_japanese.txt'),
+      ).writeAsStringSync('吞み込ま=nuốt\r\n扱い=\x7F__DELETE__\r\n');
+
+      final reused = await repo.loadAll(
+        dictPaths,
+        mode: TranslationMode.japanese,
+        base: first.base,
+      );
+      final fresh = await repo.loadAll(
+        dictPaths,
+        mode: TranslationMode.japanese,
+      );
+
+      expect(snapshot(reused), snapshot(fresh));
+      expect(reused.userDict.entries['切れ'], 'đứt');
+      expect(reused.names.entries['太郎'], 'Taro');
+      expect(reused.vietPhrase.entries['のみこま'], 'nuốt');
+      expect(reused.vietPhrase.entries.containsKey('扱い'), isFalse);
+    });
+
+    test('không đọc lại file nền và nhóm biến thể Sudachi', () async {
+      final repo = DictionaryRepository(paths);
+      final first = await repo.loadAll(
+        dictPaths,
+        mode: TranslationMode.japanese,
+      );
+
+      File(p.join(dataDir.path, 'VietPhrase.txt'))
+          .writeAsStringSync('新しい=mới\r\n');
+      File(p.join(dataDir.path, 'SudachiVariantGroups.txt')).deleteSync();
+      File(p.join(paths.dictionariesDir.path, 'UserDict.txt'))
+          .writeAsStringSync('﻿扱い切れ=xử lý nổi\r\n');
+
+      final reused = await repo.loadAll(
+        dictPaths,
+        mode: TranslationMode.japanese,
+        base: first.base,
+      );
+
+      expect(reused.vietPhrase.entries['新しい'], isNull);
+      // Nhóm biến thể lấy từ bộ nhớ nên alias động vẫn sinh được.
+      expect(reused.userDict.entries['あつかいきれ'], 'xử lý nổi');
+    });
+  });
 }

@@ -284,5 +284,109 @@ void main() {
       expect(loaded.lacViet.entries['学校'], 'Lạc Việt chung');
       expect(loaded.userDict.entries['学校'], isNull);
     });
+
+    test('xóa mục lưu sentinel vào pending và shared, pendingEntries trả về operation delete', () async {
+      const deleteEntry = SharedDictionaryEntry(
+        kind: SharedDictionaryKind.vietPhrase,
+        source: 'こくり',
+        operation: EntryOperation.delete,
+      );
+      await service.stageLocalEdit(TranslationMode.japanese, deleteEntry);
+
+      final pending = await service.pendingEntries(TranslationMode.japanese);
+      expect(pending, hasLength(1));
+      expect(pending.single.source, 'こくり');
+      expect(pending.single.isDelete, isTrue);
+
+      final sharedFile = service.fileFor(
+        TranslationMode.japanese,
+        SharedDictionaryKind.vietPhrase,
+      );
+      final sharedEntries = parseEntries(sharedFile.readAsStringSync());
+      expect(sharedEntries['こくり'], SharedDictionaryService.deleteSentinel);
+    });
+
+    test('repository loại bỏ từ đã bị xóa khỏi VietPhrase và Lạc Việt kể cả khi có trong file gốc', () async {
+      final dataDir = Directory(p.join(temp.path, 'data'))
+        ..createSync(recursive: true);
+      final dictPaths = <DictType, String>{};
+      for (final entry in dictFileNames.entries) {
+        final file = File(p.join(dataDir.path, entry.value));
+        file.writeAsStringSync('');
+        dictPaths[entry.key] = file.path;
+      }
+      File(
+        dictPaths[DictType.vietPhrase]!,
+      ).writeAsStringSync('\uFEFFこくり=gật đầu\r\n学校=trường học\r\n');
+      File(
+        dictPaths[DictType.lacViet]!,
+      ).writeAsStringSync('\uFEFFこくり=gật đầu (Lạc Việt)\r\n');
+
+      // Admin xóa こくり khỏi cả VietPhrase lẫn Lạc Việt
+      await service.stageLocalEdit(
+        TranslationMode.japanese,
+        const SharedDictionaryEntry(
+          kind: SharedDictionaryKind.vietPhrase,
+          source: 'こくり',
+          operation: EntryOperation.delete,
+        ),
+      );
+      await service.stageLocalEdit(
+        TranslationMode.japanese,
+        const SharedDictionaryEntry(
+          kind: SharedDictionaryKind.lacViet,
+          source: 'こくり',
+          operation: EntryOperation.delete,
+        ),
+      );
+
+      final loaded = await DictionaryRepository(
+        AppPaths(temp),
+      ).loadAll(dictPaths, mode: TranslationMode.japanese);
+
+      // こくり phải bị loại hoàn toàn khỏi vietPhrase và lacViet
+      expect(loaded.vietPhrase.entries['こくり'], isNull);
+      expect(loaded.lacViet.entries['こくり'], isNull);
+      // Từ khác trong file gốc vẫn hoạt động bình thường
+      expect(loaded.vietPhrase.entries['学校'], 'trường học');
+    });
+
+    test('replayPending tự động đồng bộ các xóa còn chờ vào file Shared khi nạp', () async {
+      final dataDir = Directory(p.join(temp.path, 'data'))
+        ..createSync(recursive: true);
+      final dictPaths = <DictType, String>{};
+      for (final entry in dictFileNames.entries) {
+        final file = File(p.join(dataDir.path, entry.value));
+        file.writeAsStringSync('');
+        dictPaths[entry.key] = file.path;
+      }
+      File(
+        dictPaths[DictType.vietPhrase]!,
+      ).writeAsStringSync('\uFEFFこくり=gật đầu\r\n');
+
+      // Giả lập tình huống PendingVietPhrase đã ghi delete sentinel trước đó
+      // nhưng SharedVietPhrase chưa được áp dụng (như tình trạng dữ liệu cũ).
+      final pendingFile = service.pendingFileFor(
+        TranslationMode.japanese,
+        SharedDictionaryKind.vietPhrase,
+      )..parent.createSync(recursive: true);
+      pendingFile.writeAsStringSync(
+        '\uFEFFこくり=${SharedDictionaryService.deleteSentinel}\r\n',
+      );
+
+      // loadAll sẽ tự động gọi replayPending và che đi こくり
+      final loaded = await DictionaryRepository(
+        AppPaths(temp),
+      ).loadAll(dictPaths, mode: TranslationMode.japanese);
+
+      expect(loaded.vietPhrase.entries['こくり'], isNull);
+
+      final sharedFile = service.fileFor(
+        TranslationMode.japanese,
+        SharedDictionaryKind.vietPhrase,
+      );
+      final sharedEntries = parseEntries(sharedFile.readAsStringSync());
+      expect(sharedEntries['こくり'], SharedDictionaryService.deleteSentinel);
+    });
   });
 }

@@ -46,6 +46,14 @@ class LacVietPanel extends ConsumerWidget {
       layout,
       hiddenTypes,
     );
+    final dicts = ref.watch(dictionariesProvider).valueOrNull;
+    final existsInVp = dicts != null &&
+        result != null &&
+        (dicts.vietPhrase.entries[result.word]?.trim().isNotEmpty == true);
+    final existsInUser = dicts != null &&
+        result != null &&
+        (dicts.userDict.entries[result.word]?.trim().isNotEmpty == true);
+    final existsInTarget = isAdmin ? existsInVp : existsInUser;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -124,26 +132,38 @@ class LacVietPanel extends ConsumerWidget {
                 ),
                 IconButton(
                   icon: Icon(
-                    Icons.edit_note_rounded,
+                    existsInTarget
+                        ? Icons.edit_note_rounded
+                        : Icons.post_add_rounded,
                     color: isDark
                         ? const Color(0xFFFFB74D)
                         : const Color(0xFFE65100),
                   ),
                   tooltip: isAdmin
-                      ? 'Sửa trực tiếp trong VietPhrase'
-                      : 'Sửa nghĩa trong UserDict',
+                      ? (existsInVp
+                          ? 'Sửa vào VietPhrase'
+                          : 'Thêm vào VietPhrase')
+                      : (existsInUser
+                          ? 'Sửa vào UserDict'
+                          : 'Thêm vào UserDict'),
                   onPressed: () => isAdmin
                       ? showSharedEntryEditDialog(
                           context,
                           ref,
                           word: result.word,
                           kind: SharedDictionaryKind.vietPhrase,
+                          title: existsInVp
+                              ? 'Sửa vào VietPhrase'
+                              : 'Thêm vào VietPhrase',
                         )
                       : showEntryEditDialog(
                           context,
                           ref,
                           word: result.word,
                           toNames: false,
+                          title: existsInUser
+                              ? 'Sửa vào UserDict'
+                              : 'Thêm vào UserDict',
                         ),
                 ),
               ],

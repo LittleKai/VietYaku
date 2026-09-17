@@ -404,6 +404,7 @@ class _SourcePaneState extends ConsumerState<SourcePane> {
                   ref,
                   word: selection,
                   kind: SharedDictionaryKind.vietPhrase,
+                  title: '${verb(vpMeaning != null)} vào VietPhrase',
                 );
               },
             ),
@@ -418,6 +419,7 @@ class _SourcePaneState extends ConsumerState<SourcePane> {
                   ref,
                   word: selection,
                   kind: SharedDictionaryKind.lacViet,
+                  title: '${verb(lacVietMeaning != null)} vào Lạc Việt',
                 );
               },
             ),

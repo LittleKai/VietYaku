@@ -141,3 +141,30 @@
 - **Fix:** Khai báo `INTERNET` trong `src/main/AndroidManifest.xml`. Kèm theo: `android:largeHeap="true"` (bộ dict ~700k entry vượt heap mặc định) và `android:networkSecurityConfig` mở cleartext riêng cho `localhost`/`127.0.0.1`/`10.0.2.2` để test server dev.
 - **Do Not Repeat:** Đừng bao giờ suy ra quyền Android từ việc chạy debug. Sau khi build release, verify bằng `aapt2 dump permissions <apk>` — phải thấy đủ `INTERNET` + `REQUEST_INSTALL_PACKAGES`.
 - **Related Files:** `android/app/src/main/AndroidManifest.xml`, `android/app/src/main/res/xml/network_security_config.xml`
+
+### Xóa từ khỏi VietPhrase/Lạc Việt không mất từ trong từ điển nạp
+
+*Đã có rào chắn: `shared_dictionary_service.dart::deleteSentinel` + `shared_dictionary_service.dart::replayPending`. Giữ lại đây để biết vì sao hàm đó tồn tại — không làm theo hướng dẫn thủ công bên dưới nữa.*
+
+**Triệu chứng:** Người dùng/admin nhấn "Xóa từ" với một từ đã có trong từ điển gốc (ví dụ `こくり` trong VietPhrase), hộp thoại xác nhận báo xóa thành công và ghi nhận vào hàng đợi Pending, nhưng từ vẫn được dịch bình thường, mở lại dialog vẫn hiện từ, và khởi động lại app từ vẫn còn nguyên.
+
+**Nguyên nhân:**
+1. `_applyEntries` khi gặp thao tác `delete` trước đây chỉ gọi `values.remove(entry.source)` trên `SharedVietPhrase_<mode>.txt`. Do các từ gốc nằm trong `VietPhrase.txt` (bộ từ điển bundle), `remove()` trên Shared không tìm thấy key nên không ghi gì. Kể cả khi có trong Shared thì việc gỡ bỏ chỉ làm lộ lại nghĩa trong file gốc `VietPhrase.txt`.
+2. `DictionaryRepository.loadAll` khi merge các lớp từ điển (`sudachiVariants`, `vietPhrase`, `vietPhraseOverlay`, `sharedVietPhrase`) không có cơ chế lọc bỏ tombstone/sentinel đã xóa, khiến từ điển gốc luôn cung cấp nghĩa cho từ.
+
+**Sửa:**
+1. `SharedDictionaryService` ghi nhận sentinel `\x7F__DELETE__` (`deleteSentinel`) vào cả `Pending` và `Shared` file khi `entry.isDelete`.
+2. `DictionaryRepository.loadAll` thực hiện `replayPending` để tự động bảo đảm mọi mục pending xóa được áp dụng vào Shared, đồng thời sau khi merge `vietPhrase` và `lacViet` sẽ chạy `..removeWhere((k, v) => v == SharedDictionaryService.deleteSentinel)` để loại bỏ hoàn toàn các từ đã bị xóa.
+3. Search Center và dialog sửa từ bỏ qua các entry mang giá trị `deleteSentinel`.
+
+**Bài học:** Khi kiến trúc từ điển dùng nhiều lớp overlay (Shared đè lên Base), việc "xóa" một mục từ điển không thể chỉ là xóa key khỏi overlay trên cùng — overlay bắt buộc phải lưu tombstone (sentinel xóa) để che đi các tầng bên dưới.
+
+### Sửa từ cùng độ dài trong vòng 1 giây ⇒ cache `.vydc` trả nghĩa cũ
+
+*Đã có rào chắn: `binary_cache.dart::trustsMtime`. Giữ lại đây để biết vì sao hàm đó tồn tại — không làm theo hướng dẫn thủ công bên dưới nữa.*
+
+- **Symptom:** Ghi lại một file overlay (UserDict, Shared*, …) với nội dung khác nhưng **cùng số byte** (`xử lý` → `xử lí`) trong cùng giây với lần ghi trước, `reload()` vẫn ra nghĩa cũ. Lộ ra khi `reload()` chỉ còn ~130ms nên sửa liên tiếp đủ nhanh; test ghi file dồn dập cũng dính.
+- **Root Cause:** Dart trên Windows trả `FileStat.modified` làm tròn giây. `BinaryCache.isValid` coi `size` + `mtime` trùng header là hợp lệ, bỏ qua hash — hai lần ghi cùng giây, cùng size không phân biệt được.
+- **Fix:** Chỉ tin mtime khi nguồn cũ hơn chính file cache ≥ `mtimeSlackMs` (2s); còn lại hash FNV-1a. Nguồn đã cũ mà vẫn phải hash (cache ghi cùng lúc nguồn, vd. seed Android) thì `loadDictionarySync` đóng dấu lại mtime file cache để lần sau đi đường nhanh.
+- **Do Not Repeat:** Đừng dùng mtime làm bằng chứng "nội dung không đổi" khi file có thể vừa được ghi — độ phân giải mtime phụ thuộc hệ điều hành/filesystem.
+- **Related Files:** `lib/features/dictionary/data/binary_cache.dart`, `lib/features/dictionary/data/dictionary_loader.dart`, `test/binary_cache_test.dart`

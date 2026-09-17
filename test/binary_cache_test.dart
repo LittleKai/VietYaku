@@ -65,6 +65,7 @@ void main() {
         bytes,
         srcSize: 100,
         srcMtimeMs: 50,
+        cacheMtimeMs: 50 + BinaryCache.mtimeSlackMs,
         readSrcBytes: () {
           hashed = true;
           return Uint8List(0);
@@ -86,6 +87,7 @@ void main() {
           bytes,
           srcSize: 101,
           srcMtimeMs: 50,
+          cacheMtimeMs: 50 + BinaryCache.mtimeSlackMs,
           readSrcBytes: () => Uint8List(0),
         ),
         isFalse,
@@ -105,6 +107,7 @@ void main() {
           bytes,
           srcSize: srcBytes.length,
           srcMtimeMs: 99999, // Google Drive sync đổi mtime
+          cacheMtimeMs: 50 + BinaryCache.mtimeSlackMs,
           readSrcBytes: () => srcBytes,
         ),
         isTrue,
@@ -125,11 +128,33 @@ void main() {
           bytes,
           srcSize: newBytes.length,
           srcMtimeMs: 99999,
+          cacheMtimeMs: 50 + BinaryCache.mtimeSlackMs,
           readSrcBytes: () => newBytes,
         ),
         isFalse,
       );
     });
+  });
+
+  test('isValid: mtime trùng nhưng nguồn ghi cùng lúc cache → phải hash', () {
+    final oldBytes = Uint8List.fromList(utf8.encode('一=xử lý\n'));
+    final newBytes = Uint8List.fromList(utf8.encode('一=xử lí\n'));
+    final bytes = BinaryCache.encode(
+      const {'一': 'xử lý'},
+      srcHash: fnv1a64(oldBytes),
+      srcSize: oldBytes.length,
+      srcMtimeMs: 5000,
+    );
+    expect(
+      BinaryCache.isValid(
+        bytes,
+        srcSize: newBytes.length,
+        srcMtimeMs: 5000,
+        cacheMtimeMs: 5000,
+        readSrcBytes: () => newBytes,
+      ),
+      isFalse,
+    );
   });
 
   group('loadDictionarySync with temp files', () {
@@ -201,6 +226,61 @@ void main() {
         type: DictType.vietPhrase,
       );
       expect(reload.fromCache, isTrue);
+    });
+
+    test('ghi lại cùng kích thước, cùng mtime (mtime làm tròn giây) → không '
+        'dùng cache cũ', () {
+      final src = File('${temp.path}\\dict.txt')..writeAsStringSync('一=xử lý\n');
+      final cachePath = '${temp.path}\\dict.vydc';
+      loadDictionarySync(
+        sourcePath: src.path,
+        cachePath: cachePath,
+        type: DictType.vietPhrase,
+      );
+      final mtime = src.lastModifiedSync();
+
+      // Windows trả mtime theo giây: lần ghi thứ hai trong cùng giây giữ y mtime.
+      src.writeAsStringSync('一=xử lí\n');
+      src.setLastModifiedSync(mtime);
+      final reload = loadDictionarySync(
+        sourcePath: src.path,
+        cachePath: cachePath,
+        type: DictType.vietPhrase,
+      );
+      expect(reload.dictionary.entries['一'], 'xử lí');
+    });
+
+    test('nguồn đã cũ khi ghi cache → lần sau tin mtime, không hash', () {
+      final src = File('${temp.path}\\dict.txt')..writeAsStringSync('一=nhất\n');
+      src.setLastModifiedSync(
+        DateTime.now().subtract(const Duration(hours: 1)),
+      );
+      final cachePath = '${temp.path}\\dict.vydc';
+      loadDictionarySync(
+        sourcePath: src.path,
+        cachePath: cachePath,
+        type: DictType.vietPhrase,
+      );
+      final cacheBytes = File(cachePath).readAsBytesSync();
+      final stat = src.statSync();
+
+      var hashed = false;
+      expect(
+        BinaryCache.isValid(
+          cacheBytes,
+          srcSize: stat.size,
+          srcMtimeMs: stat.modified.millisecondsSinceEpoch,
+          cacheMtimeMs: File(
+            cachePath,
+          ).lastModifiedSync().millisecondsSinceEpoch,
+          readSrcBytes: () {
+            hashed = true;
+            return src.readAsBytesSync();
+          },
+        ),
+        isTrue,
+      );
+      expect(hashed, isFalse);
     });
 
     test('missing source file → empty dictionary', () {
