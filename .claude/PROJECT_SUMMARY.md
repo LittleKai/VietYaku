@@ -90,7 +90,7 @@ VietYaku/
 │   │   ├── repair/                 # domain (jp_repair_pipeline, simp2jp_table, repair_report) · application (repair_controller) · presentation (repair_screen, repair_preview)
 │   │   └── settings/               # settings_provider, settings_screen (3 tab: Chung — thuật toán/popup/tra online/dịch AI/tốc độ đọc/sync + thư mục Glossary + màn đồng bộ Glossary ↔ VietPhrase (chỉ admin)/update; Tiếng Nhật — kana+Sudachi+giọng Nhật+repair; Tiếng Trung — phồn→giản+giọng Trung), appearance_screen (cỡ chữ+font/màu kana/hiển thị)
 │   └── shared/widgets/             # tts_button, entry_edit_dialog, app_dialog, feature_help_button (`?` + dialog giải thích), icon_context_menu, settings_layout, markdown_body_view (render nghĩa AI)
-└── test/                           # 518 tests (59 file; integration dữ liệu thật tự skip nếu thiếu path)
+└── test/                           # 546 tests (60 file; integration dữ liệu thật tự skip nếu thiếu path)
 ```
 
 ### Critical Files
