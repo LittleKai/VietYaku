@@ -320,10 +320,16 @@ void main() {
       await tester.tap(find.text('Open Dialog'));
       await tester.pumpAndSettle();
 
-      // Bấm nút Lưu từ mà không sửa đổi bất kỳ thứ gì
+      // Nút Lưu từ phải bị vô hiệu hóa khi chưa có thay đổi
       final saveBtn = find.text('Lưu từ');
       expect(saveBtn, findsOneWidget);
-      await tester.tap(saveBtn);
+      final filledBtn = tester.widget<FilledButton>(
+        find.ancestor(of: saveBtn, matching: find.byType(FilledButton)),
+      );
+      expect(filledBtn.onPressed, isNull, reason: 'Nút Lưu phải inactive khi chưa sửa gì');
+
+      // Đóng dialog bằng nút Hủy
+      await tester.tap(find.text('Hủy'));
       await tester.pumpAndSettle();
 
       // Dialog đóng mà không tạo message staging
@@ -691,7 +697,7 @@ void main() {
       // Vòng runAsync/pump xen kẽ: ghi file glossary là I/O thật, chỉ hoàn tất
       // trên event loop thật, còn phần chạy tiếp sau `await` thì cần pump.
       await tester.pumpAndSettle();
-      for (var i = 0; i < 8; i++) {
+      for (var i = 0; i < 20; i++) {
         await tester.runAsync(
           () => Future<void>.delayed(const Duration(milliseconds: 50)),
         );
@@ -1441,7 +1447,7 @@ void main() {
       expect(confirmBtn, findsOneWidget);
       await tester.tap(confirmBtn);
       await tester.pumpAndSettle();
-      for (var i = 0; i < 8; i++) {
+      for (var i = 0; i < 20; i++) {
         await tester.runAsync(
           () => Future<void>.delayed(const Duration(milliseconds: 50)),
         );
@@ -1555,7 +1561,7 @@ void main() {
       expect(confirmBtn, findsOneWidget);
       await tester.tap(confirmBtn);
       await tester.pumpAndSettle();
-      for (var i = 0; i < 8; i++) {
+      for (var i = 0; i < 20; i++) {
         await tester.runAsync(
           () => Future<void>.delayed(const Duration(milliseconds: 50)),
         );
@@ -1574,6 +1580,178 @@ void main() {
         );
         expect(glossaryTerm, isNotNull);
         expect(glossaryTerm!.target, 'Sasuke (Glossary)');
+      });
+
+      await tester.pump(const Duration(milliseconds: 600));
+    },
+  );
+
+  testWidgets(
+    'Dialog Names: Glossary không hiển thị và không áp dụng dù có cấu hình glossary',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({'glossary.dir': tempDir.path});
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('glossary.dir', tempDir.path);
+
+      final glossaryService = GlossaryService(tempDir.path);
+      await tester.runAsync(() async {
+        await glossaryService.upsert(
+          TranslationMode.japanese,
+          source: '佐助',
+          target: 'Sasuke (Glossary)',
+        );
+      });
+
+      final mockData = _createMock(
+        namesEntries: {'佐助': 'Sasuke'},
+      );
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          appPathsProvider.overrideWith((ref) async => AppPaths(tempDir)),
+          dictionariesProvider.overrideWith(
+            () => MockDictionariesNotifier(mockData),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.read(currentModeProvider.notifier).state =
+          TranslationMode.japanese;
+      await container.read(appPathsProvider.future);
+      await container.read(dictionariesProvider.future);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: Scaffold(
+              body: Builder(
+                builder: (context) {
+                  return ElevatedButton(
+                    onPressed: () => showEntryEditDialog(
+                      context,
+                      WidgetRefContext(context, container),
+                      word: '佐助',
+                      toNames: true,
+                    ),
+                    child: const Text('Open Names Dialog'),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Open Names Dialog'));
+      await tester.pumpAndSettle();
+
+      // Glossary không hiển thị trong dialog Names
+      expect(find.textContaining('Global Glossary'), findsNothing);
+
+      // Sửa nghĩa và Lưu
+      final meaningField = find.widgetWithText(TextField, 'Nghĩa');
+      await tester.enterText(meaningField, 'Sasuke Mới');
+      await tester.pumpAndSettle();
+
+      final saveBtn = find.text('Lưu từ');
+      await tester.tap(saveBtn);
+      await tester.pumpAndSettle();
+
+      // Glossary không bị cập nhật theo nghĩa Names
+      await tester.runAsync(() async {
+        final term = await glossaryService.find(TranslationMode.japanese, '佐助');
+        expect(term, isNotNull);
+        expect(term!.target, 'Sasuke (Glossary)');
+      });
+
+      await tester.pump(const Duration(milliseconds: 600));
+    },
+  );
+
+  testWidgets(
+    'Dialog Sửa vào Names: từ có trong Names gốc (namesEntries) hiện nút Xóa từ và xóa sẽ ghi deleteSentinel',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+
+      final service = UserDictService(AppPaths(tempDir));
+      final mockData = _createMock(
+        namesEntries: {'田中': 'Điền Trung'},
+      );
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          appPathsProvider.overrideWith((ref) async => AppPaths(tempDir)),
+          dictionariesProvider.overrideWith(
+            () => MockDictionariesNotifier(mockData),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.read(currentModeProvider.notifier).state =
+          TranslationMode.japanese;
+      await container.read(appPathsProvider.future);
+      await container.read(dictionariesProvider.future);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: Scaffold(
+              body: Builder(
+                builder: (context) {
+                  return ElevatedButton(
+                    onPressed: () => showEntryEditDialog(
+                      context,
+                      WidgetRefContext(context, container),
+                      word: '田中',
+                      toNames: true,
+                    ),
+                    child: const Text('Open Names Dialog'),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Open Names Dialog'));
+      await tester.pumpAndSettle();
+
+      // Hiện nút Xóa từ dù từ chỉ nằm trong namesEntries gốc
+      final deleteBtn = find.text('Xóa từ');
+      expect(deleteBtn, findsOneWidget);
+
+      await tester.tap(deleteBtn);
+      await tester.pump();
+      await tester.runAsync(() async {
+        await Future.delayed(const Duration(milliseconds: 200));
+      });
+      await tester.pumpAndSettle();
+
+      // Dialog xác nhận xóa xuất hiện
+      expect(find.text('Xác nhận xóa từ "田中"'), findsOneWidget);
+      expect(find.text('Xóa khỏi Names trên máy này.'), findsOneWidget);
+
+      // Bấm Xác nhận xóa
+      final confirmBtn = find.text('Xác nhận xóa');
+      expect(confirmBtn, findsOneWidget);
+      await tester.tap(confirmBtn);
+      await tester.pumpAndSettle();
+      for (var i = 0; i < 8; i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)),
+        );
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      await tester.pumpAndSettle();
+
+      // Kiểm tra file UserNames.txt đã ghi deleteSentinel để che từ gốc
+      await tester.runAsync(() async {
+        final content = await service.userNamesFile.readAsString();
+        expect(content.contains('田中=\x7F__DELETE__'), isTrue);
       });
 
       await tester.pump(const Duration(milliseconds: 600));

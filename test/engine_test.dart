@@ -368,4 +368,72 @@ void main() {
       expect(engine.translate('把他挡住'), hasLength(4));
     });
   });
+
+  group('cụm bắt đầu bằng ký tự không-CJK (latin toàn-hình, số, ngoặc)', () {
+    // ＨＢＴＮシリーズ có trong VietPhrase nhưng ＨＢＴＮ là latin toàn-hình
+    // (U+FF28…) — engine chỉ khởi động tra từ tại ký tự CJK thì cụm này
+    // không bao giờ ghép được, dù từ điển có đủ.
+    test('ＨＢＴＮシリーズ ghép thành một token', () {
+      final engine = TranslationEngine(
+        dicts: [
+          dict(DictType.vietPhrase, {
+            'ＨＢＴＮシリーズ': 'HBTN Series',
+            'シリーズ': 'sê-ri',
+          }),
+        ],
+      );
+      final tokens = engine.translate('ＨＢＴＮシリーズ');
+      expect(tokens.single.source, 'ＨＢＴＮシリーズ');
+      expect(tokens.single.meaning, 'HBTN Series');
+      expect(tokens.single.kind, TokenKind.matched);
+    });
+
+    test('【誓約の魔物】会議 — key mở đầu bằng ngoặc CJK', () {
+      final engine = TranslationEngine(
+        dicts: [
+          dict(DictType.vietPhrase, {'【誓約の魔物】会議': 'hội nghị [Ma vật khế ước]'}),
+        ],
+      );
+      expect(
+        engine.translate('【誓約の魔物】会議').single.meaning,
+        'hội nghị [Ma vật khế ước]',
+      );
+    });
+
+    test('ký tự không-CJK không có trong từ điển vẫn là passthrough', () {
+      final engine = TranslationEngine(
+        dicts: [
+          dict(DictType.vietPhrase, {'人': 'người'}),
+        ],
+      );
+      final tokens = engine.translate('ABC人');
+      expect(tokens.first.kind, TokenKind.passthrough);
+      expect(tokens.first.source, 'ABC');
+      expect(tokens.last.meaning, 'người');
+    });
+
+    test('matchAt tra được cụm bắt đầu bằng ký tự không-CJK', () {
+      final engine = TranslationEngine(
+        dicts: [
+          dict(DictType.vietPhrase, {'ＨＢＴＮシリーズ': 'HBTN Series'}),
+        ],
+      );
+      final token = engine.matchAt('見ろＨＢＴＮシリーズ', 2);
+      expect(token.source, 'ＨＢＴＮシリーズ');
+      expect(token.meaning, 'HBTN Series');
+    });
+
+    test('longestPhrase: cụm mở đầu không-CJK vào vòng ưu tiên toàn văn', () {
+      final engine = TranslationEngine(
+        dicts: [
+          dict(DictType.vietPhrase, {
+            'ＨＢＴＮシリーズ': 'HBTN Series',
+            'シリーズ': 'sê-ri',
+          }),
+        ],
+        algorithm: TranslationAlgorithm.longestPhrase,
+      );
+      expect(engine.translate('ＨＢＴＮシリーズ').single.meaning, 'HBTN Series');
+    });
+  });
 }

@@ -319,11 +319,16 @@ class TokenTextView extends ConsumerStatefulWidget {
 }
 
 /// Key từ điển của vùng bôi đen ở ô kết quả: nối `source` của MỌI token
-/// không-passthrough nằm trong khoảng từ token đầu tới token cuối được chọn.
+/// không-passthrough (hoặc passthrough chứa chữ/số) nằm trong khoảng từ token
+/// đầu tới token cuối được chọn.
 ///
 /// Token có nghĩa rỗng (VD `了=` trong VietPhrase) bị bỏ khỏi phần hiển thị nên
 /// không bao giờ nằm trong vùng chọn, nhưng vẫn thuộc văn bản nguồn — bôi đen
 /// "kích động ra hỏa khí" phải cho key `激出了火气`, không phải `激出火气`.
+///
+/// Token passthrough chứa chữ/số (VD `３` trong `第３奥部`, `10` trong `第10卷`)
+/// là một phần của cụm từ nên phải được giữ lại trong key, chỉ bỏ qua các token
+/// thuần dấu câu hoặc khoảng trắng (`、`, `。`, space...).
 String selectionSourceKey(List<Token> paragraph, List<Token> selected) {
   if (selected.isEmpty) return '';
   final start = selected.first.sourceStart;
@@ -331,8 +336,10 @@ String selectionSourceKey(List<Token> paragraph, List<Token> selected) {
   final end = last.sourceStart + last.source.length;
   final sb = StringBuffer();
   for (final token in paragraph) {
-    if (token.kind == TokenKind.passthrough) continue;
     if (token.sourceStart < start || token.sourceStart >= end) continue;
+    if (token.kind == TokenKind.passthrough && !hasWordChar(token.source)) {
+      continue;
+    }
     sb.write(token.source);
   }
   return sb.toString();
@@ -1105,7 +1112,8 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
             final renderedLength = tokenSpan
                 .toPlainText(includeSemanticsLabels: false)
                 .length;
-            if (token.kind != TokenKind.passthrough) {
+            if (token.kind != TokenKind.passthrough ||
+                hasWordChar(token.source)) {
               ranges.add((offset, offset + renderedLength, token));
             }
             offset += renderedLength;

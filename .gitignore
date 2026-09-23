@@ -52,6 +52,7 @@ data/*
 !data/cn/
 data/cn/*
 !data/cn/LuatNhan.txt
+.claude\tmp
 
 # CodeGraph files
 .codegraph/*

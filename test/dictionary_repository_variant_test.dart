@@ -140,6 +140,8 @@ void main() {
     test('kết quả giống hệt nạp lại toàn bộ sau khi sửa overlay', () async {
       File(p.join(dataDir.path, 'VietPhrase.txt'))
           .writeAsStringSync('扱い=xử lý\r\n吞み込ま=gốc\r\n');
+      File(p.join(dataDir.path, 'Names.txt'))
+          .writeAsStringSync('次郎=Jiro\r\n');
       final repo = DictionaryRepository(paths);
       final first = await repo.loadAll(
         dictPaths,
@@ -151,7 +153,7 @@ void main() {
       File(p.join(paths.dictionariesDir.path, 'UserDict.txt'))
           .writeAsStringSync('﻿扱い切れ=xử lý được\r\n切れ=đứt\r\n');
       File(p.join(paths.dictionariesDir.path, 'UserNames.txt'))
-          .writeAsStringSync('太郎=Taro\r\n');
+          .writeAsStringSync('太郎=Taro\r\n次郎=\x7F__DELETE__\r\n');
       File(
         p.join(paths.dictionariesDir.path, 'SharedVietPhrase_japanese.txt'),
       ).writeAsStringSync('吞み込ま=nuốt\r\n扱い=\x7F__DELETE__\r\n');
@@ -169,6 +171,7 @@ void main() {
       expect(snapshot(reused), snapshot(fresh));
       expect(reused.userDict.entries['切れ'], 'đứt');
       expect(reused.names.entries['太郎'], 'Taro');
+      expect(reused.names.entries.containsKey('次郎'), isFalse);
       expect(reused.vietPhrase.entries['のみこま'], 'nuốt');
       expect(reused.vietPhrase.entries.containsKey('扱い'), isFalse);
     });

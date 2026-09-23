@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import '../../../core/app_paths.dart';
+import '../../dictionary_sync/data/shared_dictionary_service.dart';
 import '../../translation/domain/translation_engine.dart';
 
 /// Ghi overlay UserDict.txt / UserNames.txt / `OnlineDict_<mode>.txt` trong
@@ -27,7 +28,13 @@ class UserDictService {
 
   Future<bool> removeUserDict(String key) => _removeKey(userDictFile, key);
 
-  Future<bool> removeUserName(String key) => _removeKey(userNamesFile, key);
+  Future<bool> removeUserName(String key, {bool isBase = false}) async {
+    if (isBase) {
+      await _upsert(userNamesFile, key, SharedDictionaryService.deleteSentinel);
+      return true;
+    }
+    return _removeKey(userNamesFile, key);
+  }
 
   /// Ghi nhiều tên riêng một lượt (bảng ứng viên tên riêng) — một lần đọc/ghi
   /// file thay vì mỗi mục một lần.

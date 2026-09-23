@@ -1,6 +1,6 @@
 # Project Summary — VietYaku
 ---
-**Last updated:** 2026-09-17 (Tài liệu: cơ chế §3 chuyển sang DESIGN_DECISIONS, thêm CI `.github/workflows/guard.yml` chạy guard_check · Sửa/thêm/xóa một từ chỉ nạp lại overlay: `reload()` dùng lại dict nguồn + nhóm biến thể Sudachi trong RAM, ~4.4s → ~130ms trên bộ JP thật; Repair dùng `reloadAll()`; cache `.vydc` không còn tin mtime làm tròn giây của file vừa ghi)
+**Last updated:** 2026-09-23 (Release v1.3.3: nhận diện cụm từ đặc biệt, chuẩn hóa giản thể tiếng Nhật, tối ưu lưu/xóa từ điển Names · 563/563 tests passed)
 
 > File này phản ánh **trạng thái hiện tại** của dự án. **Không** dùng làm changelog,
 > recent changes, hay bug-fix log — git history là nguồn lịch sử. Lỗi quan trọng,
@@ -39,11 +39,11 @@ code ⇒ **hỏi user trước khi làm tiếp**.
 - **Phát hành (2 kênh song song, do skill `build-and-release` lo):** GitHub Release `LittleKai/VietYaku` phục vụ **cập nhật trong app**; Backblaze B2 (`vietyaku-app/version.json` + `vietyaku-app/releases/*.zip`, bucket `alpha-studio`) phục vụ **link tải trên web** tại `giaiphapsangtao.com/studio/vietyaku`. Cùng một file ZIP, B2 gắn thêm version vào tên object. Chi tiết: `.claude/RELEASE.md`.
 
 Dữ liệu từ điển bundle trong dự án (KHÔNG commit git, đi theo bản phát hành qua `assets:` của pubspec), mỗi ngôn ngữ một bộ tại `data/jp/` và `data/cn/` — đường dẫn hardcode (`defaultDataDir` trong settings_provider), không còn UI chọn file trong Cài đặt:
-- `data/jp/` (nguồn Drive QuickTranslator_Jap, đã repair simp→JP): VietPhrase.txt (187.419 — bản `_JP` repair), LacViet.txt (103.632 — bản `_JP`), Names.txt, JaViDict.txt (172.321), + ThieuChuu/Babylon/cedict_ts.u8/ChinesePhienAm*/Pronouns, SudachiVariants.txt (11.299 — biến thể→value VietPhrase, chỉ cặp cùng hệ chữ), SudachiVariantGroups.txt (110.326 nhóm cách viết kana/kanji cho overlay động), SudachiReadings.txt (43.520 — từ=kana đọc; cả ba sinh bởi tool/build_sudachi_assets.dart), Mazii.txt (từ điển Mazii offline Nhật→Việt, format LacViet — value `\n\t` escaped; đã convert đầy đủ 171.299 entry từ MaziiDict.db sau khi loại bỏ các kana đơn).
-- `data/cn/` (nguồn `D:\Software\QuickTranslator\Quick Translator Chinese\Data`): VietPhrase.txt (690.007), LacViet.txt (66.450), Names.txt, ZhViDict.txt (161.194), + bộ chung như trên.
+- `data/jp/` (nguồn Drive QuickTranslator_Jap, đã repair simp→JP + userdata migrate): VietPhrase.txt (190.085 — bản `_JP` repair), LacViet.txt (103.988 — bản `_JP`), Names.txt, JaViDict.txt (172.321), + ThieuChuu/Babylon/cedict_ts.u8/ChinesePhienAm*/Pronouns, SudachiVariants.txt (11.299 — biến thể→value VietPhrase, chỉ cặp cùng hệ chữ), SudachiVariantGroups.txt (110.326 nhóm cách viết kana/kanji cho overlay động), SudachiReadings.txt (43.520 — từ=kana đọc; cả ba sinh bởi tool/build_sudachi_assets.dart), Mazii.txt (từ điển Mazii offline Nhật→Việt, format LacViet — value `\n\t` escaped; đã convert đầy đủ 171.299 entry từ MaziiDict.db sau khi loại bỏ các kana đơn).
+- `data/cn/` (nguồn `D:\Software\QuickTranslator\Quick Translator Chinese\Data` + userdata migrate): VietPhrase.txt (691.762), LacViet.txt (66.450), Names.txt, ZhViDict.txt (161.194), + bộ chung như trên.
 - JaViDict/ZhViDict generate từ SQLite của VocabFlip bằng `tool/export_vocabflip_dicts.py` (chạy 1 lần, conda py312), value escape `\n\t` như LacViet.
 - Nguồn gốc (KHÔNG ghi đè): Drive `JP CN Tool\QuickTranslator_Jap` và `D:\Software\QuickTranslator\`.
-- Value VietPhrase bundle JP/CN đã được chuẩn hóa thống nhất theo **tầng nghĩa**: dấu `/` thường chỉ ngăn các cách dịch trong cùng tầng (`xào xạc/sà sà/sàn sạt` vẫn là tầng 1); chỉ marker số/từ loại mở tầng mới. Canonical: `(n)/cách 1/cách 2/(2)/(v)/cách 3`. Sau khi phục hồi value gốc rồi migration đúng, 1.145 mục JP + 191 mục CN được sửa; `tool/normalize_vietphrase_values.dart` dry-run hiện `0/187.419` và `0/690.006`. File nguồn ngoài dự án không bị ghi đè.
+- Value VietPhrase bundle JP/CN đã được chuẩn hóa thống nhất theo **tầng nghĩa**: dấu `/` thường chỉ ngăn các cách dịch trong cùng tầng (`xào xạc/sà sà/sàn sạt` vẫn là tầng 1); chỉ marker số/từ loại mở tầng mới. Canonical: `(n)/cách 1/cách 2/(2)/(v)/cách 3`. Sau khi phục hồi value gốc rồi migration đúng, 1.145 mục JP + 191 mục CN được sửa; `tool/normalize_vietphrase_values.dart` dry-run hiện `0/190.085` và `0/691.761`. File nguồn ngoài dự án không bị ghi đè.
 
 ---
 
@@ -72,7 +72,7 @@ VietYaku/
 ├── docs/                            # nghiên cứu/roadmap; NGHIEN_CUU_DINH_HUONG_PHAT_TRIEN.md, NGHIEN_CUU_SUDACHI.md, NGHIEN_CUU_TINH_NANG_2026-08.md (chấm điểm tính năng đề xuất)
 ├── data/jp/, data/cn/              # bộ từ điển theo ngôn ngữ (~123MB; KHÔNG commit git — `.gitignore` có `data/*`, chỉ chừa `data/cn/LuatNhan.txt`; đi theo bản phát hành qua `assets:`). `generated/` là thư mục con app tự ghi khi admin tra AI/online
 ├── assets/mappings/                # simp2jp.tsv (3.932 + 69 ambiguous), jp_valid_kanji.txt (3.030), simp2jp_overrides.tsv (soạn tay), trad2simp.tsv (2.455 ký tự phồn→giản)
-├── tool/                           # build_simp2jp.dart (sinh assets, cần mạng), build_trad2simp.dart (sinh trad2simp.tsv từ data/cn/cedict_ts.u8, không cần mạng), export_jp.dart (CLI repair + verify), normalize_vietphrase_values.dart (dry-run/ghi chuẩn hóa value VietPhrase JP+CN, giữ BOM/CRLF), export_vocabflip_dicts.py (sinh JaViDict/ZhViDict.txt từ DB VocabFlip), build_sudachi_assets.dart (sinh SudachiVariants+SudachiVariantGroups+SudachiReadings từ SudachiDict raw, cần mạng), clean_single_kana.dart (lọc bỏ key là 1 ký tự Hiragana/Katakana trong JaViDict.txt), backfill_lookup_overlay.dart (bù overlay VietPhrase cho OnlineDict/AiDict đã lưu trước khi có cơ chế tự thêm)
+├── tool/                           # build_simp2jp.dart (sinh assets, cần mạng), build_trad2simp.dart (sinh trad2simp.tsv từ data/cn/cedict_ts.u8, không cần mạng), export_jp.dart (CLI repair + verify), normalize_vietphrase_values.dart (dry-run/ghi chuẩn hóa value VietPhrase JP+CN, giữ BOM/CRLF), migrate_userdata_to_vietphrase.py (migrate từ mới trong userdata vào VietPhrase/LacViet gốc), export_vocabflip_dicts.py (sinh JaViDict/ZhViDict.txt từ DB VocabFlip), build_sudachi_assets.dart (sinh SudachiVariants+SudachiVariantGroups+SudachiReadings từ SudachiDict raw, cần mạng), clean_single_kana.dart (lọc bỏ key là 1 ký tự Hiragana/Katakana trong JaViDict.txt), backfill_lookup_overlay.dart (bù overlay VietPhrase cho OnlineDict/AiDict đã lưu trước khi có cơ chế tự thêm)
 ├── lib/
 │   ├── main.dart                   # window_manager (1200×760, min 1000×640), SharedPreferences override, ProviderScope
 │   ├── app.dart                    # MaterialApp M3 + HomeShell responsive: ≥720dp → NavigationRail, <720dp → NavigationBar dưới đáy + PopScope (Back về tab Dịch). `homeDestinations()` lọc theo nền tảng (Android bỏ EPUB)
@@ -90,7 +90,7 @@ VietYaku/
 │   │   ├── repair/                 # domain (jp_repair_pipeline, simp2jp_table, repair_report) · application (repair_controller) · presentation (repair_screen, repair_preview)
 │   │   └── settings/               # settings_provider, settings_screen (3 tab: Chung — thuật toán/popup/tra online/dịch AI/tốc độ đọc/sync + thư mục Glossary + màn đồng bộ Glossary ↔ VietPhrase (chỉ admin)/update; Tiếng Nhật — kana+Sudachi+giọng Nhật+repair; Tiếng Trung — phồn→giản+giọng Trung), appearance_screen (cỡ chữ+font/màu kana/hiển thị)
 │   └── shared/widgets/             # tts_button, entry_edit_dialog, app_dialog, feature_help_button (`?` + dialog giải thích), icon_context_menu, settings_layout, markdown_body_view (render nghĩa AI)
-└── test/                           # 546 tests (60 file; integration dữ liệu thật tự skip nếu thiếu path)
+└── test/                           # 561 tests (60 file; integration dữ liệu thật tự skip nếu thiếu path)
 ```
 
 ### Critical Files
@@ -187,8 +187,8 @@ Menu bar trên cùng (chọn Nhật/Trung + Dán & Dịch). Trái (flex 2): tabs
 | Đổi theme Sáng / Tối / Tự động | ✅ Done | app_theme.dart, settings_provider.dart, appearance_screen.dart | Lưu `ui.themeMode`, Dark mode tự tăng tương phản Katakana |
 | Chọn giọng đọc + tốc độ TTS | ✅ Done | tts_service, settings_provider, settings_screen, tts_button | Tách riêng Nhật/Trung, độc lập 0.1–1.0, "Nghe thử" |
 | Nền tảng Android | ✅ Done | android/*, main.dart, app_paths.dart, platform_features.dart, concurrency.dart, language_pack_provider/gate, app.dart, translate_screen, dictionary_search_screen | Manifest `INTERNET` + `largeHeap`; seed đúng bộ ngôn ngữ đang dùng; tối đa 2 isolate; NavigationBar 5 tab |
-| JP repair pipeline + RepairScreen | ✅ Done | jp_repair_pipeline, simp2jp_table, repair_controller, repair_screen | VietPhrase: 13.317 space, 81.299 chữ converted |
-| UserDict/UserNames overlay | ✅ Done | user_dict_service, entry_edit_dialog, dictionary_repository | Sửa nghĩa áp dụng ngay, không đụng file gốc |
+| JP repair pipeline + RepairScreen | ✅ Done | jp_repair_pipeline, simp2jp_table, repair_controller, repair_screen | VietPhrase: 13.317 space, 82.454 chữ converted (机→機, 准→準, 言叶→言葉...) |
+| UserDict/UserNames overlay | ✅ Done | user_dict_service, entry_edit_dialog, dictionary_repository | Sửa nghĩa áp dụng ngay, không đụng file gốc; xóa Names gốc ghi tombstone deleteSentinel |
 | Alias kana/kanji động cho overlay Nhật | ✅ Done | japanese_variant_index, japanese_variant_loader, dictionary_repository, build_sudachi_assets | Overlay tự nhận cách viết cùng nhóm Sudachi; luật một chiều, không bắc cầu Hán ⇄ katakana — DESIGN_DECISIONS |
 | Đồng bộ VietPhrase/Lạc Việt chung | ✅ Done | dictionary_sync/*, dictionary_repository, entry_edit_dialog | Pull delta, admin sửa pending + atomic publish; xóa bằng tombstone `deleteSentinel` che cả từ gốc; `loadAll` replay pending |
 | Nhắc cập nhật từ điển chung định kỳ | ✅ Done | sync_reminder, dictionary_sync_controller, sync_reminder_dialog, app.dart, settings_screen | Mở app quá chu kỳ (mặc định 30 ngày, tối thiểu 14, chọn được Tắt) → hỏi có cập nhật không |
@@ -212,7 +212,7 @@ Menu bar trên cùng (chọn Nhật/Trung + Dán & Dịch). Trái (flex 2): tabs
 | Nhận diện cụm từ điển phụ | ✅ Done | secondary_phrase, secondary_phrases_provider, token_text_view | Mode Nhật: click chọn tra Lạc Việt > Nhật Việt > Mazii > Online > AI; **đánh dấu trong ô VietPhrase chỉ theo Lạc Việt** |
 | Ô Nghĩa đa từ điển + popup tra nhanh | ✅ Done | lookup_controller, lacviet_panel, source_pane, vietphrase_value | VietPhrase → Lạc Việt → Mazii → Nhật Việt → …; mục VietPhrase định dạng `/` thành `; ` phân tách nghĩa sạch; popup neo ở ô Nguồn, hiện cho từ được active ở bất kỳ ô nào (Nguồn / VietPhrase / Hán Việt) |
 | Từ điển Mazii offline (Nhật→Việt) | ✅ Done | dict_type, dictionary_repository, lookup_controller | 171.299 entry từ MaziiDict.db |
-| Sửa từ điển từ toolbar chuột phải | ✅ Done | source_pane, token_text_view, icon_context_menu, entry_edit_dialog, user_dict_service | Đổi ô Từ nguồn thì nạp lại nghĩa/Glossary/preview theo key mới; nút Xóa chỉ hiện khi key có **trong đúng dict đó** (`dictHasEntry`); xóa Names không đụng Glossary |
+| Sửa từ điển từ toolbar chuột phải | ✅ Done | source_pane, token_text_view, icon_context_menu, entry_edit_dialog, user_dict_service | Đổi ô Từ nguồn nạp lại preview theo key mới; nút Xóa hiện đúng dict mục tiêu; xóa Names hỗ trợ cả base; Glossary không áp dụng cho Names |
 | Chuyển đổi EPUB | ✅ Done | epub_converter/*, app.dart | Nhúng ảnh thật vào DOCX, xuất CSV/XLSX/MD/DOCX/TXT |
 | Tự động kiểm tra cập nhật (GitHub Releases) | ✅ Done | features/update/*, app.dart, settings_provider | Windows: ZIP + bat script. Android: `findAndroidApkAsset` → `OpenFilex.open` trình cài đặt |
 | Phát hành lên B2 cho trang tải web | ✅ Done | .claude/skills/build-and-release/scripts/upload-b2.ps1, release.ps1 | Đẩy ZIP + `version.json` lên `vietyaku-app/` để `/studio/vietyaku` tải về |
@@ -225,7 +225,7 @@ Menu bar trên cùng (chọn Nhật/Trung + Dán & Dịch). Trái (flex 2): tabs
 | Search Center / tra ngược | ✅ Done | features/dictionary_search/*, app.dart | Exact/prefix/wildcard/full-text, overlay winner |
 | Quét mã QR ủng hộ nhà phát triển | ✅ Done | features/settings/presentation/donate_dialog.dart, settings_screen.dart | VietQR Vietcombank 0071000718658, sao chép STK, tải ảnh QR về máy (file_selector trên desktop + Downloads trên mobile) |
 
-**Verify end-to-end:** `dart run tool/normalize_vietphrase_values.dart` → JP `0/187.419`, CN `0/690.006` entry cần chuẩn hóa. `dart run tool/export_jp.dart` → VietPhrase_JP.txt (187.419 entries) + LacViet_JP.txt (103.632) cạnh file gốc; hết key `覚 悟`/`军`, value nguyên vẹn từng byte; dịch Nhật match dài, dịch Trung có fallback phiên âm. `flutter test` 371 pass + `flutter analyze --no-pub` sạch; `flutter build windows --release --no-pub` thành công.
+**Verify end-to-end:** `dart run tool/normalize_vietphrase_values.dart` → JP `0/190.085`, CN `0/691.761` entry cần chuẩn hóa. `dart run tool/export_jp.dart` → VietPhrase_JP.txt + LacViet_JP.txt cạnh file gốc; hết key `覚 悟`/`军`, value nguyên vẹn từng byte; dịch Nhật match dài, dịch Trung có fallback phiên âm. `flutter test` 563 pass + `flutter analyze --no-pub` sạch; `flutter build windows --release --no-pub` thành công.
 
 **Verify Android (emulator `Medium_Phone_API_36.1`, API 36):** `flutter build apk --debug` → cài chạy được; lần đầu seed `data/jp` (14 file, ~96MB) rồi nạp 14 dict trong ~18s, lần sau đọc `.vydc` — không OOM, không ANR; dán & dịch đoạn Nhật ra đúng tầng nghĩa; nhấn giữ token hiện menu "Chèn vào Bản dịch / Thêm vào UserDict / Thêm vào Names / Tra online"; tab Google Dịch trả kết quả online (xác nhận quyền `INTERNET` trong bản không-debug bằng `aapt2 dump permissions`).
 

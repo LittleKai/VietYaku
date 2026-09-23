@@ -52,6 +52,17 @@ void main() {
       final removed = await service.removeUserName('佐助');
       expect(removed, isFalse);
     });
+
+    test('isBase: true ghi deleteSentinel vào UserNames.txt và trả về true', () async {
+      await service.upsertUserName('鳴人', 'Naruto');
+
+      final removed = await service.removeUserName('佐助', isBase: true);
+      expect(removed, isTrue);
+
+      final content = await service.userNamesFile.readAsString();
+      expect(content.contains('佐助=\x7F__DELETE__'), isTrue);
+      expect(content.contains('鳴人=Naruto'), isTrue);
+    });
   });
 
   group('UserDictService.removeUserDict', () {

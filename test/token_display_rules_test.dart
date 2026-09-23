@@ -1,6 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vietyaku/core/cjk.dart';
+import 'package:vietyaku/features/dictionary/domain/dict_type.dart';
+import 'package:vietyaku/features/dictionary/domain/phrase_dictionary.dart';
 import 'package:vietyaku/features/translation/domain/token.dart';
+import 'package:vietyaku/features/translation/domain/translation_engine.dart';
 import 'package:vietyaku/features/translation/domain/vietphrase_value.dart';
 import 'package:vietyaku/features/translation/presentation/token_text_view.dart';
 
@@ -168,6 +171,87 @@ void main() {
 
     test('không chọn gì → key rỗng', () {
       expect(selectionSourceKey(paragraph, const []), '');
+    });
+
+    // Cụm mở đầu bằng latin toàn-hình (ＨＢＴＮシリーズ): nếu engine không ghép
+    // được thì ＨＢＴＮ thành passthrough và vùng chọn chỉ cho key `シリーズ`
+    // — dialog sửa VietPhrase nhận sai cụm.
+    test('cụm mở đầu latin toàn-hình cho key đầy đủ', () {
+      final tokens = TranslationEngine(
+        dicts: [
+          PhraseDictionary(DictType.vietPhrase, const {
+            'ＨＢＴＮシリーズ': 'HBTN Series',
+            'シリーズ': 'sê-ri',
+          }),
+        ],
+      ).translate('ＨＢＴＮシリーズ');
+      expect(tokens.single.kind, TokenKind.matched);
+      expect(selectionSourceKey(tokens, [tokens.single]), 'ＨＢＴＮシリーズ');
+    });
+
+    test('giữ nguyên số toàn-hình/bán-hình trong passthrough (第３奥部, 第3奥部)', () {
+      const di = Token(
+        source: '第',
+        sourceStart: 0,
+        kind: TokenKind.matched,
+        rawValue: 'thứ',
+      );
+      const sanFull = Token(
+        source: '３',
+        sourceStart: 1,
+        kind: TokenKind.passthrough,
+      );
+      const aoBu = Token(
+        source: '奥部',
+        sourceStart: 2,
+        kind: TokenKind.matched,
+        rawValue: 'áo bộ',
+      );
+      final paraFull = [di, sanFull, aoBu];
+      // Chọn cả 3 token
+      expect(selectionSourceKey(paraFull, [di, sanFull, aoBu]), '第３奥部');
+      // Chọn đầu + cuối (khi token số ở giữa không nằm trong danh sách token được chọn)
+      expect(selectionSourceKey(paraFull, [di, aoBu]), '第３奥部');
+      // Chọn số + đuôi
+      expect(selectionSourceKey(paraFull, [sanFull, aoBu]), '３奥部');
+      // Chọn đầu + số
+      expect(selectionSourceKey(paraFull, [di, sanFull]), '第３');
+      // Chọn riêng số
+      expect(selectionSourceKey(paraFull, [sanFull]), '３');
+
+      const sanHalf = Token(
+        source: '3',
+        sourceStart: 1,
+        kind: TokenKind.passthrough,
+      );
+      final paraHalf = [di, sanHalf, aoBu];
+      expect(selectionSourceKey(paraHalf, [di, aoBu]), '第3奥部');
+      expect(selectionSourceKey(paraHalf, [di, sanHalf, aoBu]), '第3奥部');
+      expect(selectionSourceKey(paraHalf, [sanHalf, aoBu]), '3奥部');
+    });
+
+    test('giữ nguyên chữ latin trong passthrough giữa hai token', () {
+      const prefix = Token(
+        source: '新',
+        sourceStart: 0,
+        kind: TokenKind.matched,
+        rawValue: 'mới',
+      );
+      const latin = Token(
+        source: 'Type-C',
+        sourceStart: 1,
+        kind: TokenKind.passthrough,
+      );
+      const suffix = Token(
+        source: '線',
+        sourceStart: 7,
+        kind: TokenKind.matched,
+        rawValue: 'dây',
+      );
+      final para = [prefix, latin, suffix];
+      expect(selectionSourceKey(para, [prefix, suffix]), '新Type-C線');
+      expect(selectionSourceKey(para, [prefix, latin, suffix]), '新Type-C線');
+      expect(selectionSourceKey(para, [latin, suffix]), 'Type-C線');
     });
   });
 

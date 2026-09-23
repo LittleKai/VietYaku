@@ -67,7 +67,7 @@ class TranslationEngine {
   /// click vào 女 trong 少女達 đã ghép thành 1 token) để tra lại đúng từ vị
   /// trí click, không phải từ đầu cụm.
   Token matchAt(String text, int offset) {
-    final match = _longestMatchAt(text, offset, text.length);
+    final match = _startableMatchAt(text, offset, text.length);
     if (match != null) {
       return Token(
         source: text.substring(offset, offset + match.len),
@@ -104,6 +104,35 @@ class TranslationEngine {
       );
     }
     return dictionaryMatch;
+  }
+
+  /// Match dùng được khi bắt đầu tra tại [i], kể cả khi ký tự tại [i] KHÔNG
+  /// phải CJK.
+  ///
+  /// Từ điển có cụm mở đầu bằng latin toàn-hình / số / ngoặc CJK
+  /// (`ＨＢＴＮシリーズ`, `【誓約の魔物】会議`, `10○`). Chỉ khởi động tra tại ký
+  /// tự CJK thì những cụm đó không bao giờ ghép được dù từ điển có đủ.
+  ///
+  /// Ngược lại, từ điển cũng chứa key THUẦN latin (`SF`, `cn`, `PTSD`, ` bī`)
+  /// — nhận chúng sẽ làm văn bản tiếng Anh xen giữa bị dịch bậy. Nên match bắt
+  /// đầu tại non-CJK chỉ được nhận khi bản thân nó chứa ít nhất một ký tự CJK.
+  ///
+  /// Chỉ cần xét match DÀI NHẤT: một match ngắn hơn tại cùng offset là prefix
+  /// của nó, nên match dài nhất không chứa CJK ⇒ không match nào tại đó chứa.
+  _Match? _startableMatchAt(String text, int i, int limitEnd) {
+    final match = _longestMatchAt(text, i, limitEnd);
+    if (match == null) return null;
+    if (isCjkCodePoint(codePointAt(text, i))) return match;
+    return _containsCjk(text, i, i + match.len) ? match : null;
+  }
+
+  static bool _containsCjk(String text, int start, int end) {
+    var i = start;
+    while (i < end) {
+      if (isCjkCodePoint(codePointAt(text, i))) return true;
+      i += runeLengthAt(text, i);
+    }
+    return false;
   }
 
   _Match? _longestDictionaryMatchAt(String text, int i, int limitEnd) {
@@ -180,14 +209,14 @@ class TranslationEngine {
       final runeLen = runeLengthAt(text, i);
       final cp = codePointAt(text, i);
 
-      if (!isCjkCodePoint(cp)) {
+      final match = _startableMatchAt(text, i, n);
+      if (match == null && !isCjkCodePoint(cp)) {
         if (passStart < 0) passStart = i;
         i += runeLen;
         continue;
       }
       flushPassthrough(i);
 
-      final match = _longestMatchAt(text, i, n);
       if (match != null) {
         tokens.add(
           Token(
@@ -220,11 +249,9 @@ class TranslationEngine {
       var i = 0;
       while (i < n) {
         final runeLen = runeLengthAt(text, i);
-        if (isCjkCodePoint(codePointAt(text, i))) {
-          final m = _longestMatchAt(text, i, n);
-          if (m != null && m.len >= minGlobalLen) {
-            candidates.add((start: i, match: m));
-          }
+        final m = _startableMatchAt(text, i, n);
+        if (m != null && m.len >= minGlobalLen) {
+          candidates.add((start: i, match: m));
         }
         i += runeLen;
       }
@@ -290,18 +317,19 @@ class TranslationEngine {
 
       final runeLen = runeLengthAt(text, i);
       final cp = codePointAt(text, i);
-      if (!isCjkCodePoint(cp)) {
+
+      if (boundary < i) boundary = i;
+      while (boundary < n && !occupied[boundary]) {
+        boundary++;
+      }
+      final match = boundary > i ? _startableMatchAt(text, i, boundary) : null;
+      if (match == null && !isCjkCodePoint(cp)) {
         if (passStart < 0) passStart = i;
         i += runeLen;
         continue;
       }
       flushPassthrough(i);
 
-      if (boundary < i) boundary = i;
-      while (boundary < n && !occupied[boundary]) {
-        boundary++;
-      }
-      final match = boundary > i ? _longestMatchAt(text, i, boundary) : null;
       if (match != null) {
         tokens.add(
           Token(

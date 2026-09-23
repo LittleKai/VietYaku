@@ -348,7 +348,7 @@ class DictionaryRepository {
       names = PhraseDictionary(DictType.names, {
         ...names.entries,
         ...userNames.entries,
-      });
+      }..removeWhere((k, v) => v == SharedDictionaryService.deleteSentinel));
     }
 
     var vietPhrase = results[2].dictionary;

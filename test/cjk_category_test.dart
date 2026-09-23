@@ -77,4 +77,37 @@ void main() {
       expect(categoryRunsOf(''), isEmpty);
     });
   });
+
+  group('isWordCodePoint & hasWordChar', () {
+    test('chữ số ASCII và toàn-hình là word character', () {
+      expect(hasWordChar('3'), isTrue);
+      expect(hasWordChar('３'), isTrue);
+      expect(hasWordChar('10'), isTrue);
+      expect(hasWordChar('０'), isTrue);
+    });
+
+    test('chữ cái ASCII và toàn-hình là word character', () {
+      expect(hasWordChar('A'), isTrue);
+      expect(hasWordChar('ａ'), isTrue);
+      expect(hasWordChar('Type-C'), isTrue);
+    });
+
+    test('CJK (kanji, kana) là word character', () {
+      expect(hasWordChar('第'), isTrue);
+      expect(hasWordChar('奥部'), isTrue);
+      expect(hasWordChar('かな'), isTrue);
+    });
+
+    test('dấu câu và khoảng trắng thuần không phải word character', () {
+      expect(hasWordChar('、'), isFalse);
+      expect(hasWordChar('。'), isFalse);
+      expect(hasWordChar('，'), isFalse);
+      expect(hasWordChar('.'), isFalse);
+      expect(hasWordChar('!'), isFalse);
+      expect(hasWordChar(' '), isFalse);
+      expect(hasWordChar('\t\n'), isFalse);
+      expect(hasWordChar('……'), isFalse);
+      expect(hasWordChar(''), isFalse);
+    });
+  });
 }

@@ -64,18 +64,60 @@ bool containsKana(String key) {
   return false;
 }
 
+/// Các cụm từ giản thể đặc thù tiếng Trung không thể ánh xạ ở mức 1 ký tự
+/// (để tránh phá vỡ các chữ Kanji Nhật có nhiều nghĩa theo ngữ cảnh như 叶う, 系統, 舎...).
+const phraseReplacements = <String, String>{
+  '言叶': '言葉',
+  '叶っぱ': '葉っぱ',
+  '根掘り叶掘り': '根掘り葉掘り',
+  '関系': '関係',
+  '案内系': '案内係',
+  '系がり': '繋がり',
+  '舍て': '捨て',
+  '使い舍': '使い捨',
+  '切り舍': '切り捨',
+  '吐き舍': '吐き捨',
+  '見舍': '見捨',
+  '获物': '獲物',
+  '捕获': '捕獲',
+  '收获': '収穫',
+  '修复': '修復',
+  '回复': '回復',
+  '复活': '復活',
+  '复雑': '複雑',
+  '复杂': '複雑',
+  '泛用': '汎用',
+  '泛滥': '氾濫',
+  '广泛': '広汎',
+};
+
 /// (B) Convert per-char theo bảng; ambiguous giữ nguyên + ghi vào [report].
+/// Chuẩn hóa trước các cụm từ giản thể đặc thù không thể map ở mức 1 ký tự.
 (String, int) convertKeyChars(
   String key,
   Simp2JpTable table,
   RepairReport report,
 ) {
-  final buffer = StringBuffer();
+  var workingKey = key;
   var converted = 0;
+  for (final entry in phraseReplacements.entries) {
+    if (workingKey.contains(entry.key)) {
+      var count = 0;
+      var start = 0;
+      while ((start = workingKey.indexOf(entry.key, start)) != -1) {
+        count++;
+        start += entry.key.length;
+      }
+      workingKey = workingKey.replaceAll(entry.key, entry.value);
+      converted += count;
+    }
+  }
+
+  final buffer = StringBuffer();
   var i = 0;
-  while (i < key.length) {
-    final len = runeLengthAt(key, i);
-    final char = key.substring(i, i + len);
+  while (i < workingKey.length) {
+    final len = runeLengthAt(workingKey, i);
+    final char = workingKey.substring(i, i + len);
     final jp = table.convert(char);
     if (jp != null) {
       buffer.write(jp);

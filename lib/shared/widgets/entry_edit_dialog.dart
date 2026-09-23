@@ -80,7 +80,8 @@ Future<void> showEntryEditDialog(
   final settings = ref.read(settingsProvider);
   final glossaryDir = settings.glossaryDir;
   final glossaryService = ref.read(glossaryServiceProvider);
-  final canUpdateGlossary = glossaryService.hasGlossaryFor(mode);
+  final canUpdateGlossary =
+      !toNames && glossaryService.hasGlossaryFor(mode);
   holder.autoUpdateGlossaryNotifier.value = settings.autoUpdateGlossaryOnSave;
   holder.notifyOnGlossaryUpdateNotifier.value =
       settings.notifyOnGlossaryAutoUpdate;
@@ -173,7 +174,7 @@ Future<void> showEntryEditDialog(
           final currentKey = holder.keyNotifier.value.trim();
           final existsInGlossary = glossaryTerm != null;
           final canDelete = toNames
-              ? currentValueOf(currentKey) != null
+              ? targetDictHasEntry(currentKey)
               : (currentValueOf(currentKey) != null || existsInGlossary);
 
           if (!canDelete) return const SizedBox.shrink();
@@ -197,11 +198,18 @@ Future<void> showEntryEditDialog(
         child: const Text('Hủy'),
       ),
       ListenableBuilder(
-        listenable: Listenable.merge([holder.canSave, holder.keyNotifier]),
+        listenable: Listenable.merge([
+          holder.canSave,
+          holder.hasChanges,
+          holder.keyNotifier,
+        ]),
         builder: (_, _) {
-          final canSave = holder.canSave.value;
           final currentKey = holder.keyNotifier.value.trim();
           final exists = targetDictHasEntry(currentKey);
+          // Khi sửa entry đã có: phải có thay đổi mới cho lưu.
+          // Khi thêm entry mới: cho lưu ngay nếu nội dung hợp lệ.
+          final canSave = holder.canSave.value &&
+              (!exists || holder.hasChanges.value);
           return FilledButton.icon(
             icon: Icon(exists ? Icons.save_outlined : Icons.add_circle_outline),
             onPressed: canSave
@@ -221,7 +229,9 @@ Future<void> showEntryEditDialog(
     final inGlossary = !toNames &&
         canUpdateGlossary &&
         (await glossaryService.find(translation.mode, targetKey)) != null;
-    final inDict = currentValueOf(targetKey) != null;
+    final inDict = toNames
+        ? targetDictHasEntry(targetKey)
+        : currentValueOf(targetKey) != null;
 
     holder.disposeAfterRouteAnimation();
 
@@ -250,8 +260,9 @@ Future<void> showEntryEditDialog(
     if (deleteScope == DeleteScope.vietPhraseOnly ||
         deleteScope == DeleteScope.both) {
       try {
+        final isBase = toNames && baseValueOf(targetKey) != null;
         final removed = toNames
-            ? await service.removeUserName(targetKey)
+            ? await service.removeUserName(targetKey, isBase: isBase)
             : await service.removeUserDict(targetKey);
         if (removed) {
           messages.add('Đã xóa khỏi $dictLabel.');
@@ -607,11 +618,18 @@ Future<void> showSharedEntryEditDialog(
         child: const Text('Hủy'),
       ),
       ListenableBuilder(
-        listenable: Listenable.merge([holder.canSave, holder.keyNotifier]),
+        listenable: Listenable.merge([
+          holder.canSave,
+          holder.hasChanges,
+          holder.keyNotifier,
+        ]),
         builder: (_, _) {
-          final canSave = holder.canSave.value;
           final currentKey = holder.keyNotifier.value.trim();
           final exists = dictHasEntry(currentKey);
+          // Khi sửa entry đã có: phải có thay đổi mới cho lưu.
+          // Khi thêm entry mới: cho lưu ngay nếu nội dung hợp lệ.
+          final canSave = holder.canSave.value &&
+              (!exists || holder.hasChanges.value);
           return FilledButton.icon(
             icon: Icon(exists ? Icons.save_outlined : Icons.add_circle_outline),
             onPressed: canSave
@@ -887,6 +905,7 @@ class _EntryFieldControllers {
   String keyText = '';
   String meaningText = '';
   final ValueNotifier<bool> canSave = ValueNotifier(false);
+  final ValueNotifier<bool> hasChanges = ValueNotifier(false);
   final ValueNotifier<GlossaryTerm?> glossaryTermNotifier = ValueNotifier(null);
   final ValueNotifier<String> meaningNotifier = ValueNotifier('');
   final ValueNotifier<String> keyNotifier = ValueNotifier('');
@@ -906,6 +925,7 @@ class _EntryFieldControllers {
     // notifier đã dispose (cùng vòng đời với controller của _EntryFields).
     Future<void>.delayed(const Duration(milliseconds: 500), () {
       canSave.dispose();
+      hasChanges.dispose();
       glossaryTermNotifier.dispose();
       meaningNotifier.dispose();
       keyNotifier.dispose();
@@ -1012,6 +1032,11 @@ class _EntryFieldsState extends State<_EntryFields> {
   bool _hasGlossaryFile = false;
   late final String _glossaryLang;
 
+  /// Initial values for change detection — save button stays inactive until
+  /// the user actually modifies key or meaning.
+  String _initialKeyTrimmed = '';
+  String _initialEncodedMeaning = '';
+
   @override
   void initState() {
     super.initState();
@@ -1034,8 +1059,14 @@ class _EntryFieldsState extends State<_EntryFields> {
     _meaningSourceKey = widget.initialKey.trim();
     widget.holder.refreshGlossary = () =>
         _checkGlossaryIfNeeded(_keyController.text.trim(), force: true);
+    // Khởi tạo trước _sync() để tránh LateInitializationError khi _sync()
+    // truy cập các field này. Giá trị _initialEncodedMeaning sẽ được ghi đè
+    // bằng giá trị đúng sau _sync().
+    _initialKeyTrimmed = widget.initialKey.trim();
+    _initialEncodedMeaning = '';
     _sync();
     _loadedMeaning = _encodedMeaning();
+    _initialEncodedMeaning = _loadedMeaning;
   }
 
   /// Đổi Từ nguồn → nạp lại Nghĩa của key mới trước khi tính lại phần còn lại.
@@ -1116,6 +1147,8 @@ class _EntryFieldsState extends State<_EntryFields> {
       currentLayerValue: widget.currentValueOf(key),
     );
     widget.holder.canSave.value = _impact.canSave && !_hasInvalidVietPhraseRows;
+    widget.holder.hasChanges.value =
+        key != _initialKeyTrimmed || meaning != _initialEncodedMeaning;
     _checkGlossaryIfNeeded(key);
     if (mounted) setState(() {});
   }

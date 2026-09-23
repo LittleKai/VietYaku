@@ -62,6 +62,30 @@ void main() {
       expect(report.ambiguous, isEmpty);
     });
 
+    test('overrides chữ sáp nhập đồng âm: 机→機, 准→準, 采→採, 筑→築, 斗→闘, 雕→彫, 凉→涼, 升→昇, 坛→壇', () {
+      final report = RepairReport();
+      expect(convertKeyChars('せっかくの机会', table, report).$1, 'せっかくの機会');
+      expect(convertKeyChars('机械仕掛け', table, report).$1, '機械仕掛け');
+      expect(convertKeyChars('准備', table, report).$1, '準備');
+      expect(convertKeyChars('採取', table, report).$1, '採取');
+      expect(convertKeyChars('建築', table, report).$1, '建築');
+      expect(convertKeyChars('戦闘', table, report).$1, '戦闘');
+      expect(convertKeyChars('彫刻', table, report).$1, '彫刻');
+      expect(convertKeyChars('清凉', table, report).$1, '清涼');
+      expect(convertKeyChars('上昇', table, report).$1, '上昇');
+      expect(convertKeyChars('祭坛', table, report).$1, '祭壇');
+    });
+
+    test('phraseReplacements: 言叶→言葉, 関系→関係, 舍て→捨て, 获物→獲物, 修复→修復 nhưng giữ nguyên 叶う', () {
+      final report = RepairReport();
+      expect(convertKeyChars('売り言叶に買い言叶', table, report).$1, '売り言葉に買い言葉');
+      expect(convertKeyChars('関系者以外立ち入', table, report).$1, '関係者以外立ち入');
+      expect(convertKeyChars('使い舍て', table, report).$1, '使い捨て');
+      expect(convertKeyChars('获物を狙う獣', table, report).$1, '獲物を狙う獣');
+      expect(convertKeyChars('武器の修复', table, report).$1, '武器の修復');
+      expect(convertKeyChars('願ったり叶ったり', table, report).$1, '願ったり叶ったり');
+    });
+
     test('ambiguous (复) không convert, ghi vào report', () {
       final report = RepairReport();
       expect(convertKeyChars('复', table, report).$1, '复');

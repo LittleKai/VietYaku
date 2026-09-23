@@ -27,6 +27,24 @@ bool isAsciiAlphanumeric(int codeUnit) =>
     (codeUnit >= 0x41 && codeUnit <= 0x5A) || // A-Z
     (codeUnit >= 0x61 && codeUnit <= 0x7A); // a-z
 
+/// Ký tự có phải là chữ hoặc số (CJK, chữ cái, hoặc chữ số — không phải khoảng
+/// trắng hay dấu câu/ký hiệu).
+bool isWordCodePoint(int cp) {
+  if (isCjkCodePoint(cp)) return true;
+  final cat = charCategoryOf(cp);
+  return cat != CjkCharCategory.space && cat != CjkCharCategory.other;
+}
+
+/// Chuỗi có chứa ít nhất một ký tự chữ hoặc số.
+bool hasWordChar(String text) {
+  var i = 0;
+  while (i < text.length) {
+    if (isWordCodePoint(codePointAt(text, i))) return true;
+    i += runeLengthAt(text, i);
+  }
+  return false;
+}
+
 /// Code point tại vị trí code-unit [index]; ghép surrogate pair nếu có.
 int codePointAt(String text, int index) {
   final lead = text.codeUnitAt(index);

@@ -19,11 +19,11 @@
 ### 2026-08-13 - Bôi đen ở ô kết quả cho key THIẾU token có nghĩa rỗng (`激出了火气` → `激出火气`)
 
 *Đã có rào chắn: `token_text_view.dart::selectionSourceKey`. Giữ lại đây để biết vì sao hàm đó tồn tại — không làm theo hướng dẫn thủ công bên dưới nữa.*
-- **Symptom:** Ô VietPhrase bôi đen "kích động ra hỏa khí" rồi chuột phải → "Sửa vào VietPhrase": ô Từ nguồn chỉ hiện `激出火气`, trong khi ô Nguồn là `激出了火气`. Không lỗi, không cảnh báo — key sai được lưu/publish thẳng vào từ điển chung và không bao giờ khớp lại văn bản.
-- **Root Cause:** `TokenTextView._pieces` bỏ hẳn token có text hiển thị rỗng (`了=` trong VietPhrase CN, `的` ở nhiều bộ) để không tạo khoảng trống thừa; token bị bỏ cũng không vào `ranges`, nên `_contextMenu` ghép key bằng `selectedTokens.map((t) => t.source).join()` mất luôn phần nguồn của nó. Cùng đường này còn cấp `word` cho "Tra online" và "Thêm vào Names".
-- **Fix:** `selectionSourceKey(paragraph, selected)` — lấy biên `[first.sourceStart, last.sourceStart + last.source.length)` từ vùng chọn rồi nối `source` của MỌI token không-passthrough của đoạn nằm trong biên đó (token nghĩa rỗng ở giữa được đưa vào lại; passthrough vẫn bị loại để dấu câu không lọt vào key).
-- **Do Not Repeat:** Key từ điển KHÔNG được suy ra từ danh sách token đã lọc để hiển thị — phần hiển thị và phần nguồn là hai tập khác nhau. Thêm bất kỳ luật lọc/ghép hiển thị mới nào ở `_pieces` thì phải kiểm lại đường sinh key ở `_contextMenu`.
-- **Related Files:** `lib/features/translation/presentation/token_text_view.dart`, `test/token_display_rules_test.dart`
+- **Symptom:** Ô VietPhrase bôi đen "kích động ra hỏa khí" rồi chuột phải → "Sửa vào VietPhrase": ô Từ nguồn chỉ hiện `激出火气`, trong khi ô Nguồn là `激出了火气`. Tương tự, chọn `第３奥部` thì chỉ nhận `第奥部`, mất số `３`. Không lỗi, không cảnh báo — key sai được lưu/publish thẳng vào từ điển chung và không bao giờ khớp lại văn bản.
+- **Root Cause:** `TokenTextView._pieces` bỏ hẳn token có text hiển thị rỗng (`了=` trong VietPhrase CN, `的` ở nhiều bộ) để không tạo khoảng trống thừa; token bị bỏ cũng không vào `ranges`, nên `_contextMenu` ghép key bằng `selectedTokens.map((t) => t.source).join()` mất luôn phần nguồn của nó. Đồng thời, `ranges` và `selectionSourceKey` trước đây bỏ qua toàn bộ `TokenKind.passthrough` nên mọi số/chữ xen giữa (`３`, `10`, `Type-C`) bị nuốt mất.
+- **Fix:** `selectionSourceKey(paragraph, selected)` — lấy biên `[first.sourceStart, last.sourceStart + last.source.length)` từ vùng chọn rồi nối `source` của MỌI token trong đoạn: token nghĩa rỗng ở giữa được đưa vào lại; passthrough chỉ bỏ qua khi thuần dấu câu hoặc khoảng trắng (`!hasWordChar`), giữ nguyên số và chữ cái. `ranges` cũng nhận passthrough có `hasWordChar`.
+- **Do Not Repeat:** Key từ điển KHÔNG được suy ra từ danh sách token đã lọc để hiển thị — phần hiển thị và phần nguồn là hai tập khác nhau. Passthrough không đồng nghĩa với dấu câu: passthrough gồm cả chữ số và chữ cái ngoài CJK.
+- **Related Files:** `lib/core/cjk.dart`, `lib/features/translation/presentation/token_text_view.dart`, `test/token_display_rules_test.dart`, `test/cjk_category_test.dart`
 
 ### 2026-08-09 - `trad2simp.tsv` quy nhầm chữ VỐN ĐÃ giản thể (子→自, 三→叁, 斯→四…)
 
@@ -168,3 +168,13 @@
 - **Fix:** Chỉ tin mtime khi nguồn cũ hơn chính file cache ≥ `mtimeSlackMs` (2s); còn lại hash FNV-1a. Nguồn đã cũ mà vẫn phải hash (cache ghi cùng lúc nguồn, vd. seed Android) thì `loadDictionarySync` đóng dấu lại mtime file cache để lần sau đi đường nhanh.
 - **Do Not Repeat:** Đừng dùng mtime làm bằng chứng "nội dung không đổi" khi file có thể vừa được ghi — độ phân giải mtime phụ thuộc hệ điều hành/filesystem.
 - **Related Files:** `lib/features/dictionary/data/binary_cache.dart`, `lib/features/dictionary/data/dictionary_loader.dart`, `test/binary_cache_test.dart`
+
+### Cụm mở đầu bằng ký tự không-CJK không bao giờ ghép được
+
+*Đã có rào chắn: `translation_engine.dart::_startableMatchAt`. Giữ lại đây để biết vì sao hàm đó tồn tại — không làm theo hướng dẫn thủ công bên dưới nữa.*
+
+- **Symptom:** Thêm `ＨＢＴＮシリーズ=HBTN Series` vào VietPhrase, lưu xong bản dịch vẫn không hiện nghĩa; bôi đen cụm đó ở ô kết quả rồi mở dialog sửa VietPhrase thì ô Từ nguồn chỉ có `シリーズ`. Từ điển có đủ mục, Search Center tra ra, nhưng dịch không bao giờ dùng.
+- **Root Cause:** `_translateLeftToRight` và cả hai vòng của `_translateGlobal` chỉ **khởi động** tra từ điển tại code point CJK (`if (!isCjkCodePoint(cp)) continue;`). `ＨＢＴＮ` là latin toàn-hình (U+FF28…), không phải CJK, nên vị trí đó bị bỏ qua và engine chỉ tra từ `シリーズ`. Hệ quả kéo theo: `ＨＢＴＮ` thành token `passthrough`, mà `selectionSourceKey` bỏ qua passthrough ⇒ vùng chọn cho key thiếu. Đo trên dữ liệu thật: 153 key `data/jp/VietPhrase.txt` và 7.810 key `data/cn/VietPhrase.txt` mở đầu bằng ký tự không-CJK — toàn bộ đều chết theo cách này.
+- **Fix:** Mọi vị trí đều được tra; `_startableMatchAt` lọc kết quả — match bắt đầu tại ký tự không-CJK chỉ được nhận khi **bản thân match chứa ít nhất một ký tự CJK**. Chỉ cần xét match dài nhất: match ngắn hơn tại cùng offset là prefix của nó.
+- **Do Not Repeat:** Đừng dùng "ký tự đầu có phải CJK không" làm điều kiện **khởi động** tra từ điển. Key từ điển CJK hợp lệ vẫn có thể mở đầu bằng latin toàn-hình, ngoặc `【『(`, hay chữ số. Nếu cần chặn văn bản latin bị dịch bậy (`SF`, `cn`, `PTSD`, `419` đều là key thật), lọc trên **nội dung match**, không lọc trên ký tự đầu. Chi phí: latin thuần chậm hơn (18KB: 0,3ms → 22ms/lần), CJK không đổi.
+- **Related Files:** `lib/features/translation/domain/translation_engine.dart`, `test/engine_test.dart`, `test/token_display_rules_test.dart`

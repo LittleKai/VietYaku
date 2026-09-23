@@ -78,6 +78,7 @@ phép kiểm này là điều kiện để cửa ra an toàn. Chạy:
 | 25 | Khởi động: nút title bar hiện icon Restore nhưng cửa sổ không maximize | ✅ `window_maximize.dart::ensureWindowMaximized` + `win32_window.cpp::IsZoomed` | `archive/FIXED_BUGS_guarded.md` |
 | 26 | Xóa từ khỏi VietPhrase/Lạc Việt không mất từ trong từ điển nạp | ✅ `shared_dictionary_service.dart::deleteSentinel` + `shared_dictionary_service.dart::replayPending` | `archive/FIXED_BUGS_guarded.md` |
 | 27 | Sửa từ cùng độ dài trong vòng 1 giây ⇒ cache `.vydc` trả nghĩa CŨ (mtime Windows làm tròn giây) | ✅ `binary_cache.dart::trustsMtime` | `archive/FIXED_BUGS_guarded.md` |
+| 28 | Cụm mở đầu bằng ký tự KHÔNG-CJK không bao giờ ghép dù từ điển có đủ (`ＨＢＴＮシリーズ`, `【誓約の魔物】会議`) ⇒ dịch không hiện + dialog sửa nhận sai key | ✅ `translation_engine.dart::_startableMatchAt` | `archive/FIXED_BUGS_guarded.md` |
 
 > Cột 1 phải là **số**, cột 3 phải bắt đầu bằng ✅/🔶/❌ và bọc tên hàm trong dấu
 > backtick — `guard_check.py` parse đúng định dạng này.
