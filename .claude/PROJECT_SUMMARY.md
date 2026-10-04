@@ -1,6 +1,6 @@
 # Project Summary — VietYaku
 ---
-**Last updated:** 2026-09-23 (Release v1.3.3: nhận diện cụm từ đặc biệt, chuẩn hóa giản thể tiếng Nhật, tối ưu lưu/xóa từ điển Names · 563/563 tests passed)
+**Last updated:** 2026-10-04 (Cập nhật tài liệu README.md chi tiết cho toàn bộ tính năng và nền tảng Windows/Android)
 
 > File này phản ánh **trạng thái hiện tại** của dự án. **Không** dùng làm changelog,
 > recent changes, hay bug-fix log — git history là nguồn lịch sử. Lỗi quan trọng,
@@ -90,7 +90,7 @@ VietYaku/
 │   │   ├── repair/                 # domain (jp_repair_pipeline, simp2jp_table, repair_report) · application (repair_controller) · presentation (repair_screen, repair_preview)
 │   │   └── settings/               # settings_provider, settings_screen (3 tab: Chung — thuật toán/popup/tra online/dịch AI/tốc độ đọc/sync + thư mục Glossary + màn đồng bộ Glossary ↔ VietPhrase (chỉ admin)/update; Tiếng Nhật — kana+Sudachi+giọng Nhật+repair; Tiếng Trung — phồn→giản+giọng Trung), appearance_screen (cỡ chữ+font/màu kana/hiển thị)
 │   └── shared/widgets/             # tts_button, entry_edit_dialog, app_dialog, feature_help_button (`?` + dialog giải thích), icon_context_menu, settings_layout, markdown_body_view (render nghĩa AI)
-└── test/                           # 561 tests (60 file; integration dữ liệu thật tự skip nếu thiếu path)
+└── test/                           # 567 tests (61 file; integration dữ liệu thật tự skip nếu thiếu path)
 ```
 
 ### Critical Files

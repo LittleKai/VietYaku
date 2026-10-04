@@ -191,7 +191,9 @@ class LookupController extends Notifier<LookupResult?> {
     // Cedict/Babylon → Thiều Chửu → Trung Việt/(Trung) Nhật Việt → Phiên Âm.
 
     // 0. VietPhrase (UserDict/Names/VietPhrase) — lên trước Lạc Việt.
+    final seenPhraseWords = <String>{};
     void addPhraseSection(String w) {
+      if (!seenPhraseWords.add(w)) return;
       final hit = _phraseValue(dicts, w);
       if (hit != null) {
         sections.add(LookupSection(w, hit.label, _joinMeanings(hit.value)));
@@ -199,6 +201,29 @@ class LookupController extends Notifier<LookupResult?> {
     }
 
     addPhraseSection(word);
+
+    // Cụm VietPhrase nhỏ hơn (độ dài >= 2 rune) nằm trong [word].
+    // Quét theo thứ tự xuất hiện từ trái qua phải, cụm dài ưu tiên trước.
+    final runeOffsets = <int>[];
+    var offset = 0;
+    while (offset < word.length) {
+      runeOffsets.add(offset);
+      offset += runeLengthAt(word, offset);
+    }
+    runeOffsets.add(word.length);
+    final runeCount = runeOffsets.length - 1;
+
+    if (runeCount >= 2) {
+      for (var start = 0; start < runeCount; start++) {
+        var maxEnd = (start == 0) ? runeCount - 1 : runeCount;
+        if (maxEnd > start + 32) maxEnd = start + 32;
+        for (var end = maxEnd; end >= start + 2; end--) {
+          final sub = word.substring(runeOffsets[start], runeOffsets[end]);
+          addPhraseSection(sub);
+        }
+      }
+    }
+
     if (firstChar != word) addPhraseSection(firstChar);
 
     // 1. Lạc Việt: exact trước, miss thì prefix ngắn dần (theo rune).
