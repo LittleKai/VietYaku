@@ -124,6 +124,35 @@ void main() {
       );
     });
 
+    test('các mẫu 的 把 被 了 着 xử lý đúng và không bắt key ngoài phạm vi', () {
+      final source = File('data/cn/LuatNhan.txt').readAsStringSync();
+      final rules = parsePersonRules(source).rules;
+      final engine = TranslationRuleEngine(personRules: rules);
+      final pronouns = _dict(DictType.pronouns, {'他': 'hắn'});
+
+      expect(
+        engine.matchPersonRuleAt('他的东西', 0, [pronouns])!.value,
+        'thứ của hắn',
+      );
+      expect(
+        engine.matchPersonRuleAt('把他放下', 0, [pronouns])!.value,
+        'đặt hắn xuống',
+      );
+      expect(
+        engine.matchPersonRuleAt('被他打', 0, [pronouns])!.value,
+        'bị hắn đánh',
+      );
+      expect(
+        engine.matchPersonRuleAt('打了他', 0, [pronouns])!.value,
+        'đã đánh hắn',
+      );
+      expect(
+        engine.matchPersonRuleAt('看着他', 0, [pronouns])!.value,
+        'đang nhìn hắn',
+      );
+      expect(engine.matchPersonRuleAt('把龙放下', 0, [pronouns]), isNull);
+    });
+
     test('bộ LuatNhan bundle đọc sạch và có đủ hơn 200 rule', () {
       final source = File('data/cn/LuatNhan.txt').readAsStringSync();
       final document = parsePersonRules(source);

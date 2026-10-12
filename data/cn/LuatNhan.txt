@@ -1,10 +1,15 @@
 {0}的父亲=phụ thân của {0}
 {0}的母亲=mẫu thân của {0}
+{0}的东西=thứ của {0}
 那些{0}=những {0} đó
 别的{0}={0} khác
 
 # Tham khảo: http://www.tangthuvien.com/forum/showthread.php?t=96294
 把{0}挡住=ngăn cản {0}
+把{0}放下=đặt {0} xuống
+被{0}打=bị {0} đánh
+打了{0}=đã đánh {0}
+看着{0}=đang nhìn {0}
 比{0}好多了=tốt hơn {0} nhiều
 对{0}说=nói với {0}
 跟{0}说=nói với {0}
