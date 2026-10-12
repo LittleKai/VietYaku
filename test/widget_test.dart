@@ -6,7 +6,7 @@ import 'package:vietyaku/app.dart';
 import 'package:vietyaku/features/settings/settings_provider.dart';
 
 void main() {
-  testWidgets('HomeShell shows translation, search, EPUB and settings', (
+  testWidgets('HomeShell shows translation, project, search, EPUB and settings', (
     tester,
   ) async {
     SharedPreferences.setMockInitialValues({});
@@ -22,6 +22,7 @@ void main() {
 
     // "Sửa từ điển" đã chuyển vào tab Cài đặt (không còn là destination riêng).
     expect(find.text('Dịch'), findsWidgets);
+    expect(find.text('Project'), findsOneWidget);
     expect(find.text('Tìm kiếm'), findsOneWidget);
     expect(find.text('EPUB'), findsOneWidget);
     expect(find.text('Cài đặt'), findsOneWidget);
@@ -29,6 +30,13 @@ void main() {
     final labels = rail.destinations
         .map((destination) => (destination.label as Text).data)
         .toList();
-    expect(labels, ['Dịch', 'Tìm kiếm', 'Giao diện', 'Cài đặt', 'EPUB']);
+    expect(labels, [
+      'Dịch',
+      'Project',
+      'Tìm kiếm',
+      'Giao diện',
+      'Cài đặt',
+      'EPUB',
+    ]);
   });
 }

@@ -33,6 +33,9 @@ class PlatformFeatures {
   /// Sửa từ điển (repair pipeline): xuất `*_JP.txt` cạnh file nguồn.
   static bool get dictionaryRepair => !isMobile;
 
+  /// Biên tập project TXT: mở/lưu file và thư mục project cạnh nguồn.
+  static bool get projectEditor => !isMobile;
+
   /// Không có chuột phải / hover → phải mở lối thao tác bằng chạm.
   static bool get touchPrimary => isMobile;
 }

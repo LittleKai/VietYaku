@@ -26,10 +26,11 @@ void main() {
   tearDown(() => PlatformFeatures.debugIsMobileOverride = null);
 
   group('homeDestinations', () {
-    test('desktop có đủ 5 tab, EPUB đứng cuối', () {
+    test('desktop có đủ 6 tab, EPUB đứng cuối', () {
       PlatformFeatures.debugIsMobileOverride = false;
       expect(homeDestinations().map((d) => d.label), [
         'Dịch',
+        'Project',
         'Tìm kiếm',
         'Giao diện',
         'Cài đặt',
@@ -142,7 +143,7 @@ void main() {
 
       await tester.tap(find.byIcon(Icons.settings_outlined));
       await tester.pump(const Duration(milliseconds: 50));
-      expect(selectedTab(tester), 3);
+      expect(selectedTab(tester), 4);
 
       await tester.binding.handlePopRoute();
       await tester.pump(const Duration(milliseconds: 50));

@@ -13,6 +13,7 @@ import 'features/dictionary_search/presentation/dictionary_search_screen.dart';
 import 'features/dictionary_sync/application/dictionary_sync_controller.dart';
 import 'features/dictionary_sync/presentation/sync_reminder_dialog.dart';
 import 'features/epub_converter/presentation/epub_converter_screen.dart';
+import 'features/project/presentation/project_screen.dart';
 import 'features/settings/appearance_screen.dart';
 import 'features/settings/settings_provider.dart';
 import 'features/settings/settings_screen.dart';
@@ -252,6 +253,14 @@ List<HomeDestination> homeDestinations() => [
     color: Color(0xFF1565C0),
     screen: TranslateScreen(),
   ),
+  if (PlatformFeatures.projectEditor)
+    const HomeDestination(
+      label: 'Project',
+      icon: Icons.segment_outlined,
+      selectedIcon: Icons.segment,
+      color: Color(0xFF00897B),
+      screen: ProjectScreen(),
+    ),
   const HomeDestination(
     label: 'Tìm kiếm',
     icon: Icons.manage_search_outlined,

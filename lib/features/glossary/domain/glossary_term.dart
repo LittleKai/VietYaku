@@ -3,6 +3,7 @@
 /// Thứ tự field khi ghi phải khớp `GlossaryManager._normalize_term` bên Python
 /// (source, target, kind, notes, created_by, date_added) để diff file sạch.
 class GlossaryTerm {
+  static const addressKind = 'address';
   final String source;
   final String target;
   final String kind;
@@ -18,6 +19,8 @@ class GlossaryTerm {
     this.createdBy = 'user',
     required this.dateAdded,
   });
+
+  bool get isAddressForm => kind == addressKind;
 
   factory GlossaryTerm.fromJson(Map<String, dynamic> json) => GlossaryTerm(
     source: (json['source'] ?? '').toString(),

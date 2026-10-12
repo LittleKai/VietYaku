@@ -118,7 +118,11 @@ class GlossaryService {
   Future<List<GlossaryTerm>> readAll(TranslationMode mode) async {
     final payload = await _readPayload(mode);
     if (payload == null) return const [];
-    return _termsOf(payload).map(GlossaryTerm.fromJson).toList();
+    // Mục xưng hô chỉ dùng trong prompt của AI_Translation_Bridge, không thuộc VietPhrase.
+    return _termsOf(payload)
+        .map(GlossaryTerm.fromJson)
+        .where((term) => !term.isAddressForm)
+        .toList();
   }
 
   /// Xóa các mục từ khỏi glossary theo [sources].
