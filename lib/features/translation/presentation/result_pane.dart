@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/widgets/feature_help_button.dart';
 import '../../clipboard/application/clipboard_reader_controller.dart';
 import '../../settings/settings_provider.dart';
+import '../application/meaning_choice_controller.dart';
 import '../application/lookup_controller.dart';
 import '../application/translation_controller.dart';
 import '../application/translation_rules_provider.dart';
@@ -20,6 +22,58 @@ enum _ResultTabType {
 
   final String label;
   const _ResultTabType(this.label);
+}
+
+class MeaningChoiceIntent extends Intent {
+  const MeaningChoiceIntent(this.index);
+
+  final int index;
+}
+
+/// Nhận phím số trong pane kết quả; ô Bản dịch Việt nằm ngoài subtree này nên
+/// vẫn giữ quyền xử lý phím số để gõ văn bản.
+class MeaningChoiceShortcuts extends StatelessWidget {
+  const MeaningChoiceShortcuts({
+    super.key,
+    required this.controller,
+    required this.child,
+  });
+
+  final MeaningChoiceController controller;
+  final Widget child;
+
+  static const _digitKeys = <LogicalKeyboardKey>[
+    LogicalKeyboardKey.digit1,
+    LogicalKeyboardKey.digit2,
+    LogicalKeyboardKey.digit3,
+    LogicalKeyboardKey.digit4,
+    LogicalKeyboardKey.digit5,
+    LogicalKeyboardKey.digit6,
+    LogicalKeyboardKey.digit7,
+    LogicalKeyboardKey.digit8,
+    LogicalKeyboardKey.digit9,
+  ];
+
+  static final Map<ShortcutActivator, Intent> _shortcuts = {
+    for (var i = 0; i < _digitKeys.length; i++)
+      LogicalKeySet(_digitKeys[i]): MeaningChoiceIntent(i + 1),
+  };
+
+  @override
+  Widget build(BuildContext context) => Shortcuts(
+    shortcuts: _shortcuts,
+    child: Actions(
+      actions: {
+        MeaningChoiceIntent: CallbackAction<MeaningChoiceIntent>(
+          onInvoke: (intent) {
+            controller.choose(intent.index);
+            return null;
+          },
+        ),
+      },
+      child: child,
+    ),
+  );
 }
 
 /// Kết quả dịch: một nghĩa, đa nghĩa, hậu xử lý và Google Dịch tùy chọn.
@@ -164,9 +218,11 @@ class _ResultPaneState extends ConsumerState<ResultPane>
       if (_gtTabOpen && next.isNotEmpty) _fetchGoogleTranslate();
     });
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
+    return MeaningChoiceShortcuts(
+      controller: ref.read(meaningChoiceControllerProvider),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
         Row(
           children: [
             Expanded(
@@ -199,7 +255,8 @@ class _ResultPaneState extends ConsumerState<ResultPane>
               multiMeaning: isMultiMeaning,
             ),
           ),
-      ],
+        ],
+      ),
     );
   }
 

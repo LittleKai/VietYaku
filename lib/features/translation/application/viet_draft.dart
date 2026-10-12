@@ -21,7 +21,9 @@ void insertIntoVietDraft(TextEditingController controller, String word) {
   final after = text.substring(pos);
   final needSpaceBefore =
       before.isNotEmpty && !before.endsWith(' ') && !before.endsWith('\n');
-  final insert = needSpaceBefore ? ' $word' : word;
+  final needSpaceAfter =
+      after.isNotEmpty && !after.startsWith(' ') && !after.startsWith('\n');
+  final insert = '${needSpaceBefore ? ' ' : ''}$word${needSpaceAfter ? ' ' : ''}';
 
   final newText = '$before$insert$after';
   final caret = before.length + insert.length;
