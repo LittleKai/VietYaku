@@ -1,9 +1,9 @@
 import '../../../core/cjk.dart';
 import '../../dictionary/domain/dict_type.dart';
 import '../../dictionary/domain/phrase_dictionary.dart';
+import 'jp_deinflector.dart';
 import 'token.dart';
 import 'translation_rule.dart';
-import 'jp_deinflector.dart';
 
 enum TranslationMode { japanese, chinese }
 

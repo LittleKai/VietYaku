@@ -1,6 +1,6 @@
 # Project Summary — VietYaku
 ---
-**Last updated:** 2026-10-12 (Global Glossary `kind: "address"` entries are filtered from `readAll` and remain file-only)
+**Last updated:** 2026-10-13 (Project TXT editor/TM, opt-in Japanese deinflection prototype, and curated Chinese grammar rules)
 
 > File này phản ánh **trạng thái hiện tại** của dự án. **Không** dùng làm changelog,
 > recent changes, hay bug-fix log — git history là nguồn lịch sử. Lỗi quan trọng,
@@ -85,18 +85,20 @@ VietYaku/
 │   │   ├── dictionary_search/      # domain exact/prefix/wildcard/full-text + overlay winner · worker isolate sống lâu · Search Center UI
 │   │   ├── dictionary_sync/        # domain shared entry + sync_reminder (chu kỳ nhắc) · typed HTTP API · merge overlay · Riverpod admin session/sync controller · presentation (sync_reminder_dialog)
 │   │   ├── epub_converter/         # đọc EPUB spine/OPF + xuất CSV/XLSX/MD/DOCX/TXT; UI chọn file/xem trước/lưu
-│   │   ├── glossary/               # domain (glossary_term, glossary_term_change) · data (glossary_service — đọc/ghi `Global Glossary.json` JP/CN; `readAll` bỏ qua `kind: "address"` (mục prompt-only); glossary_term_queue — hàng đợi `PendingGlossary_<mode>.txt` chờ đẩy lên server) · application (glossary_service_provider — service dùng cho MỌI chỗ ghi, tự xếp hàng khi là admin; glossary_sync_controller — ghép 2 bên, lọc trùng/created_by) · presentation (glossary_update_dialog — `showGlossaryUpdateDialog` xác nhận ghi theo nghĩa VietPhrase + `showGlossaryEditDialog` sửa riêng `target`; glossary_sync_screen — đồng bộ hàng loạt 2 chiều, có phân trang)
-│   │   ├── translation/            # domain (translation_engine, translation_rule, token, vietphrase_value, reading_extractor, online_lookup_source, trad2simp_table, dict_entry_filter, meaning_panel_layout) · data (translation_rule_repository + các API online) · application (translation_controller + currentModeProvider, translation_rules_provider, lookup/online lookup, trad2simp, token_selection, viet_draft) · presentation (translate_screen, source/result/viet/han_viet pane, token_text_view, translation_rule_tester_dialog, lacviet_panel)
+│   │   ├── glossary/               # domain (glossary_term, glossary_term_change) · data (glossary_service — đọc/ghi `Global Glossary.json` JP/CN; `readAll` bỏ qua `kind: "address"` (mục prompt-only); glossary_term_queue — hàng đợi `PendingGlossary_<mode>.txt` chờ đẩy lên server) · application (glossary_service_provider — service dùng cho MỌI chỗ ghi, tự xếp hàng khi là admin; glossary_sync_controller — ghép 2 bên, lọc trùng/created_by) · presentation (glossary_update_dialog — `showGlossaryUpdateDialog` có TextField sửa target + `showGlossaryEditDialog` sửa riêng `target`; glossary_sync_screen — đồng bộ hàng loạt 2 chiều, có phân trang)
+│   │   ├── translation/            # domain (translation_engine, jp_deinflector, translation_rule, token, vietphrase_value, reading_extractor, online_lookup_source, trad2simp_table, dict_entry_filter, meaning_panel_layout) · data (translation_rule_repository + các API online) · application (translation_controller + currentModeProvider, translation_rules_provider, lookup/online lookup, trad2simp, token_selection, viet_draft) · presentation (translate_screen, source/result/viet/han_viet pane, token_text_view, translation_rule_tester_dialog, lacviet_panel)
 │   │   ├── repair/                 # domain (jp_repair_pipeline, simp2jp_table, repair_report) · application (repair_controller) · presentation (repair_screen, repair_preview)
+│   │   ├── project/                # domain (project_document, project_segment, sentence_segmenter) · data (project_store, translation_memory_store) · application (project_controller) · presentation (project_screen, project_segment_editor)
 │   │   └── settings/               # settings_provider, settings_screen (3 tab: Chung — thuật toán/popup/tra online/dịch AI/tốc độ đọc/sync + thư mục Glossary + màn đồng bộ Glossary ↔ VietPhrase (chỉ admin)/update; Tiếng Nhật — kana+Sudachi+giọng Nhật+repair; Tiếng Trung — phồn→giản+giọng Trung), appearance_screen (cỡ chữ+font/màu kana/hiển thị)
 │   └── shared/widgets/             # tts_button, entry_edit_dialog, app_dialog, feature_help_button (`?` + dialog giải thích), icon_context_menu, settings_layout, markdown_body_view (render nghĩa AI)
-└── test/                           # 567 tests (61 file; integration dữ liệu thật tự skip nếu thiếu path)
+└── test/                           # 601 tests (69 file; integration dữ liệu thật tự skip nếu thiếu path)
 ```
 
 ### Critical Files
 | File | Purpose | Notes |
 |------|---------|-------|
 | `lib/features/translation/domain/translation_engine.dart` | Engine greedy longest-match | Chữ ký `translate()` chừa sẵn cho AiTranslationEngine v2 |
+| `lib/features/translation/domain/jp_deinflector.dart` | Candidate deinflection Nhật prototype | Fallback opt-in sau static lookup; giữ surface UTF-16 và metadata rule |
 | `lib/features/translation/domain/vietphrase_value.dart` | Parse/encode tầng nghĩa + từ loại VietPhrase | Một tầng chứa nhiều cách dịch ngăn bởi `/`; đọc tương thích marker cũ `/(2)/`, `/(2)`, `/(n)/`, `/(v)`; ngoặc nội dung không phải marker vẫn giữ nguyên |
 | `tool/normalize_vietphrase_values.dart` | Migration value VietPhrase về một chuẩn | Mặc định dry-run; `--write` ghi JP+CN, verify idempotent + giữ BOM/CRLF/final newline |
 | `lib/features/translation/domain/jp_input_normalizer.dart` | Halfwidth katakana → fullwidth trước khi tra (mode Nhật) | BẮT BUỘC remap token về offset gốc bằng `toOriginal` |
@@ -208,15 +210,18 @@ Menu bar trên cùng (chọn Nhật/Trung + Dán & Dịch). Trái (flex 2): tabs
 | Tab Hán Việt toàn văn | ✅ Done | han_viet_pane, translation_controller | Tính cùng lượt dịch |
 | Thuật toán dịch + Ưu tiên Name | ✅ Done | translation_engine, settings_provider, settings_screen | Trái→phải, Cụm dài, Cụm dài ≥4; Prioritize Names |
 | Quy tắc hậu xử lý regex + Luật Nhân + rule tester | ✅ Done | translation_rule, translation_rule_repository, translation_rule_tester_dialog | Regex atomic mode, Luật Nhân hơn 200 rule QT_Jap |
+| Project TXT + exact Translation Memory | ✅ Done | features/project/*, app.dart | Tách câu, chỉnh bản dịch, gợi ý TM exact và xuất target atomic theo project |
+| Japanese deinflection prototype | ✅ Done | jp_deinflector, translation_engine | Candidate table-driven cho た/ない/て/bị động/sai khiến; chỉ bật qua engine option |
+| Curated Chinese grammar rules | ✅ Done | data/cn/LuatNhan.txt, translation_rule_test.dart | Thêm fixture nhỏ cho 的/把/被/了/着, giữ giới hạn key từ điển |
 | Chọn kiểu caret + tô nổi đỏ đồng bộ 3 pane | ✅ Done | token_selection, source_pane, token_text_view | Nháy chuột chọn cụm, highlight 2 chiều; active từ ở ô VietPhrase / Hán Việt thì ô Nguồn tự cuộn tới cụm khi cụm đang ngoài khung nhìn |
 | Nhận diện cụm từ điển phụ | ✅ Done | secondary_phrase, secondary_phrases_provider, token_text_view | Mode Nhật: click chọn tra Lạc Việt > Nhật Việt > Mazii > Online > AI; **đánh dấu trong ô VietPhrase chỉ theo Lạc Việt** |
 | Ô Nghĩa đa từ điển + popup tra nhanh | ✅ Done | lookup_controller, lacviet_panel, source_pane, vietphrase_value | VietPhrase → Lạc Việt → Mazii → Nhật Việt → …; mục VietPhrase định dạng `/` thành `; ` phân tách nghĩa sạch; popup neo ở ô Nguồn, hiện cho từ được active ở bất kỳ ô nào (Nguồn / VietPhrase / Hán Việt) |
 | Từ điển Mazii offline (Nhật→Việt) | ✅ Done | dict_type, dictionary_repository, lookup_controller | 171.299 entry từ MaziiDict.db |
 | Sửa từ điển từ toolbar chuột phải | ✅ Done | source_pane, token_text_view, icon_context_menu, entry_edit_dialog, user_dict_service | Đổi ô Từ nguồn nạp lại preview theo key mới; nút Xóa hiện đúng dict mục tiêu; xóa Names hỗ trợ cả base; Glossary không áp dụng cho Names |
-| Chuyển đổi EPUB | ✅ Done | epub_converter/*, app.dart | Nhúng ảnh thật vào DOCX, xuất CSV/XLSX/MD/DOCX/TXT |
+| Chuyển đổi EPUB | ✅ Done | epub_converter/*, app.dart | Nhúng ảnh thật DOCX, xuất CSV/XLSX (id,raw)/MD/DOCX/TXT; lọc CSS/attr rò rỉ, SVG cover, xuất thư mục ảnh khớp (img) |
 | Tự động kiểm tra cập nhật (GitHub Releases) | ✅ Done | features/update/*, app.dart, settings_provider | Windows: ZIP + bat script. Android: `findAndroidApkAsset` → `OpenFilex.open` trình cài đặt |
 | Phát hành lên B2 cho trang tải web | ✅ Done | .claude/skills/build-and-release/scripts/upload-b2.ps1, release.ps1 | Đẩy ZIP + `version.json` lên `vietyaku-app/` để `/studio/vietyaku` tải về |
-| Đẩy từ sang Global Glossary | ✅ Done | features/glossary/*, settings_provider, entry_edit_dialog | Ghi `Global Glossary.json` JP/CN của AI_Translation_Bridge |
+| Đẩy từ sang Global Glossary | ✅ Done | features/glossary/*, settings_provider, entry_edit_dialog | Ghi Global Glossary.json JP/CN; cập nhật ngay lập tức 0ms lên dialog cha, đồng bộ mtime+length cache |
 | Đẩy Global Glossary lên server cho AI_Translation_Bridge | ✅ Done | glossary_service_provider, glossary_term_queue, dictionary_sync_api/controller | Phiên admin ghi glossary → xếp hàng `PendingGlossary_<mode>.txt` → `POST /api/glossary/terms/sync` khi bấm Update, hoặc tự Update khi tổng mục chờ (từ điển + glossary) đạt 10 |
 | Đồng bộ hàng loạt Glossary ↔ VietPhrase | ✅ Done | features/glossary/*, dictionary_sync_controller | 2 chiều, phân trang, lọc trùng/không trùng |
 | Kiểm tra: độ phủ + top từ chưa dịch + soát lỗi | ✅ Done | features/analysis/*, translate_screen | Độ phủ CJK, gợi ý tên riêng, cắt cụm lệch, lệch ngoặc |
@@ -225,7 +230,7 @@ Menu bar trên cùng (chọn Nhật/Trung + Dán & Dịch). Trái (flex 2): tabs
 | Search Center / tra ngược | ✅ Done | features/dictionary_search/*, app.dart | Exact/prefix/wildcard/full-text, overlay winner |
 | Quét mã QR ủng hộ nhà phát triển | ✅ Done | features/settings/presentation/donate_dialog.dart, settings_screen.dart | VietQR Vietcombank 0071000718658, sao chép STK, tải ảnh QR về máy (file_selector trên desktop + Downloads trên mobile) |
 
-**Verify end-to-end:** `dart run tool/normalize_vietphrase_values.dart` → JP `0/190.085`, CN `0/691.761` entry cần chuẩn hóa. `dart run tool/export_jp.dart` → VietPhrase_JP.txt + LacViet_JP.txt cạnh file gốc; hết key `覚 悟`/`军`, value nguyên vẹn từng byte; dịch Nhật match dài, dịch Trung có fallback phiên âm. `flutter test` 563 pass + `flutter analyze --no-pub` sạch; `flutter build windows --release --no-pub` thành công.
+**Verify end-to-end:** `dart run tool/normalize_vietphrase_values.dart` → JP `0/190.085`, CN `0/691.761` entry cần chuẩn hóa. `dart run tool/export_jp.dart` → VietPhrase_JP.txt + LacViet_JP.txt cạnh file gốc; hết key `覚 悟`/`军`, value nguyên vẹn từng byte; dịch Nhật match dài, dịch Trung có fallback phiên âm. Sau chặng offline intelligence: `flutter test` và `flutter analyze` phải chạy lại trong cùng session. Autosave phiên làm việc/khôi phục tự động vẫn ngoài phạm vi.
 
 **Verify Android (emulator `Medium_Phone_API_36.1`, API 36):** `flutter build apk --debug` → cài chạy được; lần đầu seed `data/jp` (14 file, ~96MB) rồi nạp 14 dict trong ~18s, lần sau đọc `.vydc` — không OOM, không ANR; dán & dịch đoạn Nhật ra đúng tầng nghĩa; nhấn giữ token hiện menu "Chèn vào Bản dịch / Thêm vào UserDict / Thêm vào Names / Tra online"; tab Google Dịch trả kết quả online (xác nhận quyền `INTERNET` trong bản không-debug bằng `aapt2 dump permissions`).
 
@@ -237,11 +242,13 @@ Menu bar trên cùng (chọn Nhật/Trung + Dán & Dịch). Trái (flex 2): tabs
 - (không có)
 
 ### 🟡 Medium Priority
+- [x] Project TXT editor + exact TM đã hoàn tất; autosave phiên làm việc cố ý không triển khai theo phạm vi đã duyệt.
 - [ ] Chuột phải token (chèn nghĩa không active + menu edit theo quyền) chưa có widget test (hit-test TextSpan với kSecondaryButton phức tạp) — verify tay.
 - [ ] Từ điển bundle dạng assets (`data/jp`, `data/cn`) áp cho MỌI nền tảng → APK Android + build Windows đều +~155MB (pubspec không cho khai báo assets theo nền tảng). Trên Android đã giảm nửa phần ghi đĩa bằng cách chỉ seed bộ ngôn ngữ đang dùng (`AppPaths.seedLanguagePack`): mode Nhật ~92MB text + cache `.vydc`, mode Trung ~63MB. Muốn giảm tiếp thì phải chuyển sang asset pack / tải từ server.
 - [x] Đã tạo thành công GitHub Release `v1.2.0` (upload `VietYaku-windows-x64.zip` + `VietYaku-android-v1.2.0.apk`). Luồng check update API (`GET .../releases/latest`) và B2 (`version.json`) hiện đã trả về phiên bản mới nhất.
 
 ### 🟢 Low Priority / Nice to Have (Backlog v2 — KHÔNG làm v1)
+- [x] EPUB xuất kèm thư mục ảnh: tự động tạo thư mục ảnh (<tên_file>_images) cạnh file xuất, đánh số khớp thứ tự vị trí (img).
 - [ ] EPUB nhúng ảnh thật vào Markdown (`![](media/…)` + xuất kèm thư mục media): DOCX đã nhúng thật; Markdown/CSV/XLSX/TXT hiện vẫn `(img)`.
 - [ ] Furigana per-token cho kanji ngoài từ điển (cần MeCab, không có port Dart thuần).
 - [ ] AiTranslationEngine (chữ ký `translate()` đã chừa sẵn).
@@ -303,7 +310,7 @@ Menu bar trên cùng (chọn Nhật/Trung + Dán & Dịch). Trái (flex 2): tabs
 
 ### Testing checklist:
 - [ ] `flutter analyze` sạch
-- [ ] `flutter test` pass (518 tests; integration tự skip nếu thiếu dữ liệu thật)
+- [ ] `flutter test` pass (601 tests; integration tự skip nếu thiếu dữ liệu thật)
 - [ ] Nếu đụng repair/parser: `dart run tool/export_jp.dart` verify OK
 - [ ] Trước khi release: chạy `.claude/SMOKE_TEST_CHECKLIST.md` trên exe đã build (pipeline hiện chỉ ra bản Windows — xem mục Deployment)
 
@@ -324,7 +331,7 @@ flutter analyze                    # lint — phải sạch
 flutter build windows --release    # exe tại build\windows\x64\runner\Release\
 
 # Test
-flutter test                       # toàn bộ 518 tests
+flutter test                       # toàn bộ 601 tests
 ```
 
 # Tools (dev)

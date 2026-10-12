@@ -5,8 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/widgets/feature_help_button.dart';
 import '../../clipboard/application/clipboard_reader_controller.dart';
 import '../../settings/settings_provider.dart';
-import '../application/meaning_choice_controller.dart';
 import '../application/lookup_controller.dart';
+import '../application/meaning_choice_controller.dart';
 import '../application/translation_controller.dart';
 import '../application/translation_rules_provider.dart';
 import '../domain/token.dart';
@@ -223,38 +223,38 @@ class _ResultPaneState extends ConsumerState<ResultPane>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-        Row(
-          children: [
+          Row(
+            children: [
+              Expanded(
+                child: TabBar(
+                  controller: _tabController,
+                  tabs: [for (final tab in activeTabs) Tab(text: tab.label)],
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.g_translate, size: 20),
+                tooltip: 'Dịch cả đoạn bằng Google Translate (tab mới)',
+                onPressed: state.hasResult ? _openGoogleTranslateTab : null,
+              ),
+            ],
+          ),
+          if (activeTab == _ResultTabType.googleTranslate)
+            Expanded(child: _buildGoogleTranslateView(context))
+          else if (activeTab == _ResultTabType.postProcessing)
+            Expanded(child: _buildPostProcessingView(context, state))
+          else if (!state.hasResult)
+            const Expanded(
+              child: Center(child: Text('Kết quả dịch sẽ hiện ở đây')),
+            )
+          else
             Expanded(
-              child: TabBar(
-                controller: _tabController,
-                tabs: [for (final tab in activeTabs) Tab(text: tab.label)],
+              child: TokenTextView(
+                tokens: state.tokens,
+                textOf: textOf,
+                paneId: PaneId.vietPhrase,
+                multiMeaning: isMultiMeaning,
               ),
             ),
-            IconButton(
-              icon: const Icon(Icons.g_translate, size: 20),
-              tooltip: 'Dịch cả đoạn bằng Google Translate (tab mới)',
-              onPressed: state.hasResult ? _openGoogleTranslateTab : null,
-            ),
-          ],
-        ),
-        if (activeTab == _ResultTabType.googleTranslate)
-          Expanded(child: _buildGoogleTranslateView(context))
-        else if (activeTab == _ResultTabType.postProcessing)
-          Expanded(child: _buildPostProcessingView(context, state))
-        else if (!state.hasResult)
-          const Expanded(
-            child: Center(child: Text('Kết quả dịch sẽ hiện ở đây')),
-          )
-        else
-          Expanded(
-            child: TokenTextView(
-              tokens: state.tokens,
-              textOf: textOf,
-              paneId: PaneId.vietPhrase,
-              multiMeaning: isMultiMeaning,
-            ),
-          ),
         ],
       ),
     );

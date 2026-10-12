@@ -45,8 +45,9 @@ class TranslationMemoryStore {
       for (final line in await _file.readAsLines()) {
         if (line.trim().isEmpty) continue;
         final value = jsonDecode(line);
-        if (value is! Map)
+        if (value is! Map) {
           throw const FormatException('TM record không phải object');
+        }
         final segment = ProjectSegment.fromJson(
           Map<String, Object?>.from(value),
         );

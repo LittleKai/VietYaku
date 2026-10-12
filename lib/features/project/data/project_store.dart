@@ -26,15 +26,17 @@ class ProjectStore {
   Future<ProjectDocument> open() async {
     try {
       final metadata = jsonDecode(await _metadata.readAsString());
-      if (metadata is! Map)
+      if (metadata is! Map) {
         throw const FormatException('project.json không phải object');
+      }
       final segments = <ProjectSegment>[];
       if (await _segments.exists()) {
         for (final line in await _segments.readAsLines()) {
           if (line.trim().isEmpty) continue;
           final value = jsonDecode(line);
-          if (value is! Map)
+          if (value is! Map) {
             throw const FormatException('segment không phải object');
+          }
           segments.add(
             ProjectSegment.fromJson(Map<String, Object?>.from(value)),
           );
