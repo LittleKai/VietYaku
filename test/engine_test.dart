@@ -436,4 +436,43 @@ void main() {
       expect(engine.translate('ＨＢＴＮシリーズ').single.meaning, 'HBTN Series');
     });
   });
+
+  group('Japanese deinflection fallback', () {
+    test('static match still wins over a deinflected candidate', () {
+      final engine = TranslationEngine(
+        enableJapaneseDeinflection: true,
+        dicts: [
+          dict(DictType.vietPhrase, {'食べた': 'đã ăn trực tiếp', '食べる': 'ăn'}),
+        ],
+      );
+      final token = engine.translate('食べた').single;
+      expect(token.source, '食べた');
+      expect(token.display, 'đã ăn trực tiếp');
+    });
+
+    test('fallback keeps the inflected UTF-16 span', () {
+      final engine = TranslationEngine(
+        enableJapaneseDeinflection: true,
+        dicts: [
+          dict(DictType.vietPhrase, {'食べる': 'ăn'}),
+        ],
+      );
+      final tokens = engine.translate('A食べた!');
+      expect(tokens[1].source, '食べた');
+      expect(tokens[1].sourceStart, 1);
+      expect(tokens[1].display, 'ăn');
+    });
+
+    test('unknown inflected form stays unmatched', () {
+      final engine = TranslationEngine(
+        enableJapaneseDeinflection: true,
+        dicts: [
+          dict(DictType.vietPhrase, {'飲む': 'uống'}),
+        ],
+      );
+      final tokens = engine.translate('食べた');
+      expect(tokens.any((token) => token.kind == TokenKind.matched), isFalse);
+      expect(tokens.map((token) => token.source).join(), '食べた');
+    });
+  });
 }

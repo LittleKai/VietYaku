@@ -3,6 +3,7 @@ import '../../dictionary/domain/dict_type.dart';
 import '../../dictionary/domain/phrase_dictionary.dart';
 import 'token.dart';
 import 'translation_rule.dart';
+import 'jp_deinflector.dart';
 
 enum TranslationMode { japanese, chinese }
 
@@ -38,6 +39,7 @@ class TranslationEngine {
   final bool prioritizeNames;
   final TranslationRuleEngine? ruleEngine;
   final List<PhraseDictionary> personRuleDicts;
+  final bool enableJapaneseDeinflection;
 
   const TranslationEngine({
     required this.dicts,
@@ -46,6 +48,7 @@ class TranslationEngine {
     this.prioritizeNames = false,
     this.ruleEngine,
     this.personRuleDicts = const [],
+    this.enableJapaneseDeinflection = false,
   });
 
   List<Token> translate(
@@ -54,11 +57,11 @@ class TranslationEngine {
   }) {
     switch (algorithm) {
       case TranslationAlgorithm.leftToRight:
-        return _translateLeftToRight(text);
+        return _translateLeftToRight(text, mode);
       case TranslationAlgorithm.longestPhrase:
-        return _translateGlobal(text, 1);
+        return _translateGlobal(text, 1, mode);
       case TranslationAlgorithm.longestPhrase4:
-        return _translateGlobal(text, 4);
+        return _translateGlobal(text, 4, mode);
     }
   }
 
@@ -66,8 +69,12 @@ class TranslationEngine {
   /// đã ghép trước đó. Dùng khi người dùng click lại vào giữa 1 cụm (VD
   /// click vào 女 trong 少女達 đã ghép thành 1 token) để tra lại đúng từ vị
   /// trí click, không phải từ đầu cụm.
-  Token matchAt(String text, int offset) {
-    final match = _startableMatchAt(text, offset, text.length);
+  Token matchAt(
+    String text,
+    int offset, {
+    TranslationMode mode = TranslationMode.japanese,
+  }) {
+    final match = _startableMatchAt(text, offset, text.length, mode);
     if (match != null) {
       return Token(
         source: text.substring(offset, offset + match.len),
@@ -86,7 +93,12 @@ class TranslationEngine {
   }
 
   /// Match dài nhất tại [i], key kết thúc không vượt quá [limitEnd].
-  _Match? _longestMatchAt(String text, int i, int limitEnd) {
+  _Match? _longestMatchAt(
+    String text,
+    int i,
+    int limitEnd,
+    TranslationMode mode,
+  ) {
     final dictionaryMatch = _longestDictionaryMatchAt(text, i, limitEnd);
     final personMatch = ruleEngine?.matchPersonRuleAt(
       text,
@@ -95,15 +107,17 @@ class TranslationEngine {
       limitEnd: limitEnd,
     );
     // Cụm tĩnh thắng khi hòa để giữ nguyên hành vi từ điển hiện có.
+    final staticMatch =
+        dictionaryMatch ?? _deinflectedMatchAt(text, i, limitEnd, mode);
     if (personMatch != null &&
-        (dictionaryMatch == null || personMatch.length > dictionaryMatch.len)) {
+        (staticMatch == null || personMatch.length > staticMatch.len)) {
       return (
         len: personMatch.length,
         dictType: DictType.vietPhrase,
         value: personMatch.value,
       );
     }
-    return dictionaryMatch;
+    return staticMatch;
   }
 
   /// Match dùng được khi bắt đầu tra tại [i], kể cả khi ký tự tại [i] KHÔNG
@@ -119,8 +133,13 @@ class TranslationEngine {
   ///
   /// Chỉ cần xét match DÀI NHẤT: một match ngắn hơn tại cùng offset là prefix
   /// của nó, nên match dài nhất không chứa CJK ⇒ không match nào tại đó chứa.
-  _Match? _startableMatchAt(String text, int i, int limitEnd) {
-    final match = _longestMatchAt(text, i, limitEnd);
+  _Match? _startableMatchAt(
+    String text,
+    int i,
+    int limitEnd,
+    TranslationMode mode,
+  ) {
+    final match = _longestMatchAt(text, i, limitEnd, mode);
     if (match == null) return null;
     if (isCjkCodePoint(codePointAt(text, i))) return match;
     return _containsCjk(text, i, i + match.len) ? match : null;
@@ -168,6 +187,34 @@ class TranslationEngine {
     return null;
   }
 
+  _Match? _deinflectedMatchAt(
+    String text,
+    int i,
+    int limitEnd,
+    TranslationMode mode,
+  ) {
+    if (!enableJapaneseDeinflection || mode != TranslationMode.japanese) {
+      return null;
+    }
+    final maxEnd = i + 24 < limitEnd ? i + 24 : limitEnd;
+    for (var end = maxEnd; end > i; end--) {
+      final surface = text.substring(i, end);
+      for (final candidate in JapaneseDeinflector.deinflect(surface)) {
+        for (final dict in dicts) {
+          final value = dict.entries[candidate.lemma];
+          if (value != null) {
+            return (
+              len: candidate.surfaceLength,
+              dictType: dict.type,
+              value: value,
+            );
+          }
+        }
+      }
+    }
+    return null;
+  }
+
   /// Chữ Hán đơn → phiên âm Hán Việt; kana/khác → giữ nguyên.
   Token _fallbackToken(String text, int i, int runeLen, int cp) {
     final single = text.substring(i, i + runeLen);
@@ -186,7 +233,7 @@ class TranslationEngine {
     return Token(source: single, sourceStart: i, kind: TokenKind.unmatched);
   }
 
-  List<Token> _translateLeftToRight(String text) {
+  List<Token> _translateLeftToRight(String text, TranslationMode mode) {
     final tokens = <Token>[];
     final n = text.length;
     var i = 0;
@@ -209,7 +256,7 @@ class TranslationEngine {
       final runeLen = runeLengthAt(text, i);
       final cp = codePointAt(text, i);
 
-      final match = _startableMatchAt(text, i, n);
+      final match = _startableMatchAt(text, i, n, mode);
       if (match == null && !isCjkCodePoint(cp)) {
         if (passStart < 0) passStart = i;
         i += runeLen;
@@ -240,7 +287,11 @@ class TranslationEngine {
 
   /// Ưu tiên cụm dài toàn văn: cụm ≥ [minGlobalLen] đặt trước theo
   /// (dài hơn trước, trái hơn trước), khe trống dịch trái→phải bị chặn biên.
-  List<Token> _translateGlobal(String text, int minGlobalLen) {
+  List<Token> _translateGlobal(
+    String text,
+    int minGlobalLen,
+    TranslationMode mode,
+  ) {
     final n = text.length;
 
     // Pass 1: match dài nhất tại mỗi vị trí CJK.
@@ -249,7 +300,7 @@ class TranslationEngine {
       var i = 0;
       while (i < n) {
         final runeLen = runeLengthAt(text, i);
-        final m = _startableMatchAt(text, i, n);
+        final m = _startableMatchAt(text, i, n, mode);
         if (m != null && m.len >= minGlobalLen) {
           candidates.add((start: i, match: m));
         }
@@ -322,7 +373,9 @@ class TranslationEngine {
       while (boundary < n && !occupied[boundary]) {
         boundary++;
       }
-      final match = boundary > i ? _startableMatchAt(text, i, boundary) : null;
+      final match = boundary > i
+          ? _startableMatchAt(text, i, boundary, mode)
+          : null;
       if (match == null && !isCjkCodePoint(cp)) {
         if (passStart < 0) passStart = i;
         i += runeLen;
