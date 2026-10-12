@@ -1,6 +1,6 @@
 # Project Summary — VietYaku
 ---
-**Last updated:** 2026-10-04 (Cập nhật tài liệu README.md chi tiết cho toàn bộ tính năng và nền tảng Windows/Android)
+**Last updated:** 2026-10-12 (Global Glossary `kind: "address"` entries are filtered from `readAll` and remain file-only)
 
 > File này phản ánh **trạng thái hiện tại** của dự án. **Không** dùng làm changelog,
 > recent changes, hay bug-fix log — git history là nguồn lịch sử. Lỗi quan trọng,
@@ -85,7 +85,7 @@ VietYaku/
 │   │   ├── dictionary_search/      # domain exact/prefix/wildcard/full-text + overlay winner · worker isolate sống lâu · Search Center UI
 │   │   ├── dictionary_sync/        # domain shared entry + sync_reminder (chu kỳ nhắc) · typed HTTP API · merge overlay · Riverpod admin session/sync controller · presentation (sync_reminder_dialog)
 │   │   ├── epub_converter/         # đọc EPUB spine/OPF + xuất CSV/XLSX/MD/DOCX/TXT; UI chọn file/xem trước/lưu
-│   │   ├── glossary/               # domain (glossary_term, glossary_term_change) · data (glossary_service — đọc/ghi `Global Glossary.json` JP/CN của AI_Translation_Bridge; glossary_term_queue — hàng đợi `PendingGlossary_<mode>.txt` chờ đẩy lên server) · application (glossary_service_provider — service dùng cho MỌI chỗ ghi, tự xếp hàng khi là admin; glossary_sync_controller — ghép 2 bên, lọc trùng/created_by) · presentation (glossary_update_dialog — `showGlossaryUpdateDialog` xác nhận ghi theo nghĩa VietPhrase + `showGlossaryEditDialog` sửa riêng `target`; glossary_sync_screen — đồng bộ hàng loạt 2 chiều, có phân trang)
+│   │   ├── glossary/               # domain (glossary_term, glossary_term_change) · data (glossary_service — đọc/ghi `Global Glossary.json` JP/CN; `readAll` bỏ qua `kind: "address"` (mục prompt-only); glossary_term_queue — hàng đợi `PendingGlossary_<mode>.txt` chờ đẩy lên server) · application (glossary_service_provider — service dùng cho MỌI chỗ ghi, tự xếp hàng khi là admin; glossary_sync_controller — ghép 2 bên, lọc trùng/created_by) · presentation (glossary_update_dialog — `showGlossaryUpdateDialog` xác nhận ghi theo nghĩa VietPhrase + `showGlossaryEditDialog` sửa riêng `target`; glossary_sync_screen — đồng bộ hàng loạt 2 chiều, có phân trang)
 │   │   ├── translation/            # domain (translation_engine, translation_rule, token, vietphrase_value, reading_extractor, online_lookup_source, trad2simp_table, dict_entry_filter, meaning_panel_layout) · data (translation_rule_repository + các API online) · application (translation_controller + currentModeProvider, translation_rules_provider, lookup/online lookup, trad2simp, token_selection, viet_draft) · presentation (translate_screen, source/result/viet/han_viet pane, token_text_view, translation_rule_tester_dialog, lacviet_panel)
 │   │   ├── repair/                 # domain (jp_repair_pipeline, simp2jp_table, repair_report) · application (repair_controller) · presentation (repair_screen, repair_preview)
 │   │   └── settings/               # settings_provider, settings_screen (3 tab: Chung — thuật toán/popup/tra online/dịch AI/tốc độ đọc/sync + thư mục Glossary + màn đồng bộ Glossary ↔ VietPhrase (chỉ admin)/update; Tiếng Nhật — kana+Sudachi+giọng Nhật+repair; Tiếng Trung — phồn→giản+giọng Trung), appearance_screen (cỡ chữ+font/màu kana/hiển thị)

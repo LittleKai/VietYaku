@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:vietyaku/features/glossary/data/glossary_service.dart';
+import 'package:vietyaku/features/glossary/domain/glossary_term.dart';
 import 'package:vietyaku/features/translation/domain/translation_engine.dart';
 
 /// Payload y hệt tool Python: UTF-8 không BOM, indent 2, CRLF, không newline cuối.
@@ -40,6 +41,25 @@ void main() {
 
   tearDown(() async => root.delete(recursive: true));
 
+
+  Future<void> writeAddressPayload() async {
+    final payload = jsonDecode(_jpGlossary) as Map<String, dynamic>;
+    (payload['terms'] as List).add({
+      'source': '小鳥→ユウ',
+      'target': 'tôi/cậu',
+      'kind': 'address',
+      'notes': '',
+      'created_by': 'user',
+      'date_added': '2026-10-12',
+    });
+    await File(p.join(root.path, 'JP', GlossaryService.globalGlossaryFileName))
+        .writeAsString(
+          const JsonEncoder.withIndent('  ').convert(payload).replaceAll('\n', '\r\n'),
+          encoding: utf8,
+          flush: true,
+        );
+    GlossaryService.clearCache();
+  }
   test('hasGlossaryFor chỉ đúng khi có file của ngôn ngữ đó', () {
     final service = GlossaryService(root.path);
     expect(service.hasGlossaryFor(TranslationMode.japanese), isTrue);
@@ -151,4 +171,25 @@ void main() {
     expect(terms.length, 1);
     expect(terms.single.source, '箸尾拓海');
   });
-}
+
+  test('readAll bỏ qua mục xưng hô', () async {
+    await writeAddressPayload();
+    final terms = await GlossaryService(root.path).readAll(TranslationMode.japanese);
+    expect(terms.map((term) => term.source), ['菜畑小鳥']);
+  });
+
+  test('upsertAll giữ nguyên mục xưng hô trong file', () async {
+    await writeAddressPayload();
+    final service = GlossaryService(root.path);
+    await service.upsertAll(TranslationMode.japanese, {'新語': 'Từ mới'});
+    final payload = jsonDecode(await service.fileFor(TranslationMode.japanese).readAsString()) as Map<String, dynamic>;
+    final address = (payload['terms'] as List).cast<Map<String, dynamic>>().singleWhere((term) => term['kind'] == 'address');
+    expect(address['source'], '小鳥→ユウ');
+  });
+
+  test('GlossaryTerm nhận diện mục xưng hô', () {
+    const address = GlossaryTerm(source: '小鳥→ユウ', target: 'tôi/cậu', kind: 'address', dateAdded: '2026-10-12');
+    const normal = GlossaryTerm(source: 'x', target: 'y', dateAdded: '2026-10-12');
+    expect(address.isAddressForm, isTrue);
+    expect(normal.isAddressForm, isFalse);
+  });}
