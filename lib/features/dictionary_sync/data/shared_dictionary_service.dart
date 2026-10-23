@@ -90,6 +90,33 @@ class SharedDictionaryService {
     }
   }
 
+  /// Xóa khỏi file Pending đúng những mục vừa được publish thành công.
+  /// Nếu trong lúc chờ HTTP có mục mới hoặc mục cùng key nhưng đã đổi giá trị,
+  /// mục mới đó vẫn được giữ lại.
+  Future<void> removePending(
+    TranslationMode mode,
+    Iterable<SharedDictionaryEntry> published,
+  ) async {
+    for (final kind in SharedDictionaryKind.values) {
+      final ofKind = published.where((e) => e.kind == kind).toList();
+      if (ofKind.isEmpty) continue;
+      final file = pendingFileFor(mode, kind);
+      if (!file.existsSync()) continue;
+      final values = await _read(file);
+      for (final entry in ofKind) {
+        final expected = entry.isDelete ? deleteSentinel : entry.target;
+        if (values[entry.source] == expected) {
+          values.remove(entry.source);
+        }
+      }
+      if (values.isEmpty) {
+        if (file.existsSync()) await file.delete();
+      } else {
+        await _write(file, values);
+      }
+    }
+  }
+
   Future<int> applyDelta(
     TranslationMode mode,
     Iterable<SharedDictionaryEntry> entries,

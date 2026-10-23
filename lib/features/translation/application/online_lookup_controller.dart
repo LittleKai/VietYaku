@@ -104,6 +104,7 @@ List<OnlineLookupTask> startOnlineLookup(WidgetRef ref, String rawWord) {
   // Đọc trước các notifier/service: dialog có thể đóng trước khi mạng trả về.
   final lookup = ref.read(lookupControllerProvider.notifier);
   final dictionaries = ref.read(dictionariesProvider.notifier);
+  final translation = ref.read(translationControllerProvider.notifier);
   final appPaths = ref.read(appPathsProvider.future);
   // Admin ghi vào bộ dict dùng chung của ngôn ngữ để đóng gói theo bản phát
   // hành; người dùng thường ghi vào userdata cá nhân.
@@ -123,6 +124,7 @@ List<OnlineLookupTask> startOnlineLookup(WidgetRef ref, String rawWord) {
       mode,
       lookup,
       dictionaries,
+      translation,
       appPaths,
       targetDir,
       knownToVietPhrase,
@@ -138,6 +140,7 @@ Future<void> _persist(
   TranslationMode mode,
   LookupController lookup,
   DictionariesNotifier dictionaries,
+  TranslationController translation,
   Future<AppPaths> appPaths,
   String? targetDir,
   bool knownToVietPhrase,
@@ -159,12 +162,17 @@ Future<void> _persist(
     // Máy dịch trả nghĩa theo ngữ cảnh, lưu lại dễ sai → chỉ lưu từ điển thật.
     if (toSave.isEmpty) return;
     final service = UserDictService(await appPaths);
+    final isWord = isWordLikeEntry(word);
+    final encoded = encodeOnlineSections(toSave);
     await service.upsertOnlineDict(
       mode,
       word,
-      encodeOnlineSections(toSave),
-      inDir: targetDir,
+      encoded,
+      inDir: isWord ? targetDir : null,
     );
+    if (targetDir != null && isWord) {
+      await service.upsertOnlineDict(mode, word, encoded);
+    }
 
     // Từ tra online thường KHÔNG có trong VietPhrase (không có mới phải tra) →
     // engine cắt nó thành từng chữ và click lại không bao giờ khớp nguyên cụm,
@@ -173,7 +181,7 @@ Future<void> _persist(
     // Nguồn online tra mờ: gõ 再入荷 có thể trả mục của 再入 — đọc thì người
     // dùng tự nhận ra lệch, nhưng đưa vào VietPhrase là nhét bản dịch SAI vào
     // từ điển dịch. Chỉ promote khi headword nguồn trả về đúng bằng từ đã tra.
-    if (!knownToVietPhrase && !knownToLacViet && isWordLikeEntry(word)) {
+    if (!knownToVietPhrase && !knownToLacViet && isWord) {
       final exact = toSave
           .where(
             (s) =>
@@ -186,10 +194,14 @@ Future<void> _persist(
         await service.upsertVietPhraseOverlay(mode, {
           word: short,
         }, inDir: targetDir);
+        if (targetDir != null) {
+          await service.upsertVietPhraseOverlay(mode, {word: short});
+        }
       }
     }
 
     await dictionaries.reload();
+    translation.retranslate();
     // Từ điển vừa có thêm mục online → tra lại ngay để ô Nghĩa hiện chúng,
     // thay vì bắt người dùng bấm lại đúng từ đó.
     lookup.refreshCurrent();

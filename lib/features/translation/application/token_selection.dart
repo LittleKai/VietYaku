@@ -6,8 +6,11 @@ import '../../dictionary/data/dictionary_repository.dart';
 import '../../settings/settings_provider.dart';
 import '../domain/secondary_phrase.dart';
 import '../domain/token.dart';
+import '../domain/trad2simp_table.dart';
+import '../domain/translation_engine.dart';
 import 'lookup_controller.dart';
 import 'secondary_phrases_provider.dart';
+import 'trad2simp_provider.dart';
 import 'translation_controller.dart';
 
 /// Cụm đang được chọn (nháy chuột) — range theo UTF-16 offset trong văn bản
@@ -121,15 +124,28 @@ class TokenSelectionNotifier extends Notifier<TokenSelection?> {
         return;
       }
       final settings = ref.read(settingsProvider);
+      final matchText =
+          state.mode == TranslationMode.chinese &&
+              settings.convertTraditionalToSimplified
+          ? trad2SimpOf(ref).convert(state.sourceText)
+          : state.sourceText;
       final engine = dicts.engineWith(
         algorithm: settings.translationAlgorithm,
         prioritizeNames: settings.prioritizeNames,
+        personRuleScope: settings.personRuleScope,
       );
-      final match = engine.matchAt(state.sourceText, offset);
+      final match = engine.matchAt(matchText, offset, mode: state.mode);
+      final matchedSource = state.sourceText.substring(
+        match.sourceStart,
+        (match.sourceStart + match.source.length).clamp(
+          match.sourceStart,
+          state.sourceText.length,
+        ),
+      );
       _apply(
         match.sourceStart,
-        match.sourceStart + match.source.length,
-        match.source,
+        match.sourceStart + matchedSource.length,
+        matchedSource,
         TokenSelectionOrigin.source,
       );
       return;
@@ -176,7 +192,18 @@ class TokenSelectionNotifier extends Notifier<TokenSelection?> {
     state = TokenSelection(start: start, end: end, word: word, origin: origin);
     final text = ref.read(translationControllerProvider).sourceText;
     final dicts = ref.read(dictionariesProvider).valueOrNull;
-    final enclosing = enclosingSentenceAt(text, start, end, dicts: dicts);
+    final enclosing = enclosingSentenceAt(
+      text,
+      start,
+      end,
+      dicts: dicts,
+      trad2Simp:
+          ref.read(translationControllerProvider).mode ==
+                  TranslationMode.chinese &&
+              ref.read(settingsProvider).convertTraditionalToSimplified
+          ? trad2SimpOf(ref)
+          : Trad2SimpTable.empty,
+    );
     ref
         .read(lookupControllerProvider.notifier)
         .lookup(
@@ -209,27 +236,29 @@ String enclosingSentenceAt(
   int start,
   int end, {
   LoadedDictionaries? dicts,
+  Trad2SimpTable trad2Simp = Trad2SimpTable.empty,
 }) {
   if (text.isEmpty || start < 0 || start > text.length) return '';
+  final normText = trad2Simp.convert(text);
   const enders = {'。', '．', '！', '？', '!', '?', '\n', '\r'};
 
-  var s = start.clamp(0, text.length);
+  var s = start.clamp(0, normText.length);
   while (s > 0) {
-    final prevLen = runeLengthBefore(text, s);
-    final ch = text.substring(s - prevLen, s);
+    final prevLen = runeLengthBefore(normText, s);
+    final ch = normText.substring(s - prevLen, s);
     if (enders.contains(ch)) break;
     s -= prevLen;
   }
 
-  var e = end.clamp(0, text.length);
-  while (e < text.length) {
-    final len = runeLengthAt(text, e);
-    final ch = text.substring(e, e + len);
+  var e = end.clamp(s, normText.length);
+  while (e < normText.length) {
+    final len = runeLengthAt(normText, e);
+    final ch = normText.substring(e, e + len);
     e += len;
     if (enders.contains(ch)) break;
   }
 
-  final sentence = text.substring(s, e).trim();
+  final sentence = normText.substring(s, e).trim();
   if (dicts == null || dicts.aiDict.isEmpty) return sentence;
 
   // 1. Kiểm tra chính xác câu hoặc câu đã bỏ dấu kết thúc
@@ -241,12 +270,19 @@ String enclosingSentenceAt(
 
   // 2. Tìm xem có đoạn dịch AI nào dài hơn (multi-sentence hoặc đoạn văn)
   // bao trùm vị trí [start]..[end] này không.
+  final clampedStart = start.clamp(0, normText.length);
+  final clampedEnd = end.clamp(clampedStart, normText.length);
   for (final entry in dicts.aiDict.entries.entries) {
     final key = entry.key;
     if (key.length > 10) {
-      final idx = text.indexOf(key);
-      if (idx != -1 && s >= idx && e <= idx + key.length) {
-        return key;
+      var searchFrom = 0;
+      while (true) {
+        final idx = normText.indexOf(key, searchFrom);
+        if (idx == -1) break;
+        if (clampedStart >= idx && clampedEnd <= idx + key.length) {
+          return key;
+        }
+        searchFrom = idx + 1;
       }
     }
   }

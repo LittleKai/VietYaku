@@ -81,7 +81,8 @@ String? parseKanjiNumber(String s) {
     final small = _smallMultipliers[cu];
     if (small != null) {
       if (small >= lastSmall) return null; // 十百 không hợp lệ
-      section += (current == 0 ? 1 : current) * small;
+      if (digitsInCurrent > 0 && current == 0) return null; // 〇十 không hợp lệ
+      section += (digitsInCurrent == 0 ? 1 : current) * small;
       current = 0;
       digitsInCurrent = 0;
       lastSmall = small;
@@ -90,6 +91,9 @@ String? parseKanjiNumber(String s) {
     final big = _bigMultipliers[cu];
     if (big == null) return null;
     if (big >= lastBig) return null; // 万億 không hợp lệ
+    if (section == 0 && digitsInCurrent > 0 && current == 0) {
+      return null; // 〇万 không hợp lệ
+    }
     final value = section + current;
     result += (value == 0 ? 1 : value) * big;
     section = 0;

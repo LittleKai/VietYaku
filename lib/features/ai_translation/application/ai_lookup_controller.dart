@@ -5,6 +5,7 @@ import '../../dictionary/data/user_dict_service.dart';
 import '../../dictionary_sync/application/dictionary_sync_controller.dart';
 import '../../settings/settings_provider.dart';
 import '../../translation/application/lookup_controller.dart';
+import '../../translation/application/trad2simp_provider.dart';
 import '../../translation/application/translation_controller.dart';
 import '../../translation/domain/dict_entry_filter.dart';
 import '../../translation/domain/translation_engine.dart';
@@ -58,10 +59,32 @@ Không đưa câu ví dụ vào bất kỳ trường nào.
 Future<AiApiResponse> executeAiLookup(WidgetRef ref, String rawWord) async {
   final mode = ref.read(currentModeProvider);
   final word = lookupKeyOf(ref, rawWord);
+  final trad2Simp = mode == TranslationMode.chinese &&
+          ref.read(settingsProvider).convertTraditionalToSimplified
+      ? trad2SimpOf(ref)
+      : null;
+  String normalizeKey(String w) => trad2Simp == null ? w : trad2Simp.convert(w);
 
-  final aiSettings =
-      ref.read(aiSettingsControllerProvider).valueOrNull ??
-      AiSettings.defaults();
+  final aiSettingsFuture = ref.read(aiSettingsControllerProvider.future);
+  final apiClient = ref.read(aiApiClientProvider);
+  final lookup = ref.read(lookupControllerProvider.notifier);
+  final dictionaries = ref.read(dictionariesProvider.notifier);
+  final translation = ref.read(translationControllerProvider.notifier);
+  final appPaths = ref.read(appPathsProvider.future);
+  final dicts = ref.read(dictionariesProvider).valueOrNull;
+  final vietPhrase = dicts?.vietPhrase;
+  final lacViet = dicts?.lacViet;
+  // Admin ghi vào bộ dict dùng chung của ngôn ngữ để đóng gói theo bản phát
+  // hành; người dùng thường ghi vào userdata cá nhân.
+  final isAdmin = ref.read(dictionarySyncProvider).isAdmin;
+  final targetDir = isAdmin ? generatedDictDir(mode) : null;
+
+  AiSettings aiSettings;
+  try {
+    aiSettings = await aiSettingsFuture;
+  } catch (_) {
+    aiSettings = AiSettings.defaults();
+  }
 
   final activeService = aiSettings.activeService;
   final activeConfig = aiSettings.activeConfig;
@@ -74,17 +97,6 @@ Future<AiApiResponse> executeAiLookup(WidgetRef ref, String rawWord) async {
   }
 
   final prompt = buildAiLookupPrompt(word, mode: mode);
-  final apiClient = ref.read(aiApiClientProvider);
-  final lookup = ref.read(lookupControllerProvider.notifier);
-  final dictionaries = ref.read(dictionariesProvider.notifier);
-  final appPaths = ref.read(appPathsProvider.future);
-  final dicts = ref.read(dictionariesProvider).valueOrNull;
-  final vietPhrase = dicts?.vietPhrase;
-  final lacViet = dicts?.lacViet;
-  // Admin ghi vào bộ dict dùng chung của ngôn ngữ để đóng gói theo bản phát
-  // hành; người dùng thường ghi vào userdata cá nhân.
-  final isAdmin = ref.read(dictionarySyncProvider).isAdmin;
-  final targetDir = isAdmin ? generatedDictDir(mode) : null;
 
   final response = await apiClient.callAi(
     prompt: prompt,
@@ -130,10 +142,15 @@ Future<AiApiResponse> executeAiLookup(WidgetRef ref, String rawWord) async {
       // Các từ/cụm con tách ra thành mục từ điển riêng để engine greedy
       // longest-match nhận ra chúng ở văn bản khác.
       final subEntries = {
-        for (final e in parsed.subEntries) e.word: e.meaning,
+        for (final e in parsed.subEntries)
+          if (isWordLikeEntry(normalizeKey(e.word)))
+            normalizeKey(e.word): e.meaning,
       };
       if (subEntries.isNotEmpty) {
         await service.upsertAiEntries(mode, subEntries, inDir: targetDir);
+        if (targetDir != null) {
+          await service.upsertAiEntries(mode, subEntries);
+        }
       }
 
       // Từ nào cả VietPhrase VÀ Lạc Việt đều chưa có thì thêm luôn vào overlay VietPhrase — có
@@ -150,10 +167,14 @@ Future<AiApiResponse> executeAiLookup(WidgetRef ref, String rawWord) async {
       };
       if (missing.isNotEmpty) {
         await service.upsertVietPhraseOverlay(mode, missing, inDir: targetDir);
+        if (targetDir != null) {
+          await service.upsertVietPhraseOverlay(mode, missing);
+        }
       }
     }
 
     await dictionaries.reload();
+    translation.retranslate();
     // Từ điển vừa có thêm mục AI → tra lại ngay để ô Nghĩa hiện chúng, thay vì
     // bắt người dùng bấm lại đúng từ đó.
     lookup.refreshCurrent();

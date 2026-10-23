@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/platform_features.dart';
 import '../../../shared/widgets/entry_edit_dialog.dart';
 import '../../../shared/widgets/markdown_body_view.dart';
 import '../../../shared/widgets/tts_button.dart';
@@ -35,7 +36,9 @@ class LacVietPanel extends ConsumerWidget {
     final popupTypes = ref.watch(
       settingsProvider.select((s) => s.popupDictionaryTypesFor(mode)),
     );
-    final hiddenTypes = selection?.origin == TokenSelectionOrigin.source
+    final isWide = MediaQuery.sizeOf(context).width >= compactWidthBreakpoint;
+    final hiddenTypes =
+        isWide && selection?.origin == TokenSelectionOrigin.source
         ? popupTypes
         : const <LookupDictionaryType>[];
     final layout = ref.watch(

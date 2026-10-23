@@ -1065,7 +1065,19 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
         if ((event.buttons & kSecondaryMouseButton) != 0) {
           _secondaryTapPosition = event.position;
           _ignoreCollapsedSelection = true;
+        } else {
+          _ignoreCollapsedSelection = false;
         }
+      },
+      onPointerUp: (_) {
+        if (_ignoreCollapsedSelection) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _ignoreCollapsedSelection = false;
+          });
+        }
+      },
+      onPointerCancel: (_) {
+        _ignoreCollapsedSelection = false;
       },
       child: ListView.builder(
         padding: const EdgeInsets.all(12),

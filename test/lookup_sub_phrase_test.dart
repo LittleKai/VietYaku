@@ -20,13 +20,14 @@ LoadedDictionaries _createDicts({
   Map<String, String> userDict = const {},
   Map<String, String> names = const {},
   Map<String, String> vietPhrase = const {},
+  Map<String, String> lacViet = const {},
 }) {
   PhraseDictionary d(DictType t, Map<String, String> e) => PhraseDictionary(t, e);
   return LoadedDictionaries(
     userDict: d(DictType.userDict, userDict),
     names: d(DictType.names, names),
     vietPhrase: d(DictType.vietPhrase, vietPhrase),
-    lacViet: d(DictType.lacViet, const {}),
+    lacViet: d(DictType.lacViet, lacViet),
     chinesePhienAm: d(DictType.chinesePhienAm, const {}),
     pronouns: d(DictType.pronouns, const {}),
     babylon: d(DictType.babylon, const {}),
@@ -144,5 +145,27 @@ void main() {
       '嘻嘻',
       '哈哈',
     ]);
+  });
+
+  test('Lạc Việt nhận diện cụm dài hơn word trong rawSentence (VD click 生き trong 生きていく)', () async {
+    final dicts = _createDicts(
+      vietPhrase: const {
+        '生き': 'sống/sinh sống/cuộc sống',
+      },
+      lacViet: const {
+        '生きてい': 'không muốn sống; không thể sống sót (mà không có)',
+        '生': '✚[shēng] Hán Việt: SINH',
+      },
+    );
+    final container = await setUpContainer(dicts);
+    final lookup = container.read(lookupControllerProvider.notifier);
+
+    lookup.lookup('生き', rawSentence: '生きていく');
+
+    final result = container.read(lookupControllerProvider)!;
+    expect(result.matchedKey, '生きてい');
+    final lvSections = result.sections.where((s) => s.label == 'Lạc Việt').toList();
+    expect(lvSections.map((s) => s.word).toList(), ['生きてい', '生']);
+    expect(lvSections.first.body, 'không muốn sống; không thể sống sót (mà không có)');
   });
 }

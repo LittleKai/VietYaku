@@ -234,7 +234,7 @@ class AiApiClient {
   ) async {
     final model = config.selectedModel;
     final url = Uri.parse(
-      'https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey',
+      'https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent',
     );
 
     final payload = {
@@ -257,7 +257,10 @@ class AiApiClient {
       final response = await _client
           .post(
             url,
-            headers: {'Content-Type': 'application/json'},
+            headers: {
+              'Content-Type': 'application/json',
+              'x-goog-api-key': apiKey,
+            },
             body: jsonEncode(payload),
           )
           .timeout(Duration(seconds: config.timeout));

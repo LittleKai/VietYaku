@@ -169,6 +169,69 @@ String allVietPhraseMeaningsClean(String value) {
 String normalizeVietPhraseValue(String value) =>
     encodeVietPhraseValue(parseVietPhraseValue(value));
 
+/// Gộp chuỗi nghĩa phẳng [newMeaning] (VD từ Global Glossary) vào danh sách
+/// tầng nghĩa [existing] sao cho không làm mất phân tầng và nhãn từ loại.
+/// Nếu [newMeaning] tự mang marker phân tầng/từ loại thì dùng thẳng cấu trúc mới.
+List<VietPhraseMeaning> mergeFlatGlossaryIntoMeanings(
+  List<VietPhraseMeaning> existing,
+  String newMeaning,
+) {
+  final parsed = parseVietPhraseValue(newMeaning);
+  if (parsed.isEmpty || existing.isEmpty) return parsed;
+  final isFlatUnclassified =
+      parsed.length == 1 &&
+      parsed.first.partOfSpeech == VietPhrasePartOfSpeech.none;
+  if (!isFlatUnclassified) return parsed;
+
+  if (existing.length == 1) {
+    return [
+      VietPhraseMeaning(
+        text: parsed.first.text,
+        partOfSpeech: existing.first.partOfSpeech,
+      ),
+    ];
+  }
+
+  final flatAlts = parsed.first.alternatives;
+  if (flatAlts.length < existing.length) {
+    return [
+      for (var i = 0; i < flatAlts.length; i++)
+        VietPhraseMeaning(
+          text: flatAlts[i],
+          partOfSpeech: existing[i].partOfSpeech,
+        ),
+    ];
+  }
+
+  final result = <VietPhraseMeaning>[];
+  var cursor = 0;
+  for (var i = 0; i < existing.length; i++) {
+    final remainingTiers = existing.length - 1 - i;
+    if (remainingTiers == 0) {
+      result.add(
+        VietPhraseMeaning(
+          text: flatAlts.sublist(cursor).join('/'),
+          partOfSpeech: existing[i].partOfSpeech,
+        ),
+      );
+    } else {
+      final desired = existing[i].alternatives.isEmpty
+          ? 1
+          : existing[i].alternatives.length;
+      final maxTake = flatAlts.length - cursor - remainingTiers;
+      final take = desired.clamp(1, maxTake);
+      result.add(
+        VietPhraseMeaning(
+          text: flatAlts.sublist(cursor, cursor + take).join('/'),
+          partOfSpeech: existing[i].partOfSpeech,
+        ),
+      );
+      cursor += take;
+    }
+  }
+  return result;
+}
+
 /// Chuyển đổi định dạng VietPhrase sang định dạng hiển thị / lưu của Lạc Việt (escaped `\n\t`).
 ///
 /// - Nếu có từ loại:

@@ -37,26 +37,34 @@ Future<void> showEntryEditDialog(
   String? initialMeaning,
 }) async {
   final dicts = ref.read(dictionariesProvider).valueOrNull;
+  String normKey(String key) => lookupKeyOf(ref, key);
   bool targetDictHasEntry(String key) {
     if (dicts == null) return false;
+    final k = normKey(key);
     final val = toNames
-        ? dicts.names.entries[key]
-        : dicts.userDict.entries[key];
+        ? (dicts.names.entries[k] ?? dicts.names.entries[key])
+        : (dicts.userDict.entries[k] ?? dicts.userDict.entries[key]);
     return val != null && val.trim().isNotEmpty;
   }
 
   String? targetDictMeaningOf(String key) {
     if (dicts == null) return null;
+    final k = normKey(key);
     return toNames
-        ? dicts.names.entries[key]
-        : dicts.userDict.entries[key];
+        ? (dicts.names.entries[k] ?? dicts.names.entries[key])
+        : (dicts.userDict.entries[k] ?? dicts.userDict.entries[key]);
   }
 
-  String? dictMeaningOf(String key) => dicts == null
-      ? null
-      : (dicts.userDict.entries[key] ??
-            dicts.names.entries[key] ??
-            dicts.vietPhrase.entries[key]);
+  String? dictMeaningOf(String key) {
+    if (dicts == null) return null;
+    final k = normKey(key);
+    return dicts.userDict.entries[k] ??
+        dicts.userDict.entries[key] ??
+        dicts.names.entries[k] ??
+        dicts.names.entries[key] ??
+        dicts.vietPhrase.entries[k] ??
+        dicts.vietPhrase.entries[key];
+  }
   final existing = initialMeaning ?? dictMeaningOf(word);
 
   final holder = _EntryFieldControllers();
@@ -67,18 +75,29 @@ Future<void> showEntryEditDialog(
       : translation.tokens.map((token) => token.source).join();
   String? baseValueOf(String key) {
     if (dicts == null) return null;
-    if (toNames) return _layerValue(dicts.searchLayers, 'names', key);
-    return dicts.names.entries[key] ?? dicts.vietPhrase.entries[key];
+    final k = normKey(key);
+    if (toNames) {
+      return _layerValue(dicts.searchLayers, 'names', k) ??
+          _layerValue(dicts.searchLayers, 'names', key);
+    }
+    return dicts.names.entries[k] ??
+        dicts.names.entries[key] ??
+        dicts.vietPhrase.entries[k] ??
+        dicts.vietPhrase.entries[key];
   }
 
-  String? currentValueOf(String key) => dicts == null
-      ? null
-      : (toNames
-            ? _layerValue(dicts.searchLayers, 'userNames', key)
-            : dicts.userDict.entries[key]);
+  String? currentValueOf(String key) {
+    if (dicts == null) return null;
+    final k = normKey(key);
+    return toNames
+        ? (_layerValue(dicts.searchLayers, 'userNames', k) ??
+              _layerValue(dicts.searchLayers, 'userNames', key))
+        : (dicts.userDict.entries[k] ?? dicts.userDict.entries[key]);
+  }
 
   final settings = ref.read(settingsProvider);
   final glossaryDir = settings.glossaryDir;
+  final glossaryLang = GlossaryService.langFor(mode);
   final glossaryService = ref.read(glossaryServiceProvider);
   final canUpdateGlossary =
       !toNames && glossaryService.hasGlossaryFor(mode);
@@ -102,7 +121,10 @@ Future<void> showEntryEditDialog(
       holder: holder,
       initialKey: word,
       initialMeaning: existing ?? '',
-      hanVietOf: (key) => dicts == null ? null : hanVietReadingOf(dicts, key),
+      hanVietOf: (key) => dicts == null
+          ? null
+          : (hanVietReadingOf(dicts, normKey(key)) ??
+                hanVietReadingOf(dicts, key)),
       readingOf: (key) => dicts == null
           ? null
           : entryPronunciationOf(
@@ -141,23 +163,79 @@ Future<void> showEntryEditDialog(
                   );
                 return;
               }
-              final updated = await showGlossaryUpdateDialog(
+              final updatedTerm = await showGlossaryUpdateDialog(
                 fieldContext,
                 ref,
                 source: source,
                 meaning: meaning,
+                mode: mode,
               );
-              if (updated) holder.refreshGlossary?.call();
+              if (updatedTerm != null) {
+                holder.updateGlossaryTerm?.call(updatedTerm);
+                final initialTarget = glossaryTargetOf(meaning);
+                if (updatedTerm.target.trim() != initialTarget.trim()) {
+                  holder.setMeaning?.call(updatedTerm.target);
+                }
+              }
+            }
+          : null,
+      onUpdateFromVietPhrase: canUpdateGlossary
+          ? (fieldContext) async {
+              final meaning = holder.meaningText.trim();
+              final source = holder.keyText.trim();
+              if (source.isEmpty || meaning.isEmpty) {
+                ScaffoldMessenger.of(fieldContext)
+                  ..hideCurrentSnackBar()
+                  ..showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Cần có từ nguồn và nghĩa để cập nhật Global Glossary.',
+                      ),
+                    ),
+                  );
+                return;
+              }
+              final currentTarget = glossaryTargetOf(meaning);
+              final term = holder.glossaryTermNotifier.value;
+              if (term != null && term.target.trim() == currentTarget.trim()) {
+                ScaffoldMessenger.of(fieldContext)
+                  ..hideCurrentSnackBar()
+                  ..showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'Nghĩa Global Glossary $glossaryLang đã trùng khớp với VietPhrase: "$currentTarget"',
+                      ),
+                    ),
+                  );
+                return;
+              }
+              final updatedTerm = await showGlossaryUpdateDialog(
+                fieldContext,
+                ref,
+                source: source,
+                meaning: meaning,
+                mode: mode,
+              );
+              if (updatedTerm != null) {
+                holder.updateGlossaryTerm?.call(updatedTerm);
+                final initialTarget = glossaryTargetOf(meaning);
+                if (updatedTerm.target.trim() != initialTarget.trim()) {
+                  holder.setMeaning?.call(updatedTerm.target);
+                }
+              }
             }
           : null,
       onEditGlossary: canUpdateGlossary
           ? (fieldContext, term) async {
-              final updated = await showGlossaryEditDialog(
+              final updatedTerm = await showGlossaryEditDialog(
                 fieldContext,
                 ref,
                 term: term,
+                mode: mode,
               );
-              if (updated) holder.refreshGlossary?.call();
+              if (updatedTerm != null) {
+                holder.updateGlossaryTerm?.call(updatedTerm);
+              }
             }
           : null,
     ),
@@ -228,7 +306,7 @@ Future<void> showEntryEditDialog(
         : word;
     final inGlossary = !toNames &&
         canUpdateGlossary &&
-        (await glossaryService.find(translation.mode, targetKey)) != null;
+        (await glossaryService.find(mode, targetKey)) != null;
     final inDict = toNames
         ? targetDictHasEntry(targetKey)
         : currentValueOf(targetKey) != null;
@@ -239,7 +317,6 @@ Future<void> showEntryEditDialog(
     if (!inDict && !inGlossary) return;
 
     final dictLabel = toNames ? 'Names' : 'UserDict';
-    final glossaryLang = GlossaryService.langFor(translation.mode);
 
     final deleteScope = await _showDeleteConfirmationDialog(
       context: context,
@@ -274,7 +351,7 @@ Future<void> showEntryEditDialog(
         (deleteScope == DeleteScope.glossaryOnly ||
             deleteScope == DeleteScope.both)) {
       try {
-        await glossaryService.removeAll(translation.mode, [targetKey]);
+        await glossaryService.removeAll(mode, [targetKey]);
         ref.invalidate(
           glossarySyncRowsProvider(GlossarySyncDirection.glossaryToVietPhrase),
         );
@@ -333,13 +410,13 @@ Future<void> showEntryEditDialog(
   var glossaryAutoUpdated = false;
   String? glossaryNewTarget;
   if (canUpdateGlossary && autoUpdateGlossary) {
-    final term = await glossaryService.find(translation.mode, key);
+    final term = await glossaryService.find(mode, key);
     if (term != null) {
       final target = glossaryTargetOf(meaning);
       if (term.target.trim() != target.trim()) {
         try {
           await glossaryService.upsert(
-            translation.mode,
+            mode,
             source: key,
             target: target,
           );
@@ -373,9 +450,8 @@ Future<void> showEntryEditDialog(
     final dictLabel = toNames ? 'Names' : 'UserDict';
     final actionWord = isAdd ? 'thêm' : 'lưu';
     final baseMsg = 'Đã $actionWord vào $dictLabel.';
-    final lang = GlossaryService.langFor(translation.mode);
     final glossaryPart = glossaryAutoUpdated && notifyOnGlossaryUpdate
-        ? '\nĐã tự động cập nhật Global Glossary $lang: $key → $glossaryNewTarget'
+        ? '\nĐã tự động cập nhật Global Glossary $glossaryLang: $key → $glossaryNewTarget'
         : '';
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -400,27 +476,33 @@ Future<void> showSharedEntryEditDialog(
   final isVietPhrase = kind == SharedDictionaryKind.vietPhrase;
   final dictionaryName = isVietPhrase ? 'VietPhrase' : 'Lạc Việt';
   final dicts = ref.read(dictionariesProvider).valueOrNull;
+  String normKey(String key) => lookupKeyOf(ref, key);
   bool dictHasEntry(String key) {
     if (dicts == null) return false;
+    final k = normKey(key);
     final val = isVietPhrase
-        ? dicts.vietPhrase.entries[key]
-        : dicts.lacViet.entries[key];
+        ? (dicts.vietPhrase.entries[k] ?? dicts.vietPhrase.entries[key])
+        : (dicts.lacViet.entries[k] ?? dicts.lacViet.entries[key]);
     return val != null && val.trim().isNotEmpty;
   }
 
   String? targetDictMeaningOf(String key) {
     if (dicts == null) return null;
+    final k = normKey(key);
     return isVietPhrase
-        ? dicts.vietPhrase.entries[key]
-        : dicts.lacViet.entries[key];
+        ? (dicts.vietPhrase.entries[k] ?? dicts.vietPhrase.entries[key])
+        : (dicts.lacViet.entries[k] ?? dicts.lacViet.entries[key]);
   }
 
   String? sharedMeaningOf(String key) {
     if (dicts == null) return null;
-    if (isVietPhrase) return dicts.vietPhrase.entries[key];
-    final lacViet = dicts.lacViet.entries[key];
+    final k = normKey(key);
+    if (isVietPhrase) {
+      return dicts.vietPhrase.entries[k] ?? dicts.vietPhrase.entries[key];
+    }
+    final lacViet = dicts.lacViet.entries[k] ?? dicts.lacViet.entries[key];
     if (lacViet != null && lacViet.trim().isNotEmpty) return lacViet;
-    final vp = dicts.vietPhrase.entries[key];
+    final vp = dicts.vietPhrase.entries[k] ?? dicts.vietPhrase.entries[key];
     if (vp != null && vp.trim().isNotEmpty) {
       return convertVietPhraseToLacVietFormat(vp);
     }
@@ -465,7 +547,10 @@ Future<void> showSharedEntryEditDialog(
       holder: holder,
       initialKey: word,
       initialMeaning: existing ?? '',
-      hanVietOf: (key) => dicts == null ? null : hanVietReadingOf(dicts, key),
+      hanVietOf: (key) => dicts == null
+          ? null
+          : (hanVietReadingOf(dicts, normKey(key)) ??
+                hanVietReadingOf(dicts, key)),
       readingOf: (key) => dicts == null
           ? null
           : entryPronunciationOf(
@@ -485,9 +570,12 @@ Future<void> showSharedEntryEditDialog(
       sourceText: sourceText,
       baseValueOf: (key) {
         if (dicts == null) return null;
-        final base = _layerValue(dicts.searchLayers, baseLayerId, key);
+        final k = normKey(key);
+        final base = _layerValue(dicts.searchLayers, baseLayerId, k) ??
+            _layerValue(dicts.searchLayers, baseLayerId, key);
         if (!isVietPhrase && (base == null || base.isEmpty)) {
-          final vpBase = _layerValue(dicts.searchLayers, 'vietPhrase', key);
+          final vpBase = _layerValue(dicts.searchLayers, 'vietPhrase', k) ??
+              _layerValue(dicts.searchLayers, 'vietPhrase', key);
           if (vpBase != null && vpBase.isNotEmpty) {
             return convertVietPhraseToLacVietFormat(vpBase);
           }
@@ -496,7 +584,8 @@ Future<void> showSharedEntryEditDialog(
       },
       currentValueOf: (key) => dicts == null
           ? null
-          : _layerValue(dicts.searchLayers, sharedLayerId, key),
+          : (_layerValue(dicts.searchLayers, sharedLayerId, normKey(key)) ??
+                _layerValue(dicts.searchLayers, sharedLayerId, key)),
       currentLayerLabel: '$dictionaryName chung hiện tại',
       glossaryDir: isVietPhrase ? glossaryDir : null,
       onAutoUpdateChanged: (val) =>
@@ -522,13 +611,20 @@ Future<void> showSharedEntryEditDialog(
                   );
                 return;
               }
-              final updated = await showGlossaryUpdateDialog(
+              final updatedTerm = await showGlossaryUpdateDialog(
                 fieldContext,
                 ref,
                 source: source,
                 meaning: meaning,
+                mode: mode,
               );
-              if (updated) holder.refreshGlossary?.call();
+              if (updatedTerm != null) {
+                holder.updateGlossaryTerm?.call(updatedTerm);
+                final initialTarget = glossaryTargetOf(meaning);
+                if (updatedTerm.target.trim() != initialTarget.trim()) {
+                  holder.setMeaning?.call(updatedTerm.target);
+                }
+              }
             }
           : null,
       onUpdateFromVietPhrase: canUpdateGlossary
@@ -561,23 +657,33 @@ Future<void> showSharedEntryEditDialog(
                   );
                 return;
               }
-              final updated = await showGlossaryUpdateDialog(
+              final updatedTerm = await showGlossaryUpdateDialog(
                 fieldContext,
                 ref,
                 source: source,
                 meaning: meaning,
+                mode: mode,
               );
-              if (updated) holder.refreshGlossary?.call();
+              if (updatedTerm != null) {
+                holder.updateGlossaryTerm?.call(updatedTerm);
+                final initialTarget = glossaryTargetOf(meaning);
+                if (updatedTerm.target.trim() != initialTarget.trim()) {
+                  holder.setMeaning?.call(updatedTerm.target);
+                }
+              }
             }
           : null,
       onEditGlossary: canUpdateGlossary
           ? (fieldContext, term) async {
-              final updated = await showGlossaryEditDialog(
+              final updatedTerm = await showGlossaryEditDialog(
                 fieldContext,
                 ref,
                 term: term,
+                mode: mode,
               );
-              if (updated) holder.refreshGlossary?.call();
+              if (updatedTerm != null) {
+                holder.updateGlossaryTerm?.call(updatedTerm);
+              }
             }
           : null,
     ),
@@ -919,6 +1025,12 @@ class _EntryFieldControllers {
   /// gọi sau khi ghi file để thẻ trạng thái + nhãn nút cập nhật ngay.
   VoidCallback? refreshGlossary;
 
+  /// Cập nhật trực tiếp mục glossary trong `_EntryFields` ngay lập tức (0ms).
+  void Function(GlossaryTerm? term)? updateGlossaryTerm;
+
+  /// Cập nhật trực tiếp nghĩa trong ô nhập của dialog.
+  void Function(String newMeaning)? setMeaning;
+
   void disposeAfterRouteAnimation() {
     // showDialog hoàn tất Future trước khi reverse animation unmount toàn bộ
     // action; trì hoãn để ValueListenableBuilder không remove listener khỏi
@@ -1031,6 +1143,7 @@ class _EntryFieldsState extends State<_EntryFields> {
   String? _lastGlossaryKey;
   bool _hasGlossaryFile = false;
   late final String _glossaryLang;
+  int _glossaryCheckSeq = 0;
 
   /// Initial values for change detection — save button stays inactive until
   /// the user actually modifies key or meaning.
@@ -1059,6 +1172,8 @@ class _EntryFieldsState extends State<_EntryFields> {
     _meaningSourceKey = widget.initialKey.trim();
     widget.holder.refreshGlossary = () =>
         _checkGlossaryIfNeeded(_keyController.text.trim(), force: true);
+    widget.holder.updateGlossaryTerm = _updateGlossaryTermDirectly;
+    widget.holder.setMeaning = _setMeaningDirectly;
     // Khởi tạo trước _sync() để tránh LateInitializationError khi _sync()
     // truy cập các field này. Giá trị _initialEncodedMeaning sẽ được ghi đè
     // bằng giá trị đúng sau _sync().
@@ -1091,15 +1206,32 @@ class _EntryFieldsState extends State<_EntryFields> {
       _meaningRows
         ..clear()
         ..addAll(_buildMeaningRows(raw));
-      for (final row in old) {
-        row.dispose();
-      }
+      _retireRows(old);
     } else {
       _meaningController!.value = TextEditingValue(
         text: widget.lacVietFormat ? unescapeLacViet(raw) : raw,
       );
     }
     _loadedMeaning = _encodedMeaning();
+  }
+
+  final List<_VietPhraseMeaningRowData> _retiredRows = [];
+
+  void _retireRows(Iterable<_VietPhraseMeaningRowData> rows) {
+    for (final row in rows) {
+      row.controller.removeListener(_sync);
+      _retiredRows.add(row);
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) => _disposeRetiredRows());
+  }
+
+  void _disposeRetiredRows() {
+    if (_retiredRows.isEmpty) return;
+    final rows = List.of(_retiredRows);
+    _retiredRows.clear();
+    for (final row in rows) {
+      row.dispose();
+    }
   }
 
   List<_VietPhraseMeaningRowData> _buildMeaningRows(String raw) {
@@ -1171,7 +1303,7 @@ class _EntryFieldsState extends State<_EntryFields> {
   void _removeMeaning(_VietPhraseMeaningRowData row) {
     if (_meaningRows.length == 1) return;
     _meaningRows.remove(row);
-    row.dispose();
+    _retireRows([row]);
     _sync();
   }
 
@@ -1184,6 +1316,47 @@ class _EntryFieldsState extends State<_EntryFields> {
     _sync();
   }
 
+  void _updateGlossaryTermDirectly(GlossaryTerm? term) {
+    _glossaryCheckSeq++;
+    _lastGlossaryKey = _keyController.text.trim();
+    if (mounted) {
+      setState(() {
+        _glossaryTerm = term;
+        _isCheckingGlossary = false;
+      });
+    }
+    widget.holder.glossaryTermNotifier.value = term;
+  }
+
+  void _setMeaningDirectly(String newMeaning) {
+    if (widget.vietPhraseFormat) {
+      final old = List.of(_meaningRows);
+      final existingMeanings = [
+        for (final row in old)
+          VietPhraseMeaning(
+            text: row.controller.text,
+            partOfSpeech: row.partOfSpeech,
+          ),
+      ];
+      final merged = mergeFlatGlossaryIntoMeanings(
+        existingMeanings,
+        newMeaning,
+      );
+      final newRows = merged.isEmpty
+          ? [_newMeaningRow(const VietPhraseMeaning(text: ''))]
+          : merged.map(_newMeaningRow).toList();
+      _meaningRows
+        ..clear()
+        ..addAll(newRows);
+      _retireRows(old);
+    } else {
+      _meaningController?.value = TextEditingValue(
+        text: widget.lacVietFormat ? unescapeLacViet(newMeaning) : newMeaning,
+      );
+    }
+    _sync();
+  }
+
   Future<void> _checkGlossaryIfNeeded(String key, {bool force = false}) async {
     final dir = widget.glossaryDir;
     if (dir == null) return;
@@ -1193,27 +1366,34 @@ class _EntryFieldsState extends State<_EntryFields> {
       return;
     }
     _lastGlossaryKey = key;
-    if (!_hasGlossaryFile || key.isEmpty) {
+    final hasGlossary = _hasGlossaryFile ||
+        (dir.trim().isNotEmpty &&
+            GlossaryService(dir).hasGlossaryFor(widget.mode));
+    if (hasGlossary) {
+      _hasGlossaryFile = true;
+    }
+    if (!hasGlossary || key.isEmpty) {
       _glossaryTerm = null;
       _isCheckingGlossary = false;
       widget.holder.glossaryTermNotifier.value = null;
       return;
     }
 
+    final seq = ++_glossaryCheckSeq;
     _isCheckingGlossary = true;
     final service = GlossaryService(dir);
     final mode = widget.mode;
 
     try {
-      final term = await service.find(mode, key);
-      if (!mounted || _keyController.text.trim() != key) return;
+      final term = await service.find(mode, key, forceReload: force);
+      if (!mounted || seq != _glossaryCheckSeq || _keyController.text.trim() != key) return;
       setState(() {
         _glossaryTerm = term;
         _isCheckingGlossary = false;
       });
       widget.holder.glossaryTermNotifier.value = term;
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || seq != _glossaryCheckSeq) return;
       setState(() {
         _glossaryTerm = null;
         _isCheckingGlossary = false;
@@ -1225,8 +1405,11 @@ class _EntryFieldsState extends State<_EntryFields> {
   @override
   void dispose() {
     widget.holder.refreshGlossary = null;
+    widget.holder.updateGlossaryTerm = null;
+    widget.holder.setMeaning = null;
     _keyController.dispose();
     _meaningController?.dispose();
+    _disposeRetiredRows();
     for (final row in _meaningRows) {
       row.dispose();
     }

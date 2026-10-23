@@ -97,6 +97,9 @@ DictionarySearchResponse searchDictionaryLayers(
     }
     for (final entry in layer.entries.entries) {
       if (entry.value == SharedDictionaryService.deleteSentinel) continue;
+      if (_isDeletedInHigherLayer(layers, layerIndex, layer.type, entry.key)) {
+        continue;
+      }
       final matches = switch (query.mode) {
         DictionarySearchMode.exactKey => entry.key == needle,
         DictionarySearchMode.prefixKey => entry.key.startsWith(needle),
@@ -137,6 +140,21 @@ bool _hasHigherLayerWithKey(
   for (var i = 0; i < layerIndex; i++) {
     final higher = layers[i];
     if (higher.type == type && higher.entries.containsKey(key)) return true;
+  }
+  return false;
+}
+
+bool _isDeletedInHigherLayer(
+  List<DictionarySearchLayer> layers,
+  int layerIndex,
+  DictType type,
+  String key,
+) {
+  for (var i = 0; i < layerIndex; i++) {
+    final higher = layers[i];
+    if (higher.type != type) continue;
+    final val = higher.entries[key];
+    if (val != null) return val == SharedDictionaryService.deleteSentinel;
   }
   return false;
 }

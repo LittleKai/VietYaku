@@ -41,10 +41,14 @@ class GlossaryService {
 
   /// Mục từ hiện có trong glossary, khớp theo `source` (bỏ hoa/thường như
   /// `GlossaryManager.merge_terms` bên Python). `null` nếu chưa có.
-  Future<GlossaryTerm?> find(TranslationMode mode, String source) async {
+  Future<GlossaryTerm?> find(
+    TranslationMode mode,
+    String source, {
+    bool forceReload = false,
+  }) async {
     final key = source.trim().toLowerCase();
     if (key.isEmpty) return null;
-    final payload = await _readPayload(mode);
+    final payload = await _readPayload(mode, forceReload: forceReload);
     if (payload == null) return null;
     for (final raw in _termsOf(payload)) {
       final term = GlossaryTerm.fromJson(raw);
@@ -101,22 +105,18 @@ class GlossaryService {
         );
       }
     }
-    payload['terms'] = terms;
-    final file = fileFor(mode);
-    _payloadCache[file.path] = payload;
-
-    final text = const JsonEncoder.withIndent('  ').convert(payload);
-    await file.writeAsString(
-      text.replaceAll('\n', '\r\n'),
-      encoding: utf8,
-      flush: true,
-    );
+    if (applied.isEmpty) return;
+    final nextPayload = <String, dynamic>{...payload, 'terms': terms};
+    await _writePayload(mode, nextPayload);
     await onChanged?.call(mode, applied, const []);
   }
 
   /// Toàn bộ mục từ trong glossary của [mode] (rỗng nếu chưa trỏ đúng thư mục).
-  Future<List<GlossaryTerm>> readAll(TranslationMode mode) async {
-    final payload = await _readPayload(mode);
+  Future<List<GlossaryTerm>> readAll(
+    TranslationMode mode, {
+    bool forceReload = false,
+  }) async {
+    final payload = await _readPayload(mode, forceReload: forceReload);
     if (payload == null) return const [];
     // Mục xưng hô chỉ dùng trong prompt của AI_Translation_Bridge, không thuộc VietPhrase.
     return _termsOf(payload)
@@ -148,17 +148,32 @@ class GlossaryService {
         (term['source'] ?? '').toString().trim().toLowerCase(),
       ),
     );
-    payload['terms'] = terms;
-    final file = fileFor(mode);
-    _payloadCache[file.path] = payload;
-
-    final text = const JsonEncoder.withIndent('  ').convert(payload);
-    await file.writeAsString(
-      text.replaceAll('\n', '\r\n'),
-      encoding: utf8,
-      flush: true,
-    );
+    final nextPayload = <String, dynamic>{...payload, 'terms': terms};
+    await _writePayload(mode, nextPayload);
     await onChanged?.call(mode, const {}, removed);
+  }
+
+  Future<void> _writePayload(
+    TranslationMode mode,
+    Map<String, dynamic> payload,
+  ) async {
+    final file = fileFor(mode);
+    await file.parent.create(recursive: true);
+    final text = const JsonEncoder.withIndent('  ')
+        .convert(payload)
+        .replaceAll('\r\n', '\n')
+        .replaceAll('\n', '\r\n');
+    final tmpFile = File('${file.path}.tmp');
+    await tmpFile.writeAsString(text, encoding: utf8, flush: true);
+    await tmpFile.rename(file.path);
+    final normPath = p.normalize(file.path);
+    final mtime = file.existsSync() ? file.lastModifiedSync() : DateTime.now();
+    final length = file.existsSync() ? file.lengthSync() : 0;
+    _payloadCache[normPath] = _GlossaryCacheEntry(
+      mtime: mtime,
+      length: length,
+      payload: payload,
+    );
   }
 
   static String todayStamp() {
@@ -168,26 +183,44 @@ class GlossaryService {
     return '${now.year}-$month-$day';
   }
 
-  static final Map<String, Map<String, dynamic>> _payloadCache = {};
+  static final Map<String, _GlossaryCacheEntry> _payloadCache = {};
 
   /// Xóa cache trong bộ nhớ (dùng khi settings đổi đường dẫn hoặc reset).
   static void clearCache() => _payloadCache.clear();
 
-  Future<Map<String, dynamic>?> _readPayload(TranslationMode mode) async {
+  Future<Map<String, dynamic>?> _readPayload(
+    TranslationMode mode, {
+    bool forceReload = false,
+  }) async {
     final file = fileFor(mode);
-    final path = file.path;
-    if (_payloadCache.containsKey(path)) {
-      return _payloadCache[path];
+    final normPath = p.normalize(file.path);
+    if (!file.existsSync()) {
+      _payloadCache.remove(normPath);
+      return null;
     }
-    if (!file.existsSync()) return null;
+
+    final mtime = file.lastModifiedSync();
+    final length = file.lengthSync();
+    final cached = _payloadCache[normPath];
+    if (!forceReload &&
+        cached != null &&
+        cached.mtime == mtime &&
+        cached.length == length) {
+      return cached.payload;
+    }
+
     try {
       final decoded = jsonDecode(await file.readAsString(encoding: utf8));
       if (decoded is Map<String, dynamic>) {
-        _payloadCache[path] = decoded;
+        _payloadCache[normPath] = _GlossaryCacheEntry(
+          mtime: mtime,
+          length: length,
+          payload: decoded,
+        );
         return decoded;
       }
     } catch (_) {}
-    return null;
+    return cached?.payload;
   }
 
   static List<Map<String, dynamic>> _termsOf(Map<String, dynamic> payload) {
@@ -195,4 +228,16 @@ class GlossaryService {
     if (raw is! List) return <Map<String, dynamic>>[];
     return raw.whereType<Map<String, dynamic>>().toList();
   }
+}
+
+class _GlossaryCacheEntry {
+  final DateTime mtime;
+  final int length;
+  final Map<String, dynamic> payload;
+
+  const _GlossaryCacheEntry({
+    required this.mtime,
+    required this.length,
+    required this.payload,
+  });
 }

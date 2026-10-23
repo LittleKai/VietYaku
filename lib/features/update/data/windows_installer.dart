@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:archive/archive.dart';
@@ -9,8 +10,12 @@ import 'package:path/path.dart' as p;
 Future<void> extractWindowsZip(String zipPath, String destDir) async {
   final bytes = await File(zipPath).readAsBytes();
   final archive = ZipDecoder().decodeBytes(bytes);
+  final destRoot = p.normalize(p.absolute(destDir));
   for (final file in archive.files) {
-    final outPath = p.join(destDir, file.name);
+    final outPath = p.normalize(p.absolute(p.join(destRoot, file.name)));
+    if (!p.isWithin(destRoot, outPath) && outPath != destRoot) {
+      throw FormatException('Đường dẫn trong zip không hợp lệ: ${file.name}');
+    }
     if (file.isFile) {
       final outFile = File(outPath);
       await outFile.parent.create(recursive: true);
@@ -36,6 +41,7 @@ Future<String> writeSelfUpdateScript({
   final script =
       '''
 @echo off
+@chcp 65001 >NUL
 :waitloop
 tasklist /FI "IMAGENAME eq $exeName" 2>NUL | find /I "$exeName" >NUL
 if "%ERRORLEVEL%"=="0" (
@@ -47,7 +53,7 @@ rmdir /S /Q "$stagingDir"
 start "" "$exePath"
 (goto) 2>nul & del "%~f0"
 ''';
-  await File(scriptPath).writeAsString(script, encoding: SystemEncoding());
+  await File(scriptPath).writeAsString(script, encoding: utf8);
   return scriptPath;
 }
 

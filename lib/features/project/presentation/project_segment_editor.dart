@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../domain/project_segment.dart';
 
-class ProjectSegmentEditor extends StatelessWidget {
+class ProjectSegmentEditor extends StatefulWidget {
   const ProjectSegmentEditor({
     super.key,
     required this.segment,
@@ -17,7 +17,42 @@ class ProjectSegmentEditor extends StatelessWidget {
   final VoidCallback onSuggestion;
 
   @override
+  State<ProjectSegmentEditor> createState() => _ProjectSegmentEditorState();
+}
+
+class _ProjectSegmentEditorState extends State<ProjectSegmentEditor> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.segment.editedTarget);
+  }
+
+  @override
+  void didUpdateWidget(covariant ProjectSegmentEditor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.segment.editedTarget != _controller.text) {
+      final selection = _controller.selection;
+      final newText = widget.segment.editedTarget;
+      _controller.value = TextEditingValue(
+        text: newText,
+        selection: selection.isValid && selection.end <= newText.length
+            ? selection
+            : TextSelection.collapsed(offset: newText.length),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final segment = widget.segment;
     final reviewed = segment.status == ProjectSegmentStatus.reviewed;
     return Card(
       margin: const EdgeInsets.fromLTRB(12, 6, 12, 6),
@@ -34,22 +69,22 @@ class ProjectSegmentEditor extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             TextFormField(
-              key: ValueKey('${segment.segmentId}:${segment.editedTarget}'),
-              initialValue: segment.editedTarget,
+              key: ValueKey(segment.segmentId),
+              controller: _controller,
               minLines: 1,
               maxLines: 4,
               decoration: const InputDecoration(
                 labelText: 'Bản dịch của bạn',
                 border: OutlineInputBorder(),
               ),
-              onChanged: onChanged,
+              onChanged: widget.onChanged,
             ),
             const SizedBox(height: 8),
             Row(
               children: [
                 if (segment.editedTarget.trim().isEmpty)
                   TextButton.icon(
-                    onPressed: onSuggestion,
+                    onPressed: widget.onSuggestion,
                     icon: const Icon(Icons.auto_awesome, size: 18),
                     label: const Text('Gợi ý TM'),
                   ),
@@ -63,7 +98,7 @@ class ProjectSegmentEditor extends StatelessWidget {
                   FilledButton.tonalIcon(
                     onPressed: segment.editedTarget.trim().isEmpty
                         ? null
-                        : onReviewed,
+                        : widget.onReviewed,
                     icon: const Icon(Icons.fact_check_outlined, size: 18),
                     label: const Text('Đánh dấu đã duyệt'),
                   ),

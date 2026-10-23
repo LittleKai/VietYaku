@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vietyaku/features/dictionary/domain/dict_type.dart';
 import 'package:vietyaku/features/dictionary_search/domain/dictionary_search.dart';
+import 'package:vietyaku/features/dictionary_sync/data/shared_dictionary_service.dart';
 import 'package:vietyaku/features/translation/domain/translation_engine.dart';
 
 void main() {
@@ -75,6 +76,31 @@ void main() {
 
     expect(DictType.vietPhrase.isAvailableFor(TranslationMode.japanese), isTrue);
     expect(DictType.vietPhrase.isAvailableFor(TranslationMode.chinese), isTrue);
+  });
+
+  test('tombstone ở layer cao hơn ẩn kết quả ở layer gốc cùng DictType', () {
+    final tombstonedLayers = [
+      const DictionarySearchLayer(
+        id: 'shared',
+        label: 'VietPhrase chung',
+        type: DictType.vietPhrase,
+        entries: {'龍王': SharedDictionaryService.deleteSentinel},
+      ),
+      const DictionarySearchLayer(
+        id: 'base',
+        label: 'VietPhrase gốc',
+        type: DictType.vietPhrase,
+        entries: {'龍王': 'long vương', '少女': 'thiếu nữ'},
+      ),
+    ];
+    final response = searchDictionaryLayers(
+      tombstonedLayers,
+      const DictionarySearchQuery(
+        text: '龍王',
+        mode: DictionarySearchMode.exactKey,
+      ),
+    );
+    expect(response.totalMatches, 0);
   });
 }
 

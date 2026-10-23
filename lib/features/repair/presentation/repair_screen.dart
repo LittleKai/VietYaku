@@ -4,7 +4,6 @@ import 'package:path/path.dart' as p;
 
 import '../../dictionary/domain/dict_type.dart';
 import '../../settings/settings_provider.dart';
-import '../../translation/application/translation_controller.dart';
 import '../../translation/domain/translation_engine.dart';
 import '../application/repair_controller.dart';
 
@@ -17,11 +16,12 @@ class RepairScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(repairControllerProvider);
     final notifier = ref.read(repairControllerProvider.notifier);
-    final mode = ref.watch(currentModeProvider);
+    // Pipeline repair simp→JP chỉ áp dụng cho bộ từ điển tiếng Nhật (`data/jp`).
+    const mode = TranslationMode.japanese;
     final settings = ref.watch(settingsProvider);
     final paths = settings.dictPathsFor(mode);
     final report = state.report;
-    final modeLabel = mode == TranslationMode.japanese ? 'Nhật' : 'Trung';
+    const modeLabel = 'Nhật';
 
     return Padding(
       padding: const EdgeInsets.all(12),
@@ -54,7 +54,11 @@ class RepairScreen extends ConsumerWidget {
                 },
                 dropdownMenuEntries: [
                   for (final type in dictFileNames.keys)
-                    DropdownMenuEntry(value: type, label: dictFileNames[type]!),
+                    if (type != DictType.cedict && type != DictType.zhVi)
+                      DropdownMenuEntry(
+                        value: type,
+                        label: dictFileNames[type]!,
+                      ),
                 ],
               ),
               const Spacer(),

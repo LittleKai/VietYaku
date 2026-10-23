@@ -41,7 +41,15 @@ Skill này tự động hóa quy trình: build Windows + Android → tạo GitHu
 
 ### Bước 1: Xác nhận thông tin
 
-Hỏi user:
+⚡ **Quy tắc ngầm định (Zero-Prompting):** Khi user yêu cầu build hoặc release mà **không nói gì thêm / không chỉ định cụ thể**, MẶC ĐỊNH HIỂU LÀ **build release phiên bản mới**:
+- **Version**: Tự động tăng version từ `pubspec.yaml` (minor nếu có tính năng mới, patch nếu chỉ sửa lỗi).
+- **Targets**: Mặc định cả hai (`windows,android`).
+- **Loại release**: Bản chính thức (không phải prerelease).
+- **Release notes**: Tự động thu thập toàn bộ thay đổi từ tag gần nhất đến HEAD theo góc nhìn người dùng tiếng Việt.
+- **Git Push**: Tự động push cả git branch hiện tại (`git push origin <branch>`) và tag release lên GitHub.
+- **Kênh phát hành**: Đẩy đồng thời cả GitHub Release và Backblaze B2 mà không cần hỏi lại các lựa chọn mặc định.
+
+Nếu user có yêu cầu tùy biến riêng, hỏi hoặc làm theo yêu cầu:
 - **Version**: tag mới (ví dụ `v1.0.0`). Nếu user không chỉ định, đọc version từ `pubspec.yaml` và đề xuất.
 - **Release title**: tên hiển thị trên GitHub (mặc định: `VietYaku <version>`)
 - **Release notes**: nội dung phiên bản, tổng hợp **TOÀN BỘ** các commit kể từ release tag trước đó.

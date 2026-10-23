@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:vietyaku/core/app_paths.dart';
 import 'package:vietyaku/core/fnv_hash.dart';
 import 'package:vietyaku/features/dictionary/data/binary_cache.dart';
 import 'package:vietyaku/features/dictionary/data/dictionary_loader.dart';
@@ -51,6 +52,22 @@ void main() {
         srcMtimeMs: 1,
       );
       expect(BinaryCache.decode(bytes.sublist(0, bytes.length - 3)), isNull);
+      // Trailing extra bytes or malformed UTF-8 must also return null.
+      expect(BinaryCache.decode(Uint8List.fromList([...bytes, 0x00])), isNull);
+      final badUtf8 = Uint8List.fromList(bytes);
+      badUtf8[badUtf8.length - 1] = 0xFF;
+      expect(BinaryCache.decode(badUtf8), isNull);
+    });
+
+    test('AppPaths.cacheFileFor phân biệt hai file trùng tên ở hai thư mục cha', () {
+      final paths = AppPaths(Directory.systemTemp);
+      final userCache = paths.cacheFileFor(
+        r'D:\app\userdata\dictionaries\VietPhrase_japanese.txt',
+      );
+      final genCache = paths.cacheFileFor(
+        r'D:\app\data\jp\generated\VietPhrase_japanese.txt',
+      );
+      expect(userCache, isNot(equals(genCache)));
     });
 
     test('isValid: same size+mtime → valid without hashing', () {

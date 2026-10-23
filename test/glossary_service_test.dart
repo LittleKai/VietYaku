@@ -172,6 +172,30 @@ void main() {
     expect(terms.single.source, '箸尾拓海');
   });
 
+  test('cache tự động làm mới khi file trên đĩa bị sửa từ bên ngoài', () async {
+    final service = GlossaryService(root.path);
+    final initial = await service.find(TranslationMode.japanese, '菜畑小鳥');
+    expect(initial?.target, 'Nabata Kotori');
+
+    // Chỉnh sửa file trên đĩa từ bên ngoài và đảm bảo mtime thay đổi
+    final file = service.fileFor(TranslationMode.japanese);
+    final externalJson = _jpGlossary.replaceAll('Nabata Kotori', 'External Target');
+    await file.writeAsString(externalJson, encoding: utf8, flush: true);
+    file.setLastModifiedSync(DateTime.now().add(const Duration(seconds: 5)));
+
+    // service.find phát hiện mtime đổi và nạp dữ liệu mới
+    final updated = await service.find(TranslationMode.japanese, '菜畑小鳥');
+    expect(updated?.target, 'External Target');
+
+    // forceReload ép đọc lại
+    final forced = await service.find(
+      TranslationMode.japanese,
+      '菜畑小鳥',
+      forceReload: true,
+    );
+    expect(forced?.target, 'External Target');
+  });
+
   test('readAll bỏ qua mục xưng hô', () async {
     await writeAddressPayload();
     final terms = await GlossaryService(root.path).readAll(TranslationMode.japanese);

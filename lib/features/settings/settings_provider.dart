@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../features/translation/domain/translation_engine.dart';
 import '../dictionary/domain/dict_type.dart';
 import '../dictionary_sync/domain/sync_reminder.dart';
+import '../glossary/data/glossary_service.dart';
 import '../repair/domain/jp_repair_pipeline.dart';
 import '../translation/domain/lookup_dictionary_type.dart';
 import '../translation/domain/meaning_panel_layout.dart';
@@ -946,6 +947,7 @@ class SettingsNotifier extends Notifier<AppSettings> {
 
   Future<void> setGlossaryDir(String value) async {
     final normalized = value.trim();
+    GlossaryService.clearCache();
     final prefs = ref.read(sharedPreferencesProvider);
     await prefs.setString(_glossaryDirKey, normalized);
     state = state.copyWith(glossaryDir: normalized);

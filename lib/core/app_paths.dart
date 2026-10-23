@@ -1,9 +1,12 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:flutter/services.dart' show AssetManifest, rootBundle;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+
+import 'fnv_hash.dart';
 
 /// Thư mục dữ liệu ghi được của app.
 ///
@@ -29,10 +32,19 @@ class AppPaths {
 
   /// [variant] tách cache của cùng một file nguồn khi nội dung parse ra khác
   /// nhau (bộ dict Trung đã quy phồn→giản dùng variant riêng).
+  /// Kèm hash thư mục cha để các file trùng tên ở khác thư mục (`data/jp` vs
+  /// `data/cn`, `userdata/dictionaries` vs `data/<lang>/generated`) không ghi
+  /// đè lên cùng một file `.vydc`.
   String cacheFileFor(String sourcePath, {String variant = ''}) {
     final name = p.basenameWithoutExtension(sourcePath);
+    final dir = p.normalize(p.dirname(sourcePath)).replaceAll('\\', '/');
+    final dirHash = fnv1a64(Uint8List.fromList(dir.codeUnits))
+        .toUnsigned(64)
+        .toRadixString(16)
+        .padLeft(16, '0')
+        .substring(0, 8);
     final suffix = variant.isEmpty ? '' : '.$variant';
-    return p.join(cacheDir.path, '$name$suffix.vydc');
+    return p.join(cacheDir.path, '$name.$dirHash$suffix.vydc');
   }
 
   static Future<AppPaths> init() async {

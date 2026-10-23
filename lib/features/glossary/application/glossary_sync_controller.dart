@@ -4,6 +4,7 @@ import '../../dictionary/application/dictionaries_provider.dart';
 import '../../dictionary_sync/application/dictionary_sync_controller.dart';
 import '../../dictionary_sync/domain/shared_dictionary_entry.dart';
 import '../../settings/settings_provider.dart';
+import '../../translation/application/lookup_controller.dart';
 import '../../translation/application/trad2simp_provider.dart';
 import '../../translation/application/translation_controller.dart';
 import '../../translation/domain/trad2simp_table.dart';
@@ -109,6 +110,7 @@ final glossarySyncRowsProvider = FutureProvider.autoDispose
 
       final glossaryTerms = <GlossaryTerm>[];
       final glossaryBySource = <String, String>{};
+      final glossaryRawSourceByNorm = <String, String>{};
       final seenGlossaryKeys = <String>{};
 
       for (final term in rawGlossaryTerms) {
@@ -119,6 +121,7 @@ final glossarySyncRowsProvider = FutureProvider.autoDispose
         if (seenGlossaryKeys.add(normKey)) {
           glossaryTerms.add(term);
           glossaryBySource[normKey] = target;
+          glossaryRawSourceByNorm[normKey] = source;
         }
       }
 
@@ -139,7 +142,9 @@ final glossarySyncRowsProvider = FutureProvider.autoDispose
         for (final entry in dicts.vietPhrase.entries.entries)
           if (glossaryTargetOf(entry.value).isNotEmpty)
             GlossarySyncRow(
-              source: entry.key,
+              source:
+                  glossaryRawSourceByNorm[entry.key.trim().toLowerCase()] ??
+                  entry.key,
               target: glossaryTargetOf(entry.value),
               otherTarget: glossaryBySource[entry.key.trim().toLowerCase()],
             ),
@@ -197,7 +202,7 @@ Future<void> applyGlossarySyncRows(
             for (final row in rows)
               SharedDictionaryEntry(
                 kind: SharedDictionaryKind.vietPhrase,
-                source: row.source,
+                source: lookupKeyOf(ref, row.source),
                 target: row.target,
               ),
           ],
@@ -232,19 +237,29 @@ Future<void> deleteGlossarySyncRows(
   }
 
   if (deleteFromVietPhrase) {
+    final entries = <SharedDictionaryEntry>[];
+    for (final row in rows) {
+      final norm = lookupKeyOf(ref, row.source);
+      entries.add(
+        SharedDictionaryEntry(
+          kind: SharedDictionaryKind.vietPhrase,
+          source: norm,
+          operation: EntryOperation.delete,
+        ),
+      );
+      if (norm != row.source) {
+        entries.add(
+          SharedDictionaryEntry(
+            kind: SharedDictionaryKind.vietPhrase,
+            source: row.source,
+            operation: EntryOperation.delete,
+          ),
+        );
+      }
+    }
     await ref
         .read(dictionarySyncProvider.notifier)
-        .stageLocalEditsBulk(
-          mode: mode,
-          entries: [
-            for (final row in rows)
-              SharedDictionaryEntry(
-                kind: SharedDictionaryKind.vietPhrase,
-                source: row.source,
-                operation: EntryOperation.delete,
-              ),
-          ],
-        );
+        .stageLocalEditsBulk(mode: mode, entries: entries);
   }
 
   ref.invalidate(
@@ -285,18 +300,28 @@ Future<void> editGlossarySyncRow(
   if (updateVietPhrase) {
     final entries = <SharedDictionaryEntry>[];
     if (sourceChanged) {
+      final oldNorm = lookupKeyOf(ref, oldSource);
       entries.add(
         SharedDictionaryEntry(
           kind: SharedDictionaryKind.vietPhrase,
-          source: oldSource,
+          source: oldNorm,
           operation: EntryOperation.delete,
         ),
       );
+      if (oldNorm != oldSource) {
+        entries.add(
+          SharedDictionaryEntry(
+            kind: SharedDictionaryKind.vietPhrase,
+            source: oldSource,
+            operation: EntryOperation.delete,
+          ),
+        );
+      }
     }
     entries.add(
       SharedDictionaryEntry(
         kind: SharedDictionaryKind.vietPhrase,
-        source: source,
+        source: lookupKeyOf(ref, source),
         target: target,
       ),
     );
@@ -348,7 +373,7 @@ Future<void> bulkEditGlossarySyncRows(
       for (final entry in updatedPairs.entries)
         SharedDictionaryEntry(
           kind: SharedDictionaryKind.vietPhrase,
-          source: entry.key,
+          source: lookupKeyOf(ref, entry.key),
           target: entry.value,
         ),
     ];

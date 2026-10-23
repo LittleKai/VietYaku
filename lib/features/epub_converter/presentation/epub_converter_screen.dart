@@ -20,6 +20,7 @@ class _EpubConverterScreenState extends State<EpubConverterScreen> {
   EpubBook? _book;
   EpubOutputFormat _format = EpubOutputFormat.csv;
   EpubRubyHandling _rubyHandling = EpubRubyHandling.removeHiragana;
+  bool _exportImages = true;
   bool _busy = false;
   String? _message;
 
@@ -48,10 +49,13 @@ class _EpubConverterScreenState extends State<EpubConverterScreen> {
       setState(() {
         _sourceBytes = bytes;
         _book = book;
+        final imgInfo = book.exportedImages.isNotEmpty
+            ? ' · ${book.exportedImages.length} ảnh'
+            : '';
         _message =
             'Đã nhận diện ${book.language.label} · '
             '${book.chapters.length} chương · '
-            '${book.translationRows.length} dòng.';
+            '${book.translationRows.length} dòng$imgInfo.';
       });
     } catch (error) {
       if (!mounted) return;
@@ -77,9 +81,12 @@ class _EpubConverterScreenState extends State<EpubConverterScreen> {
       if (!mounted) return;
       setState(() {
         _book = book;
+        final imgInfo = book.exportedImages.isNotEmpty
+            ? ' · ${book.exportedImages.length} ảnh'
+            : '';
         _message =
             'Đã áp dụng: ${value.label} · '
-            '${book.translationRows.length} dòng.';
+            '${book.translationRows.length} dòng$imgInfo.';
       });
     } catch (error) {
       if (!mounted) return;
@@ -111,8 +118,18 @@ class _EpubConverterScreenState extends State<EpubConverterScreen> {
         EpubExportRequest(book: book, format: _format),
       );
       await File(location.path).writeAsBytes(bytes, flush: true);
+
+      var imageMessage = '';
+      if (_exportImages && book.exportedImages.isNotEmpty) {
+        final outDir = p.dirname(location.path);
+        final outStem = p.basenameWithoutExtension(location.path);
+        final imgDir = p.join(outDir, '${outStem}_images');
+        final count = await exportEpubImages(book, imgDir);
+        imageMessage = ' · Đã xuất $count ảnh vào ${p.basename(imgDir)}';
+      }
+
       if (!mounted) return;
-      setState(() => _message = 'Đã lưu: ${location.path}');
+      setState(() => _message = 'Đã lưu: ${location.path}$imageMessage');
     } catch (error) {
       if (!mounted) return;
       setState(() => _message = 'Không thể xuất file: $error');
@@ -188,7 +205,7 @@ class _EpubConverterScreenState extends State<EpubConverterScreen> {
           accentColor: const Color(0xFF00897B),
           title: 'Định dạng đầu ra',
           description:
-              'CSV/Excel dùng hai cột id,text tương thích AI Translation Bridge.',
+              'CSV/Excel dùng hai cột id,raw tương thích AI Translation Bridge.',
           children: [
             SettingsControlRow(
               title: 'Loại file',
@@ -231,6 +248,22 @@ class _EpubConverterScreenState extends State<EpubConverterScreen> {
                 ],
               ),
             ),
+            if (book != null && book.exportedImages.isNotEmpty)
+              SettingsControlRow(
+                title: 'Xuất kèm thư mục ảnh',
+                description:
+                    'Lưu ${book.exportedImages.length} ảnh vào thư mục <tên_file>_images cạnh file xuất, đánh số khớp với (img).',
+                controlWidth: 100,
+                control: Align(
+                  alignment: Alignment.centerRight,
+                  child: Switch(
+                    value: _exportImages,
+                    onChanged: _busy
+                        ? null
+                        : (value) => setState(() => _exportImages = value),
+                  ),
+                ),
+              ),
             if (_message != null)
               Padding(
                 padding: const EdgeInsets.all(16),

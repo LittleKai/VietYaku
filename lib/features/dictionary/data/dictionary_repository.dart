@@ -300,6 +300,10 @@ class DictionaryRepository {
       results[12].dictionary,
       results[13].dictionary,
       results[14].dictionary,
+      results[20].dictionary,
+      results[23].dictionary,
+      results[24].dictionary,
+      results[25].dictionary,
     ].any((dictionary) => !dictionary.isEmpty);
     final variantIndex = await variantIndexFuture;
     final dynamicVariantIndex = hasDynamicOverlays ? variantIndex : null;
@@ -308,10 +312,18 @@ class DictionaryRepository {
       if (dynamicVariantIndex == null || dynamicVariantIndex.isEmpty) {
         return dictionary;
       }
-      return PhraseDictionary(
-        dictionary.type,
-        dynamicVariantIndex.expandEntries(dictionary.entries),
-      );
+      final active = <String, String>{};
+      final tombstones = <String, String>{};
+      for (final entry in dictionary.entries.entries) {
+        if (entry.value == SharedDictionaryService.deleteSentinel) {
+          tombstones[entry.key] = entry.value;
+        } else {
+          active[entry.key] = entry.value;
+        }
+      }
+      final expanded = dynamicVariantIndex.expandEntries(active)
+        ..addAll(tombstones);
+      return PhraseDictionary(dictionary.type, expanded);
     }
 
     Future<RuleDocument<PersonTranslationRule>> loadPersonRules() async {
@@ -433,6 +445,12 @@ class DictionaryRepository {
           label: 'VietPhrase chung',
           type: DictType.vietPhrase,
           entries: sharedVietPhrase.entries,
+        ),
+        DictionarySearchLayer(
+          id: 'vietPhraseOverlay',
+          label: 'VietPhrase (tra thêm)',
+          type: DictType.vietPhrase,
+          entries: vietPhraseOverlay.entries,
         ),
         DictionarySearchLayer(
           id: 'vietPhrase',

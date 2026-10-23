@@ -21,9 +21,14 @@ bool isWordLikeEntry(String key) {
   final trimmed = key.trim();
   if (trimmed.isEmpty) return false;
 
-  // Khoảng trắng/xuống dòng bên trong → đã là chuỗi nhiều thành phần.
+  // Khoảng trắng/xuống dòng bên trong (kể cả dấu cách toàn hình U+3000) → đã là
+  // chuỗi nhiều thành phần.
   for (final unit in trimmed.codeUnits) {
-    if (unit == 0x20 || unit == 0x09 || unit == 0x0A || unit == 0x0D) {
+    if (unit == 0x20 ||
+        unit == 0x09 ||
+        unit == 0x0A ||
+        unit == 0x0D ||
+        unit == 0x3000) {
       return false;
     }
   }

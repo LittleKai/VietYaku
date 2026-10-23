@@ -7,6 +7,7 @@ import '../../translation/application/translation_controller.dart';
 import '../../translation/domain/translation_engine.dart';
 import '../application/glossary_sync_controller.dart';
 import '../data/glossary_service.dart';
+import 'glossary_update_dialog.dart' show glossaryTargetOf;
 
 const _glossaryAccent = Color(0xFF6A1B9A);
 const _pageSizes = [25, 50, 100, 200];
@@ -148,7 +149,10 @@ class _DirectionTabState extends ConsumerState<_DirectionTab>
         if (row.otherTarget != null && row.otherTarget!.trim().isNotEmpty)
           GlossarySyncRow(
             source: row.source,
-            target: row.otherTarget!.trim(),
+            target:
+                widget.direction == GlossarySyncDirection.glossaryToVietPhrase
+                ? glossaryTargetOf(row.otherTarget!)
+                : row.otherTarget!.trim(),
             otherTarget: row.target,
             createdBy:
                 widget.direction == GlossarySyncDirection.vietPhraseToGlossary
@@ -234,6 +238,7 @@ class _DirectionTabState extends ConsumerState<_DirectionTab>
       ],
     );
     canDeleteNotifier.disposeAfterRouteAnimation();
+    if (!mounted) return;
 
     if (confirmed != true || resultData == null) return;
     setState(() => _applying = true);
@@ -297,6 +302,7 @@ class _DirectionTabState extends ConsumerState<_DirectionTab>
       ],
     );
     canSaveNotifier.disposeAfterRouteAnimation();
+    if (!mounted) return;
 
     if (saved != true || resultData == null) return;
     final newSource = resultData!.newSource.trim();
@@ -373,6 +379,7 @@ class _DirectionTabState extends ConsumerState<_DirectionTab>
       ],
     );
     canApplyNotifier.disposeAfterRouteAnimation();
+    if (!mounted) return;
 
     if (saved != true || resultData == null) return;
 

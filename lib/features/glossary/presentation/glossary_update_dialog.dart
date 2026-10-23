@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/widgets/app_dialog.dart';
 import '../../translation/application/translation_controller.dart';
+import '../../translation/domain/translation_engine.dart';
 import '../../translation/domain/vietphrase_value.dart';
 import '../application/glossary_service_provider.dart';
 import '../application/glossary_sync_controller.dart';
@@ -16,35 +17,50 @@ const _glossaryAccent = Color(0xFF6A1B9A);
 /// VD: `(n)/ký ức/hồi ức/(2)/(v)/nhớ lại` -> `ký ức/hồi ức/nhớ lại`.
 String glossaryTargetOf(String meaning) => allVietPhraseMeaningsClean(meaning);
 
+/// Cầu nối đọc nội dung ô Nghĩa sau khi dialog đã đóng (controller sống theo
+/// vòng đời widget, dispose sau animation thoát).
+class _TargetHolder {
+  _TargetHolder(this.text);
+
+  String text;
+}
+
 /// Xác nhận rồi ghi [source] vào `Global Glossary.json` của ngôn ngữ đang dịch.
 /// Dialog hiện thông tin mục từ đang có trong glossary (nếu có) trước khi ghi.
 ///
-/// Trả về `true` khi file glossary THỰC SỰ được ghi — dialog gọi nó (Sửa vào
-/// VietPhrase) dựa vào đây để nạp lại trạng thái glossary đang hiển thị.
-Future<bool> showGlossaryUpdateDialog(
+/// Trả về [GlossaryTerm] khi file glossary THỰC SỰ được ghi (hoặc đã trùng khớp) —
+/// dialog gọi nó (Sửa vào VietPhrase) dựa vào đây để nạp lại trạng thái
+/// glossary đang hiển thị ngay lập tức.
+Future<GlossaryTerm?> showGlossaryUpdateDialog(
   BuildContext context,
   WidgetRef ref, {
   required String source,
   required String meaning,
+  TranslationMode? mode,
 }) async {
-  final mode = ref.read(translationControllerProvider).mode;
+  final TranslationMode activeMode = mode ?? ref.read(currentModeProvider);
   final service = ref.read(glossaryServiceProvider);
-  final lang = GlossaryService.langFor(mode);
-  final target = glossaryTargetOf(meaning);
-  if (source.isEmpty || target.isEmpty) {
-    _showMessage(context, 'Cần cả từ nguồn và nghĩa để cập nhật glossary.');
-    return false;
+  final lang = GlossaryService.langFor(activeMode);
+  final initialTarget = glossaryTargetOf(meaning);
+  if (source.isEmpty || initialTarget.isEmpty) {
+    if (context.mounted) {
+      _showMessage(context, 'Cần cả từ nguồn và nghĩa để cập nhật glossary.');
+    }
+    return null;
   }
 
   final GlossaryTerm? existing;
   try {
-    existing = await service.find(mode, source);
+    existing = await service.find(activeMode, source);
   } catch (_) {
-    if (!context.mounted) return false;
-    _showMessage(context, 'Không đọc được Global Glossary $lang.');
-    return false;
+    if (context.mounted) {
+      _showMessage(context, 'Không đọc được Global Glossary $lang.');
+    }
+    return null;
   }
-  if (!context.mounted) return false;
+  if (!context.mounted) return null;
+
+  final holder = _TargetHolder(initialTarget);
 
   final confirmed = await showAppDialog<bool>(
     context: context,
@@ -59,8 +75,8 @@ Future<bool> showGlossaryUpdateDialog(
       lang: lang,
       source: source,
       meaning: meaning,
-      target: target,
       existing: existing,
+      holder: holder,
     ),
     actionsBuilder: (dialogContext) => [
       TextButton(
@@ -74,15 +90,41 @@ Future<bool> showGlossaryUpdateDialog(
       ),
     ],
   );
-  if (confirmed != true || !context.mounted) return false;
-  if (existing != null && existing.target.trim() == target.trim()) return false;
+  if (confirmed != true) return null;
+
+  final target = holder.text.trim();
+  if (target.isEmpty) {
+    if (context.mounted) {
+      _showMessage(context, 'Nghĩa trong glossary không được để trống.');
+    }
+    return null;
+  }
+
+  if (existing != null && existing.target.trim() == target) {
+    if (context.mounted) {
+      _showMessage(
+        context,
+        'Nghĩa Global Glossary $lang đã trùng khớp: $source → $target',
+      );
+    }
+    return existing;
+  }
+
+  final newTerm = (existing != null)
+      ? existing.copyWith(target: target, createdBy: 'user')
+      : GlossaryTerm(
+          source: source.trim(),
+          target: target,
+          dateAdded: GlossaryService.todayStamp(),
+        );
 
   try {
-    await service.upsert(mode, source: source, target: target);
+    await service.upsert(activeMode, source: source, target: target);
   } catch (_) {
-    if (!context.mounted) return false;
-    _showMessage(context, 'Không ghi được Global Glossary $lang.');
-    return false;
+    if (context.mounted) {
+      _showMessage(context, 'Không ghi được Global Glossary $lang.');
+    }
+    return null;
   }
   // Bảng đồng bộ hàng loạt đang mở phải bỏ mục vừa xử lý (cả hai chiều).
   ref.invalidate(
@@ -91,9 +133,10 @@ Future<bool> showGlossaryUpdateDialog(
   ref.invalidate(
     glossarySyncRowsProvider(GlossarySyncDirection.vietPhraseToGlossary),
   );
-  if (!context.mounted) return true;
-  _showMessage(context, 'Đã cập nhật Global Glossary $lang: $source → $target');
-  return true;
+  if (context.mounted) {
+    _showMessage(context, 'Đã cập nhật Global Glossary $lang: $source → $target');
+  }
+  return newTerm;
 }
 
 void _showMessage(BuildContext context, String message) {
@@ -102,30 +145,51 @@ void _showMessage(BuildContext context, String message) {
     ..showSnackBar(SnackBar(content: Text(message)));
 }
 
-/// So sánh mục đang có trong glossary với giá trị sắp ghi.
-class _GlossaryPreview extends StatelessWidget {
+/// So sánh mục đang có trong glossary với giá trị sắp ghi, cho phép sửa trực tiếp target.
+class _GlossaryPreview extends StatefulWidget {
   const _GlossaryPreview({
     required this.lang,
     required this.source,
     required this.meaning,
-    required this.target,
     required this.existing,
+    required this.holder,
   });
 
   final String lang;
   final String source;
   final String meaning;
-  final String target;
   final GlossaryTerm? existing;
+  final _TargetHolder holder;
+
+  @override
+  State<_GlossaryPreview> createState() => _GlossaryPreviewState();
+}
+
+class _GlossaryPreviewState extends State<_GlossaryPreview> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.holder.text)
+      ..addListener(() => widget.holder.text = _controller.text);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final term = existing;
+    final term = widget.existing;
+    final lang = widget.lang;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _row(context, 'Từ nguồn', source),
-        _row(context, 'Nghĩa trong VietPhrase', meaning),
+        _row(context, 'Từ nguồn', widget.source),
+        _row(context, 'Nghĩa trong VietPhrase', widget.meaning),
         const Divider(height: 26),
         Text(
           term == null
@@ -137,7 +201,19 @@ class _GlossaryPreview extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 10),
-        _row(context, 'target', term?.target ?? '—', newValue: target),
+        if (term != null) ...[
+          _row(context, 'Nghĩa hiện tại', term.target),
+          const SizedBox(height: 8),
+        ],
+        TextField(
+          controller: _controller,
+          decoration: const InputDecoration(
+            labelText: 'Nghĩa trong glossary (target)',
+            helperText: 'Dùng dấu / để ngăn cách nhiều nghĩa.',
+          ),
+          autofocus: true,
+        ),
+        const SizedBox(height: 12),
         _row(context, 'kind', term?.kind ?? 'proper_noun'),
         _row(context, 'notes', (term?.notes ?? '').isEmpty ? '—' : term!.notes),
         _row(context, 'created_by', term?.createdBy ?? '—', newValue: 'user'),
@@ -206,15 +282,16 @@ class _GlossaryPreview extends StatelessWidget {
 /// bật thì glossary luôn bám theo VietPhrase, tắt thì hai bên được phép lệch
 /// nhau nên phải sửa được độc lập.
 ///
-/// Trả về `true` khi file glossary THỰC SỰ được ghi.
-Future<bool> showGlossaryEditDialog(
+/// Trả về [GlossaryTerm] khi file glossary THỰC SỰ được ghi (hoặc đã trùng khớp).
+Future<GlossaryTerm?> showGlossaryEditDialog(
   BuildContext context,
   WidgetRef ref, {
   required GlossaryTerm term,
+  TranslationMode? mode,
 }) async {
-  final mode = ref.read(translationControllerProvider).mode;
+  final TranslationMode activeMode = mode ?? ref.read(currentModeProvider);
   final service = ref.read(glossaryServiceProvider);
-  final lang = GlossaryService.langFor(mode);
+  final lang = GlossaryService.langFor(activeMode);
   final holder = _TargetHolder(term.target);
 
   final confirmed = await showAppDialog<bool>(
@@ -237,24 +314,27 @@ Future<bool> showGlossaryEditDialog(
       ),
     ],
   );
-  if (confirmed != true) return false;
+  if (confirmed != true) return null;
 
   final target = holder.text.trim();
   if (target.isEmpty) {
     if (context.mounted) {
       _showMessage(context, 'Nghĩa trong glossary không được để trống.');
     }
-    return false;
+    return null;
   }
-  if (target == term.target.trim()) return false;
+  if (target == term.target.trim()) {
+    return term;
+  }
 
+  final updatedTerm = term.copyWith(target: target, createdBy: 'user');
   try {
-    await service.upsert(mode, source: term.source, target: target);
+    await service.upsert(activeMode, source: term.source, target: target);
   } catch (_) {
     if (context.mounted) {
       _showMessage(context, 'Không ghi được Global Glossary $lang.');
     }
-    return false;
+    return null;
   }
   ref.invalidate(
     glossarySyncRowsProvider(GlossarySyncDirection.glossaryToVietPhrase),
@@ -262,21 +342,15 @@ Future<bool> showGlossaryEditDialog(
   ref.invalidate(
     glossarySyncRowsProvider(GlossarySyncDirection.vietPhraseToGlossary),
   );
-  if (!context.mounted) return true;
-  _showMessage(
-    context,
-    'Đã cập nhật Global Glossary $lang: ${term.source} → $target',
-  );
-  return true;
+  if (context.mounted) {
+    _showMessage(
+      context,
+      'Đã cập nhật Global Glossary $lang: ${term.source} → $target',
+    );
+  }
+  return updatedTerm;
 }
 
-/// Cầu nối đọc nội dung ô Nghĩa sau khi dialog đã đóng (controller sống theo
-/// vòng đời widget, dispose sau animation thoát).
-class _TargetHolder {
-  _TargetHolder(this.text);
-
-  String text;
-}
 
 class _GlossaryTargetEditor extends StatefulWidget {
   const _GlossaryTargetEditor({required this.holder, required this.term});

@@ -271,5 +271,21 @@ void main() {
       expect(formatVietPhraseForLookup(''), '');
     });
   });
+
+  group('mergeFlatGlossaryIntoMeanings', () {
+    test('giữ nguyên các tầng nghĩa và từ loại phía sau khi sửa nghĩa đầu phẳng', () {
+      final existing = parseVietPhraseValue(
+        '(n)/ký ức/hồi ức/(2)/(v)/nhớ lại',
+      );
+      final merged = mergeFlatGlossaryIntoMeanings(
+        existing,
+        'hoài niệm/hồi ức/nhớ lại',
+      );
+      expect(
+        encodeVietPhraseValue(merged),
+        '(n)/hoài niệm/hồi ức/(2)/(v)/nhớ lại',
+      );
+    });
+  });
 }
 

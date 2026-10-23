@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vietyaku/features/dictionary/domain/dict_type.dart';
 import 'package:vietyaku/features/dictionary/domain/phrase_dictionary.dart';
+import 'package:vietyaku/features/translation/domain/kanji_numeral.dart';
 import 'package:vietyaku/features/translation/domain/token.dart';
 import 'package:vietyaku/features/translation/domain/translation_engine.dart';
 import 'package:vietyaku/features/translation/domain/translation_rule.dart';
@@ -473,6 +474,30 @@ void main() {
       final tokens = engine.translate('食べた');
       expect(tokens.any((token) => token.kind == TokenKind.matched), isFalse);
       expect(tokens.map((token) => token.source).join(), '食べた');
+    });
+  });
+
+  group('parseKanjiNumber & non-CJK prioritizeNames', () {
+    test('parseKanjiNumber từ chối số nhân bằng 0 trước hàng chục/trăm/vạn', () {
+      expect(parseKanjiNumber('〇十'), isNull);
+      expect(parseKanjiNumber('〇百'), isNull);
+      expect(parseKanjiNumber('〇万'), isNull);
+      expect(parseKanjiNumber('二十'), '20');
+      expect(parseKanjiNumber('二〇'), '20');
+    });
+
+    test('prioritizeNames không ăn key thuần không-CJK khi bắt đầu ngoài CJK', () {
+      final engine = TranslationEngine(
+        prioritizeNames: true,
+        dicts: [
+          dict(DictType.names, {'A': 'Alpha'}),
+          dict(DictType.vietPhrase, {'ＨＢＴＮシリーズ': 'HBTN Series'}),
+        ],
+      );
+      final tokens = engine.translate('A ＨＢＴＮシリーズ');
+      expect(tokens.first.kind, TokenKind.passthrough);
+      expect(tokens.first.source, 'A ');
+      expect(tokens.last.meaning, 'HBTN Series');
     });
   });
 }

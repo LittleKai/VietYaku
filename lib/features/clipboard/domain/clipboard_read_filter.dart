@@ -20,7 +20,7 @@ class ClipboardReadFilter {
     _ownWriteAt = now;
   }
 
-  bool shouldAccept(String text, DateTime now) {
+  bool shouldAccept(String text, DateTime now, {bool force = false}) {
     if (text.isEmpty || !_containsCjk(text)) return false;
     final hash = _fnv1a(text);
     if (_ownWriteHash == hash &&
@@ -28,10 +28,12 @@ class ClipboardReadFilter {
         now.difference(_ownWriteAt!) <= ownWriteWindow) {
       return false;
     }
-    if (_lastAcceptedHash == hash) return false;
-    if (_lastAcceptedAt != null &&
-        now.difference(_lastAcceptedAt!) < debounce) {
-      return false;
+    if (!force) {
+      if (_lastAcceptedHash == hash) return false;
+      if (_lastAcceptedAt != null &&
+          now.difference(_lastAcceptedAt!) < debounce) {
+        return false;
+      }
     }
     _lastAcceptedHash = hash;
     _lastAcceptedAt = now;

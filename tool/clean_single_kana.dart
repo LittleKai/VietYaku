@@ -28,7 +28,11 @@ void main() {
   final removed = <String>[];
   final keptLines = <String>[];
 
-  for (final line in lines) {
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i];
+    if (i == 0 && line.startsWith('\uFEFF')) {
+      line = line.substring(1);
+    }
     if (line.isEmpty) {
       keptLines.add(line);
       continue;
@@ -58,6 +62,7 @@ void main() {
   final buffer = StringBuffer();
   buffer.write('\uFEFF');
   buffer.write(keptLines.join('\r\n')); // Dùng CRLF vì QuickTranslator thường dùng CRLF
+  if (keptLines.isNotEmpty) buffer.write('\r\n');
 
   file.writeAsStringSync(buffer.toString());
   print('Đã ghi lại file ${file.path}. Tổng số dòng mới: ${keptLines.length}');

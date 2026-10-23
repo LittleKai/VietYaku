@@ -161,6 +161,10 @@ class TranslationEngine {
         var maxTry = dict.maxLenFor(firstUnit);
         if (maxTry > limitEnd - i) maxTry = limitEnd - i;
         for (var len = maxTry; len >= 1; len--) {
+          if (!isCjkCodePoint(codePointAt(text, i)) &&
+              !_containsCjk(text, i, i + len)) {
+            continue;
+          }
           final value = dict.entries[text.substring(i, i + len)];
           if (value != null) {
             return (len: len, dictType: dict.type, value: value);

@@ -13,6 +13,8 @@
 migrate_working_dir/
 
 # Antigravity/Claude local files
+.superpowers/
+.agents/
 .claude/*.local.json
 .claude/*.lock
 .claude/prompt.txt
@@ -61,6 +63,7 @@ data/cn/*
 # Generated repair files
 **/*_JP.txt
 .claude/tmp/
+tmp.txt
 
 # Temporary files (keep UI screenshots)
 /tmp/*

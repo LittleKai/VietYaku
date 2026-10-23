@@ -27,7 +27,6 @@ import '../translation/domain/translation_engine.dart';
 import '../translation/domain/translation_rule.dart';
 import '../translation/presentation/translation_rule_tester_dialog.dart';
 import '../update/application/update_controller.dart';
-import '../update/presentation/update_dialog.dart';
 import 'presentation/donate_dialog.dart';
 import 'settings_provider.dart';
 
@@ -1296,7 +1295,9 @@ class _UpdateSettingsState extends ConsumerState<_UpdateSettings> {
     final state = ref.read(updateControllerProvider);
     switch (state.phase) {
       case UpdatePhase.available:
-        maybeShowUpdateDialog(context, ref);
+        // HomeShell đã lắng nghe updateControllerProvider để tự mở hộp thoại;
+        // gọi lại ở đây chỉ phòng trường hợp SettingsScreen được dựng độc lập.
+        break;
       case UpdatePhase.upToDate:
         _showMessage(state.message ?? 'Bạn đang dùng bản mới nhất.');
       case UpdatePhase.error:

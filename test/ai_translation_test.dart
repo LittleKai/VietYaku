@@ -220,7 +220,8 @@ void main() {
     test('Calls Gemini API direct successfully', () async {
       final mockClient = MockClient((request) async {
         expect(request.url.host, equals('generativelanguage.googleapis.com'));
-        expect(request.url.queryParameters['key'], equals('AIzaSyTest123'));
+        expect(request.url.queryParameters['key'], isNull);
+        expect(request.headers['x-goog-api-key'], equals('AIzaSyTest123'));
         final body = jsonDecode(request.body);
         expect(body['contents'][0]['parts'][0]['text'], contains('Tra từ'));
 
@@ -282,7 +283,7 @@ void main() {
     test('Rotates to the next key when one hits 429', () async {
       final tried = <String>[];
       final mockClient = MockClient((request) async {
-        final key = request.url.queryParameters['key']!;
+        final key = request.headers['x-goog-api-key']!;
         tried.add(key);
         if (key == 'exhausted-key-000') {
           return http.Response('Quota exceeded', 429);

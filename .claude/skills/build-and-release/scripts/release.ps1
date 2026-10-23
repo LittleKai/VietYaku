@@ -178,6 +178,23 @@ foreach ($f in $Artifacts) {
     Write-Host "  - $($f.Name)  ($Size MB)"
 }
 
+# --- Push current branch to origin ---
+
+Write-Step "Pushing current branch to origin"
+
+$CurrentBranch = (git rev-parse --abbrev-ref HEAD 2>$null).Trim()
+if ($CurrentBranch -and $CurrentBranch -ne "HEAD") {
+    Write-Host "Pushing branch '$CurrentBranch' to origin..."
+    git push origin $CurrentBranch
+    if ($LASTEXITCODE -ne 0) {
+        Write-Err "Push branch $CurrentBranch failed!"
+        exit 1
+    }
+    Write-Success "Branch '$CurrentBranch' pushed to origin"
+} else {
+    Write-Host "Detached HEAD or could not detect branch name, skipping branch push."
+}
+
 # --- Create git tag ---
 
 Write-Step "Creating git tag: $TagVersion"

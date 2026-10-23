@@ -17,6 +17,7 @@ import 'package:vietyaku/features/dictionary_sync/application/dictionary_sync_co
 import 'package:vietyaku/features/dictionary_sync/data/dictionary_sync_api.dart';
 import 'package:vietyaku/features/dictionary_sync/domain/shared_dictionary_entry.dart';
 import 'package:vietyaku/features/glossary/data/glossary_service.dart';
+import 'package:vietyaku/features/glossary/domain/glossary_term.dart';
 import 'package:vietyaku/features/settings/settings_provider.dart';
 import 'package:vietyaku/features/translation/application/translation_controller.dart';
 import 'package:vietyaku/features/translation/domain/translation_engine.dart';
@@ -610,6 +611,13 @@ void main() {
     // Bấm Lưu từ
     final saveBtn = find.text('Lưu từ');
     await tester.tap(saveBtn);
+    await tester.pumpAndSettle();
+    for (var i = 0; i < 15; i++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)),
+      );
+      await tester.pump(const Duration(milliseconds: 50));
+    }
     await tester.pumpAndSettle();
 
     // Kiểm tra Glossary đã tự động được cập nhật target mới
@@ -1740,11 +1748,17 @@ void main() {
       expect(confirmBtn, findsOneWidget);
       await tester.tap(confirmBtn);
       await tester.pumpAndSettle();
-      for (var i = 0; i < 8; i++) {
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 50)),
-        );
+      for (var i = 0; i < 40; i++) {
+        final done = await tester.runAsync(() async {
+          if (service.userNamesFile.existsSync() &&
+              service.userNamesFile.lengthSync() > 0) {
+            return true;
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+          return false;
+        });
         await tester.pump(const Duration(milliseconds: 50));
+        if (done == true) break;
       }
       await tester.pumpAndSettle();
 
@@ -2220,11 +2234,382 @@ void main() {
         p.join(tempDir.path, 'dictionaries', 'UserDict.txt'),
       );
       await tester.runAsync(() async {
+        for (var i = 0; i < 20 && !await userDictFile.exists(); i++) {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        }
         expect(await userDictFile.exists(), isTrue);
         final content = await userDictFile.readAsString();
         expect(content, contains('再入荷=tái nhập hàng'));
       });
 
+      await tester.pump(const Duration(milliseconds: 600));
+    },
+  );
+
+  testWidgets(
+    'Bấm Cập nhật theo VietPhrase cập nhật ngay lập tức thẻ trạng thái Glossary trong dialog cha',
+    (tester) async {
+      tester.view.physicalSize = const Size(1200, 900);
+      addTearDown(tester.view.resetPhysicalSize);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      SharedPreferences.setMockInitialValues({'glossary.dir': tempDir.path});
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('glossary.dir', tempDir.path);
+
+      // 菜畑小鳥 có trong glossary mẫu với target = 'Nabata Kotori'
+      final mockData = _createMock(
+        vietPhraseEntries: {'菜畑小鳥': 'Chim nhỏ trên nương'},
+      );
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          dictionariesProvider.overrideWith(
+            () => MockDictionariesNotifier(mockData),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.read(currentModeProvider.notifier).state =
+          TranslationMode.japanese;
+      await container.read(dictionariesProvider.future);
+      await container
+          .read(settingsProvider.notifier)
+          .setGlossaryDir(tempDir.path);
+
+      await tester.runAsync(() async {
+        await GlossaryService(tempDir.path).readAll(TranslationMode.japanese);
+      });
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: Scaffold(
+              body: Builder(
+                builder: (context) {
+                  return ElevatedButton(
+                    onPressed: () => showSharedEntryEditDialog(
+                      context,
+                      WidgetRefContext(context, container),
+                      word: '菜畑小鳥',
+                      kind: SharedDictionaryKind.vietPhrase,
+                    ),
+                    child: const Text('Open Dialog'),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('ĐÃ CÓ TRONG GLOSSARY'), findsOneWidget);
+      expect(find.text('Nabata Kotori'), findsOneWidget);
+
+      // Tắt autoUpdate để nút "Cập nhật theo VietPhrase" xuất hiện
+      final autoUpdateCheckbox = find.widgetWithText(
+        InkWell,
+        'Tự động cập nhật Glossary JP khi bấm "Lưu từ"',
+      );
+      await tester.tap(autoUpdateCheckbox);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Cập nhật theo VietPhrase'), findsOneWidget);
+
+      // Bấm nút "Cập nhật theo VietPhrase"
+      await tester.tap(find.text('Cập nhật theo VietPhrase'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Cập nhật Global Glossary JP'), findsOneWidget);
+      expect(find.text('Ghi đè glossary'), findsOneWidget);
+
+      // Bấm "Ghi đè glossary"
+      await tester.tap(find.text('Ghi đè glossary'));
+      await tester.pumpAndSettle();
+      for (var i = 0; i < 30; i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)),
+        );
+        await tester.pump(const Duration(milliseconds: 50));
+        if (find.text('Nabata Kotori').evaluate().isEmpty) break;
+      }
+      await tester.pumpAndSettle();
+
+      expect(find.text('Nabata Kotori'), findsNothing);
+      // Thẻ trạng thái trong dialog cha cập nhật NGAY LẬP TỨC
+      expect(find.text('Chim nhỏ trên nương'), findsWidgets);
+
+      // Đồng thời file trên đĩa cũng được ghi đúng
+      await tester.runAsync(() async {
+        GlossaryTerm? term;
+        for (var i = 0; i < 30; i++) {
+          term = await GlossaryService(
+            tempDir.path,
+          ).find(TranslationMode.japanese, '菜畑小鳥');
+          if (term?.target == 'Chim nhỏ trên nương') break;
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        }
+        expect(term, isNotNull);
+        expect(term!.target, 'Chim nhỏ trên nương');
+      });
+
+      await tester.tap(find.text('Hủy'));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 600));
+    },
+  );
+
+  testWidgets(
+    'Bấm Sửa nghĩa Glossary JP cập nhật ngay lập tức thẻ trạng thái Glossary trong dialog cha',
+    (tester) async {
+      tester.view.physicalSize = const Size(1200, 900);
+      addTearDown(tester.view.resetPhysicalSize);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      SharedPreferences.setMockInitialValues({'glossary.dir': tempDir.path});
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('glossary.dir', tempDir.path);
+
+      // 菜畑小鳥 có trong glossary mẫu với target = 'Nabata Kotori'
+      final mockData = _createMock(
+        vietPhraseEntries: {'菜畑小鳥': 'Nabata Kotori'},
+      );
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          dictionariesProvider.overrideWith(
+            () => MockDictionariesNotifier(mockData),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.read(currentModeProvider.notifier).state =
+          TranslationMode.japanese;
+      await container.read(dictionariesProvider.future);
+      await container
+          .read(settingsProvider.notifier)
+          .setGlossaryDir(tempDir.path);
+
+      await tester.runAsync(() async {
+        await GlossaryService(tempDir.path).readAll(TranslationMode.japanese);
+      });
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: Scaffold(
+              body: Builder(
+                builder: (context) {
+                  return ElevatedButton(
+                    onPressed: () => showSharedEntryEditDialog(
+                      context,
+                      WidgetRefContext(context, container),
+                      word: '菜畑小鳥',
+                      kind: SharedDictionaryKind.vietPhrase,
+                    ),
+                    child: const Text('Open Dialog'),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('ĐÃ CÓ TRONG GLOSSARY'), findsOneWidget);
+      expect(find.text('Nabata Kotori'), findsWidgets);
+
+      // Tắt autoUpdate để nút "Sửa nghĩa Glossary JP" xuất hiện
+      final autoUpdateCheckbox = find.widgetWithText(
+        InkWell,
+        'Tự động cập nhật Glossary JP khi bấm "Lưu từ"',
+      );
+      await tester.tap(autoUpdateCheckbox);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Sửa nghĩa Glossary JP'), findsOneWidget);
+
+      // Bấm nút "Sửa nghĩa Glossary JP"
+      await tester.ensureVisible(find.text('Sửa nghĩa Glossary JP'));
+      await tester.tap(find.text('Sửa nghĩa Glossary JP'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Sửa Global Glossary JP'), findsOneWidget);
+
+      // Nhập nghĩa mới vào TextField
+      final targetField = find.widgetWithText(
+        TextField,
+        'Nghĩa trong glossary (target)',
+      );
+      await tester.enterText(targetField, 'Kotori Siêu Cấp');
+      await tester.pumpAndSettle();
+
+      // Bấm "Lưu glossary"
+      await tester.tap(find.text('Lưu glossary'));
+      await tester.pumpAndSettle();
+      for (var i = 0; i < 30; i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)),
+        );
+        await tester.pump(const Duration(milliseconds: 50));
+        if (find.text('Kotori Siêu Cấp').evaluate().isNotEmpty) break;
+      }
+      await tester.pumpAndSettle();
+
+      // Thẻ trạng thái trong dialog cha cập nhật NGAY LẬP TỨC với nghĩa mới
+      expect(find.text('Kotori Siêu Cấp'), findsOneWidget);
+
+      // Đồng thời file trên đĩa cũng được ghi đúng
+      await tester.runAsync(() async {
+        GlossaryTerm? term;
+        for (var i = 0; i < 30; i++) {
+          term = await GlossaryService(
+            tempDir.path,
+          ).find(TranslationMode.japanese, '菜畑小鳥');
+          if (term?.target == 'Kotori Siêu Cấp') break;
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        }
+        expect(term, isNotNull);
+        expect(term!.target, 'Kotori Siêu Cấp');
+      });
+
+      await tester.tap(find.text('Hủy'));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 600));
+    },
+  );
+
+  testWidgets(
+    'Dialog Cập nhật Global Glossary cho phép sửa luôn target qua edit text trước khi thêm',
+    (tester) async {
+      tester.view.physicalSize = const Size(1200, 900);
+      addTearDown(tester.view.resetPhysicalSize);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      SharedPreferences.setMockInitialValues({'glossary.dir': tempDir.path});
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('glossary.dir', tempDir.path);
+
+      final mockData = _createMock(
+        vietPhraseEntries: {'空': 'Không/Bầu trời'},
+      );
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          dictionariesProvider.overrideWith(
+            () => MockDictionariesNotifier(mockData),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.read(currentModeProvider.notifier).state =
+          TranslationMode.japanese;
+      await container.read(dictionariesProvider.future);
+      await container
+          .read(settingsProvider.notifier)
+          .setGlossaryDir(tempDir.path);
+
+      await tester.runAsync(() async {
+        await GlossaryService(tempDir.path).readAll(TranslationMode.japanese);
+      });
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: Scaffold(
+              body: Builder(
+                builder: (context) {
+                  return ElevatedButton(
+                    onPressed: () => showSharedEntryEditDialog(
+                      context,
+                      WidgetRefContext(context, container),
+                      word: '空',
+                      kind: SharedDictionaryKind.vietPhrase,
+                    ),
+                    child: const Text('Open Dialog'),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('CHƯA CÓ TRONG GLOSSARY'), findsOneWidget);
+      expect(find.text('Thêm vào Glossary JP'), findsOneWidget);
+
+      await tester.tap(find.text('Thêm vào Glossary JP'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Cập nhật Global Glossary JP'), findsOneWidget);
+
+      // Ô edit text xuất hiện với nghĩa mặc định từ VietPhrase
+      final targetField = find.widgetWithText(
+        TextField,
+        'Nghĩa trong glossary (target)',
+      );
+      expect(targetField, findsOneWidget);
+      final textFieldWidget = tester.widget<TextField>(targetField);
+      expect(textFieldWidget.controller?.text, 'Không/Bầu trời');
+
+      // Sửa lại target trực tiếp trong dialog
+      await tester.enterText(targetField, 'Bầu trời xanh');
+      await tester.pumpAndSettle();
+
+      // Bấm Thêm vào glossary
+      await tester.tap(find.text('Thêm vào glossary'));
+      await tester.pumpAndSettle();
+      for (var i = 0; i < 30; i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)),
+        );
+        await tester.pump(const Duration(milliseconds: 50));
+        if (find.text('ĐÃ CÓ TRONG GLOSSARY').evaluate().isNotEmpty) break;
+      }
+      await tester.pumpAndSettle();
+
+      // Dialog cha cập nhật ngay lập tức: cả ô Nghĩa lẫn thẻ Glossary đều đổi sang nghĩa vừa sửa
+      expect(find.text('ĐÃ CÓ TRONG GLOSSARY'), findsOneWidget);
+      expect(find.text('Bầu trời xanh'), findsWidgets);
+      expect(
+        find.descendant(
+          of: find.byType(TextField),
+          matching: find.text('Bầu trời xanh'),
+        ),
+        findsOneWidget,
+      );
+
+      // Kiểm tra file trên đĩa lưu đúng nghĩa vừa sửa
+      await tester.runAsync(() async {
+        GlossaryTerm? term;
+        for (var i = 0; i < 30; i++) {
+          term = await GlossaryService(
+            tempDir.path,
+          ).find(TranslationMode.japanese, '空');
+          if (term?.target == 'Bầu trời xanh') break;
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        }
+        expect(term, isNotNull);
+        expect(term!.target, 'Bầu trời xanh');
+      });
+
+      await tester.tap(find.text('Hủy'));
+      await tester.pumpAndSettle();
       await tester.pump(const Duration(milliseconds: 600));
     },
   );

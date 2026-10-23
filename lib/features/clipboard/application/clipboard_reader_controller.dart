@@ -96,11 +96,11 @@ class ClipboardReaderController extends Notifier<ClipboardBridgeStatus> {
 
   Future<void> _setNativeEnabled(bool enabled) async {
     if (_nativeEnabled == enabled) return;
-    _nativeEnabled = enabled;
     try {
       final registered = await ref
           .read(windowsClipboardBridgeProvider)
           .setEnabled(enabled);
+      _nativeEnabled = enabled;
       if (!_active) return;
       state = state.copyWith(
         enabled: enabled,
@@ -110,6 +110,7 @@ class ClipboardReaderController extends Notifier<ClipboardBridgeStatus> {
             : null,
       );
     } on PlatformException catch (error) {
+      _nativeEnabled = false;
       if (!_active) return;
       state = state.copyWith(
         enabled: false,
@@ -124,11 +125,15 @@ class ClipboardReaderController extends Notifier<ClipboardBridgeStatus> {
     // Cho ứng dụng nguồn hoàn tất việc đặt CF_UNICODETEXT trước khi đọc.
     await Future<void>.delayed(const Duration(milliseconds: 40));
     final text = (await Clipboard.getData(Clipboard.kTextPlain))?.text;
-    if (text == null || !_filter.shouldAccept(text, DateTime.now())) return;
+    final isHotkey = event == 'hotkeyPressed';
+    if (text == null ||
+        !_filter.shouldAccept(text, DateTime.now(), force: isHotkey)) {
+      return;
+    }
     await ref.read(dictionariesProvider.future);
     if (!_active) return;
     ref.read(translationControllerProvider.notifier).translate(text);
-    if (event == 'hotkeyPressed') {
+    if (isHotkey) {
       await windowManager.show();
       await windowManager.focus();
     }

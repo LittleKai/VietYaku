@@ -64,6 +64,28 @@ class GlossaryTermQueue {
     if (file.existsSync()) await file.delete();
   }
 
+  /// Xóa khỏi file PendingGlossary đúng những mục vừa được publish thành công.
+  Future<void> removePending(
+    TranslationMode mode,
+    Iterable<GlossaryTermChange> published,
+  ) async {
+    if (published.isEmpty) return;
+    final file = fileFor(mode);
+    if (!file.existsSync()) return;
+    final values = await _read(file);
+    for (final change in published) {
+      final expected = change.isDelete ? _deleteSentinel : change.target;
+      if (values[change.source] == expected) {
+        values.remove(change.source);
+      }
+    }
+    if (values.isEmpty) {
+      if (file.existsSync()) await file.delete();
+    } else {
+      await _write(file, values);
+    }
+  }
+
   static Future<Map<String, String>> _read(File file) async {
     final result = <String, String>{};
     if (!file.existsSync()) return result;

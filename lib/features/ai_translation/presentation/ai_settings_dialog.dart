@@ -38,12 +38,20 @@ class _AiSettingsContentState extends ConsumerState<_AiSettingsContent> {
   @override
   void initState() {
     super.initState();
-    final current =
-        ref.read(aiSettingsControllerProvider).valueOrNull ??
-        AiSettings.defaults();
+    final asyncSettings = ref.read(aiSettingsControllerProvider);
+    final current = asyncSettings.valueOrNull ?? AiSettings.defaults();
     _selectedService = current.activeService;
     _configs = Map.from(current.serviceConfigs);
     _initialized = true;
+    if (!asyncSettings.hasValue) {
+      ref.read(aiSettingsControllerProvider.future).then((loaded) {
+        if (!mounted) return;
+        setState(() {
+          _selectedService = loaded.activeService;
+          _configs = Map.from(loaded.serviceConfigs);
+        });
+      });
+    }
   }
 
   AiServiceConfig get _currentConfig =>
@@ -57,66 +65,10 @@ class _AiSettingsContentState extends ConsumerState<_AiSettingsContent> {
   }
 
   Future<void> _showAddKeyDialog() async {
-    final controller = TextEditingController();
-    bool obscure = true;
-
     final key = await showDialog<String>(
       context: context,
-      builder: (dialogCtx) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: Text('Thêm API Key cho ${_selectedService.label}'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Nhập API Key. Key sẽ được lưu trữ an toàn trong máy của bạn.',
-                    style: TextStyle(fontSize: 13),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: controller,
-                    obscureText: obscure,
-                    decoration: InputDecoration(
-                      hintText: 'Dán API key vào đây...',
-                      border: const OutlineInputBorder(),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          obscure ? Icons.visibility : Icons.visibility_off,
-                        ),
-                        onPressed: () =>
-                            setDialogState(() => obscure = !obscure),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () async {
-                    final data = await Clipboard.getData('text/plain');
-                    if (data?.text != null) {
-                      controller.text = data!.text!.trim();
-                    }
-                  },
-                  child: const Text('Dán từ clipboard'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.of(dialogCtx).pop(),
-                  child: const Text('Hủy'),
-                ),
-                FilledButton(
-                  onPressed: () =>
-                      Navigator.of(dialogCtx).pop(controller.text.trim()),
-                  child: const Text('Thêm'),
-                ),
-              ],
-            );
-          },
-        );
-      },
+      builder: (dialogCtx) =>
+          _AddAiKeyDialog(serviceLabel: _selectedService.label),
     );
 
     if (key != null && key.isNotEmpty) {
@@ -593,6 +545,76 @@ class _KeyWeightStepper extends StatelessWidget {
               ? () => onChanged(weight + 1)
               : null,
           icon: const Icon(Icons.add_circle_outline, size: 18),
+        ),
+      ],
+    );
+  }
+}
+
+class _AddAiKeyDialog extends StatefulWidget {
+  const _AddAiKeyDialog({required this.serviceLabel});
+
+  final String serviceLabel;
+
+  @override
+  State<_AddAiKeyDialog> createState() => _AddAiKeyDialogState();
+}
+
+class _AddAiKeyDialogState extends State<_AddAiKeyDialog> {
+  final _controller = TextEditingController();
+  bool _obscure = true;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Thêm API Key cho ${widget.serviceLabel}'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Nhập API Key. Key sẽ được lưu trữ an toàn trong máy của bạn.',
+            style: TextStyle(fontSize: 13),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _controller,
+            obscureText: _obscure,
+            decoration: InputDecoration(
+              hintText: 'Dán API key vào đây...',
+              border: const OutlineInputBorder(),
+              suffixIcon: IconButton(
+                icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off),
+                onPressed: () => setState(() => _obscure = !_obscure),
+              ),
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () async {
+            final data = await Clipboard.getData('text/plain');
+            if (!mounted) return;
+            if (data?.text != null) {
+              _controller.text = data!.text!.trim();
+            }
+          },
+          child: const Text('Dán từ clipboard'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Hủy'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_controller.text.trim()),
+          child: const Text('Thêm'),
         ),
       ],
     );

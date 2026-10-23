@@ -33,7 +33,7 @@ def append_new_entries(base_path, new_entries):
         return 0
     
     # Read existing content
-    with open(base_path, 'r', encoding='utf-8', errors='ignore') as f:
+    with open(base_path, 'r', encoding='utf-8', errors='ignore', newline='') as f:
         content = f.read()
     
     # Ensure starts with BOM
@@ -41,17 +41,20 @@ def append_new_entries(base_path, new_entries):
     if not has_bom:
         content = '\ufeff' + content
     
-    # Ensure ends with newline
-    if not content.endswith('\n'):
-        content += '\n'
+    # Ensure ends with CRLF
+    if not content.endswith('\r\n'):
+        if content.endswith('\n'):
+            content = content[:-1] + '\r\n'
+        else:
+            content += '\r\n'
         
     added = 0
     new_lines = []
     for k, v in new_entries.items():
-        new_lines.append(f'{k}={v}\n')
+        new_lines.append(f'{k}={v}\r\n')
         added += 1
         
-    with open(base_path, 'w', encoding='utf-8', newline='\n') as f:
+    with open(base_path, 'w', encoding='utf-8', newline='') as f:
         f.write(content + ''.join(new_lines))
         
     print(f'  {base_path}: Đã thêm {added} mục từ mới.')
@@ -81,7 +84,7 @@ def main():
     for s in jp_sources:
         e = load_entries(s)
         for k, v in e.items():
-            if 'DELETE' in v:
+            if v == '\x7f__DELETE__':
                 if k in jp_new:
                     del jp_new[k]
                 continue
@@ -103,7 +106,9 @@ def main():
     cn_sources = [
         'data/userdata/dictionaries/SharedVietPhrase_chinese.txt',
         'build/windows/x64/runner/Release/userdata/dictionaries/SharedVietPhrase_chinese.txt',
-        'data/userdata/dictionaries/PendingGlossary_chinese.txt',
+        'data/userdata/dictionaries/VietPhrase_chinese.txt',
+        'data/userdata/dictionaries/PendingVietPhrase_chinese.txt',
+        'build/windows/x64/runner/Release/userdata/dictionaries/PendingVietPhrase_chinese.txt',
         'data/userdata/dictionaries/UserDict.txt',
         'build/windows/x64/runner/Release/userdata/dictionaries/UserDict.txt',
     ]
@@ -112,7 +117,7 @@ def main():
     for s in cn_sources:
         e = load_entries(s)
         for k, v in e.items():
-            if 'DELETE' in v:
+            if v == '\x7f__DELETE__':
                 if k in cn_new:
                     del cn_new[k]
                 continue
@@ -142,7 +147,7 @@ def main():
     for s in lv_sources:
         e = load_entries(s)
         for k, v in e.items():
-            if 'DELETE' in v:
+            if v == '\x7f__DELETE__':
                 if k in lv_new:
                     del lv_new[k]
                 continue

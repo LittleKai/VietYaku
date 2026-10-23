@@ -19,11 +19,22 @@ class DictionarySearchWorker {
     List<DictionarySearchLayer> layers,
   ) async {
     final ready = ReceivePort();
-    final isolate = await Isolate.spawn(_workerMain, (ready.sendPort, layers));
-    final commands = await ready.first as SendPort;
-    ready.close();
     final responses = ReceivePort();
-    return DictionarySearchWorker._(isolate, commands, responses);
+    try {
+      final isolate = await Isolate.spawn(
+        _workerMain,
+        (ready.sendPort, layers),
+        onError: responses.sendPort,
+        onExit: responses.sendPort,
+      );
+      final commands = await ready.first as SendPort;
+      return DictionarySearchWorker._(isolate, commands, responses);
+    } catch (_) {
+      responses.close();
+      rethrow;
+    } finally {
+      ready.close();
+    }
   }
 
   Future<DictionarySearchResponse> search(DictionarySearchQuery query) {
@@ -35,8 +46,18 @@ class DictionarySearchWorker {
   }
 
   void _handleResponse(Object? message) {
-    final response = message as (int, DictionarySearchResponse);
-    _pending.remove(response.$1)?.complete(response.$2);
+    if (message is (int, DictionarySearchResponse)) {
+      _pending.remove(message.$1)?.complete(message.$2);
+      return;
+    }
+    for (final completer in _pending.values) {
+      if (!completer.isCompleted) {
+        completer.completeError(
+          StateError('Search worker dừng bất thường: $message'),
+        );
+      }
+    }
+    _pending.clear();
   }
 
   void close() {

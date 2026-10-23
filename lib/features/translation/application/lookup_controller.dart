@@ -226,16 +226,47 @@ class LookupController extends Notifier<LookupResult?> {
 
     if (firstChar != word) addPhraseSection(firstChar);
 
-    // 1. Lạc Việt: exact trước, miss thì prefix ngắn dần (theo rune).
+    // 1. Lạc Việt: nếu [sentence] mở đầu bằng [word], ưu tiên cụm Lạc Việt
+    // dài hơn [word] bắt đầu ngay tại vị trí chọn (VD click `生き` trong
+    // `生きていく` khi `生きてい` chỉ có ở Lạc Việt), sau đó mới tới exact
+    // [word] / prefix ngắn dần (theo rune).
     String? matchedKey;
     String? lacVietValue;
+    if (sentence.length > word.length && sentence.startsWith(word)) {
+      var extEnd = dicts.lacViet.maxLenFor(sentence.codeUnitAt(0));
+      if (extEnd > sentence.length) extEnd = sentence.length;
+      if (extEnd < sentence.length) {
+        final unit = sentence.codeUnitAt(extEnd);
+        if (unit >= 0xDC00 && unit <= 0xDFFF) extEnd -= 1;
+      }
+      while (extEnd > word.length) {
+        final candidate = sentence.substring(0, extEnd);
+        final v = dicts.lacViet.entries[candidate];
+        if (v != null) {
+          matchedKey = candidate;
+          lacVietValue = v;
+          sections.add(
+            LookupSection(candidate, 'Lạc Việt', unescapeLacViet(v)),
+          );
+          break;
+        }
+        extEnd -= 1;
+        if (extEnd > word.length) {
+          final unit = sentence.codeUnitAt(extEnd);
+          if (unit >= 0xDC00 && unit <= 0xDFFF) extEnd -= 1;
+        }
+      }
+    }
     var end = word.length;
     while (end > 0) {
       final candidate = word.substring(0, end);
       final v = dicts.lacViet.entries[candidate];
       if (v != null) {
-        matchedKey = candidate;
-        lacVietValue = v;
+        matchedKey ??= candidate;
+        lacVietValue ??= v;
+        sections.add(
+          LookupSection(candidate, 'Lạc Việt', unescapeLacViet(v)),
+        );
         break;
       }
       end -= 1;
@@ -243,11 +274,6 @@ class LookupController extends Notifier<LookupResult?> {
         final unit = word.codeUnitAt(end);
         if (unit >= 0xDC00 && unit <= 0xDFFF) end -= 1;
       }
-    }
-    if (lacVietValue != null) {
-      sections.add(
-        LookupSection(matchedKey!, 'Lạc Việt', unescapeLacViet(lacVietValue)),
-      );
     }
 
     // 1a. Mazii (offline) — ngay sau Lạc Việt: exact trước, miss thì chữ đầu.
@@ -347,15 +373,23 @@ class LookupController extends Notifier<LookupResult?> {
       }
     }
 
-    final hanViet = hanVietReadingOf(dicts, word);
+    final headerKey =
+        matchedKey != null &&
+            (matchedKey.length > word.length || _phraseValue(dicts, word) == null)
+        ? matchedKey
+        : word;
+    final hanViet =
+        hanVietReadingOf(dicts, headerKey) ?? hanVietReadingOf(dicts, word);
 
     // Phát âm: mode Nhật → ưu tiên theo cài đặt sudachiReadings; mode khác →
     // LacViet trước, kana Nhật Việt là fallback.
     ({String text, ReadingKind kind})? reading;
     if (mode == TranslationMode.japanese) {
       final sReadings = ref.read(settingsProvider).sudachiReadings;
+      final sudachi =
+          dicts.sudachiReadings.entries[headerKey] ??
+          dicts.sudachiReadings.entries[word];
       if (sReadings == SudachiReadingsMode.sudachiFirst) {
-        final sudachi = dicts.sudachiReadings.entries[word];
         if (sudachi != null) {
           reading = (text: sudachi, kind: ReadingKind.kana);
         }
@@ -363,11 +397,8 @@ class LookupController extends Notifier<LookupResult?> {
         reading ??= lacVietValue == null ? null : extractReading(lacVietValue);
       } else if (sReadings == SudachiReadingsMode.jaViFirst) {
         reading = jaVi == null ? null : extractKanaReading(jaVi);
-        if (reading == null) {
-          final sudachi = dicts.sudachiReadings.entries[word];
-          if (sudachi != null) {
-            reading = (text: sudachi, kind: ReadingKind.kana);
-          }
+        if (reading == null && sudachi != null) {
+          reading = (text: sudachi, kind: ReadingKind.kana);
         }
         reading ??= lacVietValue == null ? null : extractReading(lacVietValue);
       } else {
@@ -381,7 +412,7 @@ class LookupController extends Notifier<LookupResult?> {
     }
     return LookupResult(
       word: word,
-      matchedKey: matchedKey,
+      matchedKey: headerKey,
       reading: reading?.text,
       readingKind: reading?.kind,
       hanViet: hanViet,

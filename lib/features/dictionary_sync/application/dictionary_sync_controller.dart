@@ -240,6 +240,17 @@ class DictionarySyncController extends Notifier<DictionarySyncState> {
   }) async {
     if (!state.isAdmin || entries.isEmpty) return;
     final paths = await ref.read(appPathsProvider.future);
+    final userDicts = UserDictService(paths);
+    for (final entry in entries) {
+      if (entry.kind == SharedDictionaryKind.vietPhrase && entry.isDelete) {
+        await userDicts.removeGeneratedEntry(mode, entry.source);
+        await userDicts.removeGeneratedEntry(
+          mode,
+          entry.source,
+          inDir: generatedDictDir(mode),
+        );
+      }
+    }
     await SharedDictionaryService(paths).stageLocalEdits(mode, entries);
     await _reloadCurrentTranslation();
     state = state.copyWith(
@@ -270,7 +281,7 @@ class DictionarySyncController extends Notifier<DictionarySyncState> {
           await api.publish(session.token, mode, entry);
         }
         if (entries.isNotEmpty) {
-          await service.clearPending(mode);
+          await service.removePending(mode, entries);
           published += entries.length;
         }
 
@@ -287,7 +298,7 @@ class DictionarySyncController extends Notifier<DictionarySyncState> {
           );
         }
         if (changes.isNotEmpty) {
-          await glossaryQueue.clear(mode);
+          await glossaryQueue.removePending(mode, changes);
           glossaryPublished += changes.length;
         }
       }

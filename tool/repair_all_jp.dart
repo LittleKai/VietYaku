@@ -13,8 +13,16 @@ import 'package:vietyaku/features/repair/domain/jp_repair_pipeline.dart';
 import 'package:vietyaku/features/repair/domain/repair_report.dart';
 import 'package:vietyaku/features/repair/domain/simp2jp_table.dart';
 
-/// Các file đã repair (bỏ qua).
-const _alreadyRepaired = {'VietPhrase.txt', 'LacViet.txt'};
+/// Các file đã repair hoặc được tạo sẵn (bỏ qua).
+const _alreadyRepaired = {
+  'VietPhrase.txt',
+  'LacViet.txt',
+  'Mazii.txt',
+  'JaViDict.txt',
+  'SudachiVariants.txt',
+  'SudachiVariantGroups.txt',
+  'SudachiReadings.txt',
+};
 
 /// Các file không phải format key=value (bỏ qua).
 const _skipFiles = {'cedict_ts.u8'};

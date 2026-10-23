@@ -21,13 +21,21 @@ class TranslationMemoryStore {
 
   File get _file => File(p.join(root.path, 'tm.jsonl'));
 
-  Future<void> upsertReviewed(ProjectSegment segment) async {
-    if (segment.status != ProjectSegmentStatus.reviewed ||
-        segment.editedTarget.trim().isEmpty) {
-      return;
-    }
+  Future<void> upsertReviewed(ProjectSegment segment) =>
+      upsertReviewedAll([segment]);
+
+  Future<void> upsertReviewedAll(Iterable<ProjectSegment> segments) async {
+    final valid = [
+      for (final segment in segments)
+        if (segment.status == ProjectSegmentStatus.reviewed &&
+            segment.editedTarget.trim().isNotEmpty)
+          segment,
+    ];
+    if (valid.isEmpty) return;
     final entries = await _read();
-    entries[segment.source] = segment;
+    for (final segment in valid) {
+      entries[segment.source] = segment;
+    }
     await root.create(recursive: true);
     final lines = entries.values.map((value) => jsonEncode(value.toJson()));
     await _writeAtomic('${lines.join('\n')}\n');

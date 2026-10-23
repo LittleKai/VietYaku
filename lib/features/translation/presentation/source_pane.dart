@@ -7,7 +7,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/entry_edit_dialog.dart';
 import '../../../shared/widgets/icon_context_menu.dart';
+import '../../../shared/widgets/markdown_body_view.dart';
 import '../../ai_translation/application/ai_settings_controller.dart';
+import '../../ai_translation/domain/ai_lookup_result.dart';
 import '../../ai_translation/presentation/ai_lookup_dialog.dart';
 import '../../dictionary/application/dictionaries_provider.dart';
 import '../../dictionary_sync/application/dictionary_sync_controller.dart';
@@ -16,7 +18,7 @@ import '../../settings/settings_provider.dart';
 import '../application/lookup_controller.dart';
 import '../application/token_selection.dart';
 import '../application/translation_controller.dart';
-
+import '../domain/lookup_dictionary_type.dart';
 import '../domain/token.dart';
 import 'lacviet_panel.dart' show meaningLabelColor;
 import 'online_lookup_dialog.dart';
@@ -202,6 +204,21 @@ class _SourcePaneState extends ConsumerState<SourcePane> {
   @override
   void initState() {
     super.initState();
+    final draft = ref.read(sourceDraftProvider);
+    final translation = ref.read(translationControllerProvider);
+    final initialText = draft.isNotEmpty ? draft : translation.sourceText;
+    if (initialText.isNotEmpty) {
+      _controller.text = initialText;
+    }
+    if (translation.tokens.isNotEmpty) {
+      _controller.setTokens(translation.tokens);
+    }
+    final selection = ref.read(tokenSelectionProvider);
+    if (selection != null) {
+      _controller.setHighlight(
+        TextRange(start: selection.start, end: selection.end),
+      );
+    }
     _controller.addListener(_onCaretMaybeChanged);
     _scrollController.addListener(_onScroll);
   }
@@ -381,10 +398,17 @@ class _SourcePaneState extends ConsumerState<SourcePane> {
         // Key thật sự dùng để lưu OnlineDict/AiDict (mode Trung đã quy giản
         // thể) — so bằng chuỗi thô sẽ không bao giờ khớp với bản đã lưu.
         final savedKey = lookupKeyOf(ref, selection);
-        final userMeaning = dicts?.userDict.entries[selection];
-        final vpMeaning = dicts?.vietPhrase.entries[selection];
-        final lacVietMeaning = dicts?.lacViet.entries[selection];
-        final namesMeaning = dicts?.names.entries[selection];
+        final userMeaning =
+            dicts?.userDict.entries[savedKey] ??
+            dicts?.userDict.entries[selection];
+        final vpMeaning =
+            dicts?.vietPhrase.entries[savedKey] ??
+            dicts?.vietPhrase.entries[selection];
+        final lacVietMeaning =
+            dicts?.lacViet.entries[savedKey] ??
+            dicts?.lacViet.entries[selection];
+        final namesMeaning =
+            dicts?.names.entries[savedKey] ?? dicts?.names.entries[selection];
         final isAdmin = ref.read(dictionarySyncProvider).isAdmin;
         String verb(bool exists) => exists ? 'Sửa' : 'Thêm';
         void hide() => editableTextState.hideToolbar();
@@ -655,7 +679,18 @@ class _SourceLookupPopup extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 4),
-                SelectableText(sections[index].body),
+                if (sections[index].dictionaryType == LookupDictionaryType.ai)
+                  MarkdownBodyView(
+                    data: aiBodyToMarkdown(
+                      sections[index].word,
+                      sections[index].body,
+                    ),
+                    style:
+                        Theme.of(context).textTheme.bodyMedium ??
+                        const TextStyle(),
+                  )
+                else
+                  SelectableText(sections[index].body),
               ],
             ],
           ),

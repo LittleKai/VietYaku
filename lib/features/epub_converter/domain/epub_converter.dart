@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
@@ -56,6 +57,20 @@ class EpubImage {
   final Uint8List bytes;
 }
 
+/// Ảnh trích từ EPUB để xuất ra thư mục cạnh file đầu ra, đánh số thứ tự
+/// theo các vị trí `(img)` trong văn bản (giống AI Translation Bridge).
+class EpubExportedImage {
+  const EpubExportedImage({
+    required this.markerIndex,
+    required this.fileName,
+    required this.bytes,
+  });
+
+  final int markerIndex;
+  final String fileName;
+  final Uint8List bytes;
+}
+
 class EpubChapter {
   const EpubChapter({required this.title, required this.paragraphs});
 
@@ -72,12 +87,14 @@ class EpubBook {
     required this.language,
     required this.chapters,
     this.images = const {},
+    this.exportedImages = const [],
   });
 
   final String title;
   final EpubLanguage language;
   final List<EpubChapter> chapters;
   final Map<String, EpubImage> images; // id → ảnh
+  final List<EpubExportedImage> exportedImages; // ảnh đánh số theo thứ tự marker
 
   List<String> get translationRows => [
     for (final chapter in chapters) ...[
@@ -137,7 +154,7 @@ EpubBook parseEpub(
   if (opfPath == null || opfPath.trim().isEmpty) {
     throw const FormatException('Không tìm thấy package OPF trong EPUB.');
   }
-  final normalizedOpf = _normalizePath(Uri.decodeComponent(opfPath));
+  final normalizedOpf = _normalizePath(_tryDecodeUriComponent(opfPath));
   final opf = files[normalizedOpf];
   if (opf == null) {
     throw FormatException('Không đọc được package OPF: $normalizedOpf');
@@ -196,6 +213,7 @@ EpubBook parseEpub(
     language: language,
     chapters: chapters,
     images: images.images,
+    exportedImages: images.exportedImages,
   );
 }
 
@@ -208,6 +226,28 @@ Uint8List exportEpubBook(EpubBook book, EpubOutputFormat format) =>
       EpubOutputFormat.txt => _textBytes(_toText(book)),
     };
 
+/// Xuất toàn bộ ảnh trích từ EPUB sang thư mục đích, đánh số thứ tự khớp với (img).
+/// Trả về số lượng ảnh đã ghi thành công.
+Future<int> exportEpubImages(EpubBook book, String outputDirectory) async {
+  if (book.exportedImages.isEmpty) return 0;
+  final dir = Directory(outputDirectory);
+  if (!await dir.exists()) {
+    await dir.create(recursive: true);
+  }
+  final destRoot = p.normalize(p.absolute(dir.path));
+  var written = 0;
+  for (final image in book.exportedImages) {
+    final safeName = p.basename(image.fileName.replaceAll('\\', '/'));
+    if (safeName.isEmpty || safeName == '.' || safeName == '..') continue;
+    final outPath = p.normalize(p.absolute(p.join(destRoot, safeName)));
+    if (!p.isWithin(destRoot, outPath)) continue;
+    final file = File(outPath);
+    await file.writeAsBytes(image.bytes, flush: true);
+    written++;
+  }
+  return written;
+}
+
 Iterable<XmlElement> _elements(XmlNode node, String localName) => node
     .descendants
     .whereType<XmlElement>()
@@ -215,13 +255,26 @@ Iterable<XmlElement> _elements(XmlNode node, String localName) => node
 
 String _decode(List<int> bytes) => utf8.decode(bytes, allowMalformed: true);
 
+String _tryDecodeUriComponent(String value) {
+  try {
+    return Uri.decodeComponent(value);
+  } catch (_) {
+    return value;
+  }
+}
+
 String _normalizePath(String value) => p.posix.normalize(
   value.replaceAll('\\', '/').replaceFirst(RegExp(r'^/+'), ''),
 );
 
-String _resolveArchivePath(String opfPath, String href) {
-  final clean = Uri.decodeComponent(href.split('#').first.split('?').first);
-  return _normalizePath(p.posix.join(p.posix.dirname(opfPath), clean));
+String _resolveArchivePath(String basePath, String href) {
+  final clean = _tryDecodeUriComponent(
+    href.split('#').first.split('?').first,
+  ).trim();
+  if (clean.startsWith('/')) {
+    return _normalizePath(clean);
+  }
+  return _normalizePath(p.posix.join(p.posix.dirname(basePath), clean));
 }
 
 bool _isHtml(String path) {
@@ -239,31 +292,77 @@ ArchiveFile? _findByBasename(Map<String, ArchiveFile> files, String path) {
   return null;
 }
 
-/// Thu thập ảnh trong lúc parse: resolve `<img src>` → bytes trong zip, đánh id
-/// duy nhất `imgN`, dedupe theo đường dẫn (một ảnh dùng nhiều lần → một part).
+const Set<String> _imageExtensions = {
+  '.jpg',
+  '.jpeg',
+  '.png',
+  '.gif',
+  '.webp',
+  '.bmp',
+  '.svg',
+};
+
+/// Thu thập ảnh trong lúc parse:
+/// - Đánh số thứ tự tăng dần theo các vị trí `(img)` trong tài liệu
+/// - Lưu danh sách `exportedImages` với tên định dạng `0001_<tên_gốc>`
+/// - Dedupe ảnh theo đường dẫn cho DOCX (`imgN`)
 class _ImageCollector {
   _ImageCollector(this.files);
 
   final Map<String, ArchiveFile> files;
-  final Map<String, EpubImage> _byKey = {}; // đường dẫn zip → ảnh (dedupe)
-  final Map<String, EpubImage> images = {}; // id → ảnh (giữ thứ tự chèn)
+  final Map<String, EpubImage> _byKey = {}; // đường dẫn zip → ảnh (dedupe cho DOCX)
+  final Map<String, EpubImage> images = {}; // id → ảnh (giữ thứ tự chèn DOCX)
+  final List<EpubExportedImage> exportedImages = [];
   int _counter = 0;
+  int _markerCounter = 0;
 
-  /// Trả id ảnh, hoặc null nếu không resolve được ra ảnh raster hỗ trợ.
+  /// Đăng ký vị trí ảnh. Mỗi lần gọi tương ứng với 1 marker `(img)` trong văn bản.
+  /// Trả về id ảnh cho DOCX (nếu hỗ trợ), hoặc null.
   String? register(String chapterPath, String src) {
-    final resolved = _resolveArchivePath(chapterPath, src);
+    _markerCounter++;
+    final cleanSrc = src.trim();
+    if (cleanSrc.isEmpty) return null;
+
+    final resolved = _resolveArchivePath(chapterPath, cleanSrc);
     final file = files[resolved] ?? _findByBasename(files, resolved);
     if (file == null) return null;
+
+    final normName = _normalizePath(file.name);
+    final ext = p.posix.extension(normName).toLowerCase();
+    if (!_imageExtensions.contains(ext)) return null;
+
+    final rawBasename = p.posix.basename(normName);
+    final sanitized = rawBasename
+        .replaceAll(RegExp(r'[<>:"/\\|?*\x00-\x1F]'), '_')
+        .trim();
+    final basename =
+        (sanitized.isEmpty || sanitized == '.' || sanitized == '..')
+        ? 'image$ext'
+        : sanitized;
+    final formattedName =
+        '${_markerCounter.toString().padLeft(4, '0')}_$basename';
+    final content = file.content as List<int>;
+    final bytes = Uint8List.fromList(content);
+
+    exportedImages.add(
+      EpubExportedImage(
+        markerIndex: _markerCounter,
+        fileName: formattedName,
+        bytes: bytes,
+      ),
+    );
+
+    final docxExt = _imageExtension(file.name, content);
+    if (docxExt == null) return null;
+
     final key = _normalizePath(file.name);
     final existing = _byKey[key];
     if (existing != null) return existing.id;
-    final content = file.content as List<int>;
-    final ext = _imageExtension(file.name, content);
-    if (ext == null) return null;
+
     final image = EpubImage(
       id: 'img${++_counter}',
-      extension: ext,
-      bytes: Uint8List.fromList(content),
+      extension: docxExt,
+      bytes: bytes,
     );
     _byKey[key] = image;
     images[image.id] = image;
@@ -405,6 +504,100 @@ EpubLanguage detectEpubLanguage(String text) {
   return EpubLanguage.english;
 }
 
+const String _cssPropertyNamesPattern =
+    r'(?:padding|margin|text-align|text-indent|display|font-size|font-family|'
+    r'font-weight|font-style|line-height|color|background|border|width|height|'
+    r'position|float|clear|list-style(?:-type)?|vertical-align|page-break-\w+)';
+
+final RegExp _cssRuleBlockRe = RegExp(r'\{\s*-?[a-z\-]+\s*:[^}]*\}');
+final RegExp _cssAtRuleRe = RegExp(r'^@[a-zA-Z\-]+');
+final RegExp _cssDeclWithSemiRe = RegExp(r'^-?[a-zA-Z\-]+\s*:\s*[^;{}]+;\s*$');
+final RegExp _cssPropAtStartRe = RegExp('^$_cssPropertyNamesPattern\\s*:');
+
+/// Kiểm tra dòng có phải là định nghĩa CSS/style hay không (giống AI Translation Bridge).
+/// Chỉ match các cấu trúc CSS thực sự, không lọc nhầm lời thoại hoặc câu thông thường.
+bool isCssContent(String text) {
+  final trimmed = text.trim();
+  if (trimmed.isEmpty) return false;
+
+  if (_cssRuleBlockRe.hasMatch(trimmed)) return true;
+  if (_cssAtRuleRe.hasMatch(trimmed)) return true;
+  if (_cssDeclWithSemiRe.hasMatch(trimmed)) return true;
+  if (_cssPropAtStartRe.hasMatch(trimmed)) return true;
+  if (trimmed.contains('http://www.w3.org/') && trimmed.contains('DTD')) {
+    return true;
+  }
+  return false;
+}
+
+final RegExp _htmlAttrPrefixRe = RegExp(
+  r'^(?:xmlns(?::\w+)?|class|id|style|version|width|height|'
+  r'viewBox|href|src|alt|rel|type|epub:type)\s*=',
+  caseSensitive: false,
+);
+
+final RegExp _htmlAttrPairsRe = RegExp(
+  r"""^(?:[a-zA-Z_:][-\w:.]*\s*=\s*(?:"[^"]*"|'[^']*')\s*)+$""",
+);
+
+/// Kiểm tra dòng có phải là thuộc tính HTML/XML rò rỉ hay không (giống AI Translation Bridge).
+/// Không lọc nhầm câu đối thoại có dấu ngoặc kép.
+bool isHtmlTagOrAttribute(String text) {
+  final trimmed = text.trim();
+  if (trimmed.isEmpty) return true;
+
+  if (_htmlAttrPrefixRe.hasMatch(trimmed)) return true;
+  if (_htmlAttrPairsRe.hasMatch(trimmed)) return true;
+
+  if (trimmed.contains('http://www.w3.org/')) {
+    final unquoted = trimmed.replaceAll(RegExp(r"""^["']|["']$"""), '');
+    if (!unquoted.contains(RegExp(r'\s'))) return true;
+  }
+
+  return false;
+}
+
+bool _isInsideBlock(dom.Node node) {
+  var parent = node.parent;
+  while (parent != null) {
+    final tag = parent.localName?.toLowerCase();
+    if (tag == 'p' ||
+        tag == 'h1' ||
+        tag == 'h2' ||
+        tag == 'h3' ||
+        tag == 'h4' ||
+        tag == 'h5' ||
+        tag == 'h6' ||
+        tag == 'li' ||
+        tag == 'blockquote' ||
+        tag == 'figcaption') {
+      return true;
+    }
+    if (tag == 'body') break;
+    parent = parent.parent;
+  }
+  return false;
+}
+
+String _attributeValue(dom.Element element, List<String> names) {
+  for (final name in names) {
+    final direct = element.attributes[name];
+    if (direct != null && direct.trim().isNotEmpty) return direct.trim();
+  }
+  for (final entry in element.attributes.entries) {
+    final key = entry.key.toString().toLowerCase();
+    for (final name in names) {
+      final target = name.toLowerCase();
+      if (key == target ||
+          key.endsWith(':$target') ||
+          key.endsWith('}$target')) {
+        if (entry.value.trim().isNotEmpty) return entry.value.trim();
+      }
+    }
+  }
+  return '';
+}
+
 EpubChapter _extractChapter(
   String html,
   String chapterPath,
@@ -412,32 +605,65 @@ EpubChapter _extractChapter(
   _ImageCollector images,
 ) {
   final document = html_parser.parse(html, generateSpans: false);
-  document.querySelectorAll('script,style,svg,noscript').forEach((node) {
+  document.querySelectorAll('script,style,noscript').forEach((node) {
     node.remove();
   });
-  // Giữ vị trí ảnh: token `⟦img:ID⟧` nếu resolve được bytes (để nhúng thật vào
-  // DOCX), ngược lại literal `(img)` như AI Translation Bridge (svg đã xóa ở trên).
-  for (final img in document.querySelectorAll('img')) {
-    final src = img.attributes['src'] ?? img.attributes['xlink:href'] ?? '';
-    final id = src.isEmpty ? null : images.register(chapterPath, src);
-    img.replaceWith(dom.Text(id == null ? '(img)' : '⟦img:$id⟧'));
+
+  // Xử lý <svg> và <img> trong một lượt theo đúng thứ tự DOM để marker (img)
+  // và số thứ tự ảnh xuất ra khớp nhau khi chương trộn cả hai loại thẻ.
+  for (final node in document.querySelectorAll('svg,img')) {
+    final tag = node.localName?.toLowerCase();
+    if (tag == 'svg') {
+      final imageElem =
+          node.querySelector('image') ?? node.querySelector('img');
+      if (imageElem != null) {
+        final src = _attributeValue(
+          imageElem,
+          const ['xlink:href', 'href', 'src'],
+        );
+        final id = images.register(chapterPath, src);
+        final textToken = id == null ? '(img)' : '⟦img:$id⟧';
+        if (_isInsideBlock(node)) {
+          node.replaceWith(dom.Text(textToken));
+        } else {
+          node.replaceWith(dom.Element.tag('p')..text = textToken);
+        }
+      } else {
+        node.remove();
+      }
+    } else if (tag == 'img') {
+      if (node.parent == null) continue;
+      final src = _attributeValue(node, const ['src', 'xlink:href', 'href']);
+      final id = images.register(chapterPath, src);
+      final textToken = id == null ? '(img)' : '⟦img:$id⟧';
+      if (_isInsideBlock(node)) {
+        node.replaceWith(dom.Text(textToken));
+      } else {
+        node.replaceWith(dom.Element.tag('p')..text = textToken);
+      }
+    }
   }
+
   if (rubyHandling != null) {
     _processRubyTags(document, rubyHandling);
   }
-  final blocks = document.querySelectorAll(
-    'h1,h2,h3,h4,h5,h6,p,li,blockquote,figcaption',
-  );
+  const blockSelector = 'h1,h2,h3,h4,h5,h6,p,li,blockquote,figcaption';
+  final blocks = document.querySelectorAll(blockSelector);
   final lines = <String>[];
   String? heading;
   for (final block in blocks) {
+    if (block.querySelector(blockSelector) != null) continue;
     final text = _cleanText(
       rubyHandling == null ? block.text : _mergeConsecutiveRuby(block.text),
     );
     if (text.isEmpty) continue;
+    if (isCssContent(text) || isHtmlTagOrAttribute(text)) continue;
+
     if (heading == null && _isHeading(block)) {
       heading = text;
-    } else if (!lines.contains(text) || lines.lastOrNull != text) {
+    } else if (text.contains('(img)') ||
+        text.contains('⟦img:') ||
+        lines.lastOrNull != text) {
       lines.add(text);
     }
   }
@@ -446,7 +672,12 @@ EpubChapter _extractChapter(
       (document.body?.text ?? '')
           .split(RegExp(r'[\r\n]+'))
           .map(_cleanText)
-          .where((line) => line.isNotEmpty),
+          .where(
+            (line) =>
+                line.isNotEmpty &&
+                !isCssContent(line) &&
+                !isHtmlTagOrAttribute(line),
+          ),
     );
   }
   return EpubChapter(
@@ -457,19 +688,47 @@ EpubChapter _extractChapter(
 
 void _processRubyTags(dom.Document document, EpubRubyHandling handling) {
   for (final ruby in document.querySelectorAll('ruby')) {
-    final readings = ruby
-        .querySelectorAll('rt')
-        .map((node) => node.text.trim())
-        .where((text) => text.isNotEmpty)
-        .join();
-    ruby.querySelectorAll('rt,rp').forEach((node) => node.remove());
-    final base = ruby.text.trim();
-    final replacement = switch (handling) {
-      EpubRubyHandling.removeAll => base,
-      EpubRubyHandling.removeHiragana =>
-        readings.isEmpty || _isHiragana(readings) ? base : '$base($readings)',
-      EpubRubyHandling.keepAll => readings.isEmpty ? base : '$base($readings)',
-    };
+    final rbElements = ruby.querySelectorAll('rb');
+    final rtElements = ruby.querySelectorAll('rt');
+
+    String replacement;
+    if (rbElements.isNotEmpty && rbElements.length == rtElements.length) {
+      final buffer = StringBuffer();
+      for (var i = 0; i < rbElements.length; i++) {
+        final rbText = rbElements[i].text.trim();
+        final rtText = rtElements[i].text.trim();
+        switch (handling) {
+          case EpubRubyHandling.removeAll:
+            buffer.write(rbText);
+          case EpubRubyHandling.removeHiragana:
+            if (rtText.isEmpty || _isHiragana(rtText)) {
+              buffer.write(rbText);
+            } else {
+              buffer.write('$rbText($rtText)');
+            }
+          case EpubRubyHandling.keepAll:
+            if (rtText.isEmpty) {
+              buffer.write(rbText);
+            } else {
+              buffer.write('$rbText($rtText)');
+            }
+        }
+      }
+      replacement = buffer.toString();
+    } else {
+      final readings = rtElements
+          .map((node) => node.text.trim())
+          .where((text) => text.isNotEmpty)
+          .join();
+      ruby.querySelectorAll('rt,rp').forEach((node) => node.remove());
+      final base = ruby.text.trim();
+      replacement = switch (handling) {
+        EpubRubyHandling.removeAll => base,
+        EpubRubyHandling.removeHiragana =>
+          readings.isEmpty || _isHiragana(readings) ? base : '$base($readings)',
+        EpubRubyHandling.keepAll => readings.isEmpty ? base : '$base($readings)',
+      };
+    }
     ruby.replaceWith(dom.Text(replacement));
   }
 }
@@ -502,7 +761,7 @@ Uint8List _textBytes(String value, {bool withBom = false}) =>
     ]);
 
 String _toCsv(EpubBook book) {
-  final buffer = StringBuffer('id,text\r\n');
+  final buffer = StringBuffer('id,raw\r\n');
   final rows = book.translationRows;
   for (var index = 0; index < rows.length; index++) {
     buffer
@@ -544,10 +803,11 @@ String _toText(EpubBook book) {
 }
 
 Uint8List _toXlsx(EpubBook book) {
+  final translationRows = book.translationRows;
   final rows = <(String, String)>[
-    ('id', 'text'),
-    for (var i = 0; i < book.translationRows.length; i++)
-      ('${i + 1}', book.translationRows[i]),
+    ('id', 'raw'),
+    for (var i = 0; i < translationRows.length; i++)
+      ('${i + 1}', translationRows[i]),
   ];
   final sheet = StringBuffer(
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
@@ -776,8 +1036,13 @@ Uint8List _zip(Map<String, Object> files) {
   return ZipEncoder().encodeBytes(archive);
 }
 
-String _xml(String value) =>
-    const HtmlEscape(HtmlEscapeMode.element).convert(value);
+final RegExp _invalidXmlCharsRe = RegExp(
+  r'[\x00-\x08\x0B\x0C\x0E-\x1F\uFFFE\uFFFF]',
+);
+
+String _xml(String value) => const HtmlEscape(
+  HtmlEscapeMode.element,
+).convert(value.replaceAll(_invalidXmlCharsRe, ''));
 
 extension<T> on Iterable<T> {
   T? get firstOrNull => isEmpty ? null : first;

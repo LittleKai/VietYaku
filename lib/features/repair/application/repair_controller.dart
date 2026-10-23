@@ -112,22 +112,25 @@ class RepairController extends Notifier<RepairState> {
     void Function(double) onProgress,
   ) async {
     final receivePort = ReceivePort();
-    await Isolate.spawn(_repairEntry, (
-      receivePort.sendPort,
-      content,
-      table,
-      policy,
-    ));
-    final result = await receivePort.firstWhere((message) {
-      if (message is double) {
-        onProgress(message);
-        return false;
-      }
-      return true;
-    });
-    receivePort.close();
-    if (result is RepairedFile) return result;
-    throw StateError('$result');
+    try {
+      await Isolate.spawn(
+        _repairEntry,
+        (receivePort.sendPort, content, table, policy),
+        onError: receivePort.sendPort,
+        onExit: receivePort.sendPort,
+      );
+      final result = await receivePort.firstWhere((message) {
+        if (message is double) {
+          onProgress(message);
+          return false;
+        }
+        return true;
+      });
+      if (result is RepairedFile) return result;
+      throw StateError('${result ?? "Isolate dừng bất thường"}');
+    } finally {
+      receivePort.close();
+    }
   }
 
   static void _repairEntry(

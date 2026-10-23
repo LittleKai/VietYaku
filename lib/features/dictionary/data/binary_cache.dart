@@ -67,18 +67,23 @@ class BinaryCache {
     final entries = <String, String>{};
     var offset = headerLength;
     final data = ByteData.sublistView(bytes);
-    for (var i = 0; i < header.count; i++) {
-      if (offset + 6 > bytes.length) return null;
-      final keyLen = data.getUint16(offset, Endian.little);
-      final valLen = data.getUint32(offset + 2, Endian.little);
-      offset += 6;
-      if (offset + keyLen + valLen > bytes.length) return null;
-      final key = utf8.decode(bytes.sublist(offset, offset + keyLen));
-      offset += keyLen;
-      final value = utf8.decode(bytes.sublist(offset, offset + valLen));
-      offset += valLen;
-      entries[key] = value;
+    try {
+      for (var i = 0; i < header.count; i++) {
+        if (offset + 6 > bytes.length) return null;
+        final keyLen = data.getUint16(offset, Endian.little);
+        final valLen = data.getUint32(offset + 2, Endian.little);
+        offset += 6;
+        if (offset + keyLen + valLen > bytes.length) return null;
+        final key = utf8.decode(bytes.sublist(offset, offset + keyLen));
+        offset += keyLen;
+        final value = utf8.decode(bytes.sublist(offset, offset + valLen));
+        offset += valLen;
+        entries[key] = value;
+      }
+    } on FormatException {
+      return null;
     }
+    if (offset != bytes.length) return null;
     return entries;
   }
 

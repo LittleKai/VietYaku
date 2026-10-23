@@ -144,6 +144,13 @@ class TranslationController extends Notifier<TranslationState> {
       elapsedMs: 0,
     );
   }
+
+  /// Dịch lại [state.sourceText] hiện tại nếu có văn bản nguồn.
+  void retranslate() {
+    if (state.sourceText.isNotEmpty) {
+      translate(state.sourceText);
+    }
+  }
 }
 
 final translationControllerProvider =

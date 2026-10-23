@@ -26,6 +26,7 @@ void main() {
 
     test('loại chuỗi có khoảng trắng hoặc rỗng', () {
       expect(isWordLikeEntry('再入 荷'), isFalse);
+      expect(isWordLikeEntry('再入\u3000荷'), isFalse);
       expect(isWordLikeEntry('a\nb'), isFalse);
       expect(isWordLikeEntry('   '), isFalse);
       expect(isWordLikeEntry(''), isFalse);

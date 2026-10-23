@@ -4,7 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
 import '../../dictionary/application/dictionaries_provider.dart';
+import '../../settings/settings_provider.dart';
+import '../../translation/application/trad2simp_provider.dart';
 import '../../translation/application/translation_controller.dart';
+import '../../translation/domain/translation_engine.dart';
 import '../data/project_store.dart';
 import '../data/translation_memory_store.dart';
 import '../domain/project_document.dart';
@@ -153,9 +156,7 @@ class ProjectController extends Notifier<ProjectState> {
     if (document == null || root == null) return;
     await ProjectStore(root).save(document);
     final tm = TranslationMemoryStore(root);
-    for (final segment in document.segments) {
-      await tm.upsertReviewed(segment);
-    }
+    await tm.upsertReviewedAll(document.segments);
     final targetDir = Directory(p.join(root.path, 'target'));
     await targetDir.create(recursive: true);
     final target = File(p.join(targetDir.path, 'translated.txt'));
@@ -168,8 +169,19 @@ class ProjectController extends Notifier<ProjectState> {
   String _translateSegment(String source) {
     final dictionaries = ref.read(dictionariesProvider).valueOrNull;
     if (dictionaries == null) return source;
-    ref.read(translationControllerProvider.notifier).translate(source);
-    final tokens = ref.read(translationControllerProvider).tokens;
+    final settings = ref.read(settingsProvider);
+    final mode = ref.read(currentModeProvider);
+    final engine = dictionaries.engineWith(
+      algorithm: settings.translationAlgorithm,
+      prioritizeNames: settings.prioritizeNames,
+      personRuleScope: settings.personRuleScope,
+    );
+    final input =
+        mode == TranslationMode.chinese &&
+            settings.convertTraditionalToSimplified
+        ? trad2SimpOf(ref).convert(source)
+        : source;
+    final tokens = engine.translate(input, mode: mode);
     return tokens.map((token) => token.display).join();
   }
 }
