@@ -21,14 +21,14 @@ void main() {
         machineOutput: 'máy',
         editedTarget: 'bản nháp',
       );
-      await store.upsertReviewed(draft);
+      await store.upsertReviewedAll([draft]);
       expect(await store.lookupExact('同じ。'), isNull);
 
       final reviewed = draft.copyWith(
         editedTarget: 'bản đã duyệt',
         status: ProjectSegmentStatus.reviewed,
       );
-      await store.upsertReviewed(reviewed);
+      await store.upsertReviewedAll([reviewed]);
       expect(await store.lookupExact('同じ。'), 'bản đã duyệt');
     },
   );
@@ -43,8 +43,8 @@ void main() {
       status: ProjectSegmentStatus.reviewed,
     );
     final second = first.copyWith(segmentId: 'b', editedTarget: 'hai');
-    await store.upsertReviewed(first);
-    await store.upsertReviewed(second);
+    await store.upsertReviewedAll([first]);
+    await store.upsertReviewedAll([second]);
     expect(await store.lookupExact('重複'), 'hai');
   });
 }

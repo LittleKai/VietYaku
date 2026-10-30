@@ -237,7 +237,7 @@ void main() {
         expect(pending, hasLength(1));
         expect(pending.single.target, 'học đường');
 
-        await service.clearPending(TranslationMode.japanese);
+        await service.removePending(TranslationMode.japanese, pending);
         expect(await service.pendingEntries(TranslationMode.japanese), isEmpty);
       },
     );

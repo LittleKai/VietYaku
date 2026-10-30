@@ -30,7 +30,7 @@ qua nó là không thể mới làm được điều đó.
 
 | Mức | Nghĩa là gì | Văn xuôi ở đâu |
 |---|---|---|
-| ✅ | **mọi** Do-Not-Repeat của bẫy đã bị một hàm cưỡng chế | `archive/` |
+| ✅ | **mọi** Do-Not-Repeat của bẫy đã bị một hàm cưỡng chế **và có test tự động mang tên `bug_<N>`** | `archive/` |
 | 🔶 | rào chắn lo được một phần, phần còn lại là phán đoán của người | ở lại, rút gọn |
 | ❌ | chưa có gì chặn | ở lại, **đủ dài** |
 
@@ -45,7 +45,29 @@ chắn bị xoá mà văn xuôi đã nằm dưới `archive/` là **mất kiến
 phép kiểm này là điều kiện để cửa ra an toàn. Chạy:
 `"D:/Dev/conda-envs/py312/python.exe" .claude/guard_check.py`
 
+Ngoại lệ cho bẫy ✅ cũ chưa có test `bug_<N>` nằm trong
+`.claude/untested_guards.txt` (mỗi dòng một số nguyên). Danh sách ratchet này chỉ
+được giữ nguyên hoặc ngắn dần; bẫy ✅ mới bắt buộc có test `bug_<N>`.
+
 ---
+
+## 🚫 KHÔNG ĐƯỢC GHI VÀO ĐÂY
+
+Một dòng sai ở đây được đọc lại ở mọi session và có thể đóng băng thành lý do
+để từ chối một cách làm đúng.
+
+| Không ghi | Ghi ở đâu thay thế |
+|---|---|
+| **Lỗi môi trường** — app chưa mở, cổng bận, timeout tạm thời, sai đường dẫn venv/conda | `README.md` / `SMOKE_TEST_CHECKLIST.md` — ghi **cách sửa**, không ghi triệu chứng |
+| **Khẳng định phủ định về công cụ** — "tool X không chạy được Y", "API Z hỏng" (đóng băng thành lời từ chối) | Không ghi. Giới hạn thật thì ghi **điều kiện chính xác** + cách thay thế **đã chạy được** |
+| **Lỗi tạm thời tự hết** khi chạy lại trong cùng phiên | Không ghi, trừ khi tìm ra điều kiện tái hiện |
+| **Chuỗi thử thất bại viết thành "cách làm khuyến nghị"** | Chỉ ghi cách đã chạy và có bằng chứng kiểm chứng, không kể ngõ cụt |
+| **Nhật ký một task; số đo, tên riêng của một dự án/module** | `PROJECT_SUMMARY.md` |
+| **Thứ tài liệu khác đã dạy** — đặt tên, quy ước code, checklist bàn giao | `CONVENTIONS.md` · `SMOKE_TEST_CHECKLIST.md` |
+
+**Phép thử một dòng trước khi thêm entry:** bỏ tên dự án, ngày, lời người dùng —
+câu luật còn cứu được dự án khác không? Không ⇒ không thuộc file này. Bài học
+lặp lại là một luật: sửa câu cũ, không nối `CẬP NHẬT: thực ra...`.
 
 ## Bảng bẫy
 
@@ -81,7 +103,8 @@ phép kiểm này là điều kiện để cửa ra an toàn. Chạy:
 | 28 | Cụm mở đầu bằng ký tự KHÔNG-CJK không bao giờ ghép dù từ điển có đủ (`ＨＢＴＮシリーズ`, `【誓約の魔物】会議`) ⇒ dịch không hiện + dialog sửa nhận sai key | ✅ `translation_engine.dart::_startableMatchAt` | `archive/FIXED_BUGS_guarded.md` |
 | 29 | Sửa/cập nhật Glossary trong dialog VietPhrase không phản ánh ngay lập tức (hiện target cũ/chờ đọc đĩa) | 🔶 một phần: `entry_edit_dialog.dart::_updateGlossaryTermDirectly` + `glossary_update_dialog.dart::showGlossaryUpdateDialog` | dưới đây |
 | 30 | Hai file từ điển trùng tên ở hai thư mục cha đè chung một cache `.vydc` (`userdata/dictionaries` vs `data/<lang>/generated`) | 🔶 một phần: `app_paths.dart::cacheFileFor` — nhúng hash FNV-1a của thư mục cha | dưới đây |
-| 31 | Sửa target phẳng trong Glossary đè mất cấu trúc đa tầng/từ loại của VietPhrase ở dialog cha | 🔶 một phần: `vietphrase_value.dart::mergeFlatGlossaryIntoMeanings` | dưới đây |
+| 31 | Lưu target Glossary ghi đè nghĩa nháp/tầng nghĩa của dialog VietPhrase hoặc UserDict (và ngược lại khi bấm Lưu từ ngay sau đó) | ✅ `entry_edit_dialog.dart::_updateGlossaryTermDirectly` + `entry_edit_dialog.dart::glossarySavedAtMeaning` + `entry_edit_dialog_test.dart::bug_31` | `archive/FIXED_BUGS_guarded.md` |
+| 32 | Scale theme trước khi có geometry ⇒ debug crash, release chỉ đổi bodySmall | ✅ `app_theme.dart::_build` + `app_theme_test.dart::bug_32` | `archive/FIXED_BUGS_guarded.md` |
 
 > Cột 1 phải là **số**, cột 3 phải bắt đầu bằng ✅/🔶/❌ và bọc tên hàm trong dấu
 > backtick — `guard_check.py` parse đúng định dạng này.
@@ -183,31 +206,10 @@ phép kiểm này là điều kiện để cửa ra an toàn. Chạy:
 - **Do Not Repeat:** Khi một dialog con thực hiện mutate dữ liệu và dialog cha cần hiển thị ngay kết quả đó, luôn trả về thực thể đã cập nhật từ dialog con để dialog cha áp dụng đồng bộ ngay lập tức (0ms optimistic/direct update), thay vì chỉ trả về `bool` rồi bắt dialog cha query lại bất đồng bộ từ file/storage.
 - **Related Files:** `lib/shared/widgets/entry_edit_dialog.dart`, `lib/features/glossary/presentation/glossary_update_dialog.dart`, `lib/features/glossary/data/glossary_service.dart`, `test/entry_edit_dialog_test.dart`
 
-### 2026-10-08 - Sửa target trong dialog Glossary không cập nhật sang ô Nghĩa của dialog cha và có thể bị ghi đè ngược
-- **Symptom:** Khi người dùng mở dialog "Cập nhật Global Glossary" và sửa lại nghĩa đích (target) trong TextField vừa bổ sung, sau khi bấm thêm/cập nhật xong:
-  1. Thẻ trạng thái Glossary trong dialog cha cập nhật, nhưng ô nhập "Nghĩa" của dialog VietPhrase/Lạc Việt vẫn giữ nguyên nghĩa cũ.
-  2. Nếu bật "Tự động cập nhật Glossary khi lưu", khi bấm "Lưu từ" ở dialog cha, logic lưu sẽ đọc nghĩa từ ô "Nghĩa" (vốn đang mang giá trị cũ) và tự động ghi đè ngược lại làm mất nội dung người dùng vừa sửa bên Glossary!
-- **Root Cause:**
-  1. Dialog cha (`_EntryFields`) không có cơ chế `setMeaning` để nhận giá trị mới từ kết quả của `showGlossaryUpdateDialog`.
-  2. Dialog cha sau khi nhận `updatedTerm` từ dialog con chỉ cập nhật `updateGlossaryTerm`, không cập nhật `_meaningRows` (VietPhrase) hay `_meaningController` (Lạc Việt/UserDict).
-- **Fix:**
-  1. Bổ sung `setMeaning` callback vào `_EntryFieldControllers` và implement `_setMeaningDirectly(newMeaning)` trong `_EntryFieldsState`.
-  2. Khi `updatedTerm.target.trim() != initialTarget.trim()`, gọi `holder.setMeaning?.call(updatedTerm.target)` để cập nhật các dòng nghĩa của VietPhrase (hoặc controller của Lạc Việt), đồng thời gọi `_sync()` cập nhật trạng thái `hasChanges`, nút "Lưu từ" và preview.
-- **Do Not Repeat:** Khi cho phép chỉnh sửa dữ liệu liên kết chéo giữa hai thực thể (ở đây là Glossary term target và VietPhrase meaning), sau khi entity phụ được sửa trực tiếp, phải đồng bộ giá trị về cả input controller của entity chính nếu hai bên có cơ chế auto-update đồng bộ lẫn nhau.
-- **Related Files:** `lib/shared/widgets/entry_edit_dialog.dart`, `lib/features/glossary/presentation/glossary_update_dialog.dart`, `test/entry_edit_dialog_test.dart`
-
 ### 2026-10-23 - Hai file từ điển trùng tên ở hai thư mục cha đè chung một cache `.vydc`
 - **Symptom:** Khi `DictionaryRepository.loadAll` tải song song 26 file qua `Isolate.run`, các cặp file trùng tên ở hai thư mục khác nhau (`userdata/dictionaries/VietPhrase_japanese.txt` vs `data/jp/generated/VietPhrase_japanese.txt`, hoặc `data/jp/VietPhrase.txt` vs `data/cn/VietPhrase.txt`) dùng chung một đường dẫn `<cacheDir>/<basename>.vydc`, gây race condition ghi đè `.vydc.tmp` trên Windows và có thể phục hồi nhầm dữ liệu khi size/mtime tình cờ khớp.
 - **Root Cause:** `AppPaths.cacheFileFor(sourcePath)` chỉ dùng `p.basenameWithoutExtension(sourcePath)` mà bỏ qua thư mục cha của `sourcePath`.
 - **Fix:** `AppPaths.cacheFileFor` băm FNV-1a 64-bit đường dẫn thư mục cha đã chuẩn hoá (`p.normalize(p.dirname(sourcePath)).toLowerCase()`) lấy 8 ký tự hex đưa vào tên file cache (`$name.$dirHash$suffix.vydc`).
 - **Do Not Repeat:** Mọi khoá cache dẫn xuất từ đường dẫn file phải phân biệt được cả thư mục cha (hoặc đường dẫn tuyệt đối đã chuẩn hoá), không bao giờ chỉ lấy basename khi hệ thống có nhiều tầng thư mục chứa file trùng tên.
 - **Related Files:** `lib/core/app_paths.dart`, `test/binary_cache_test.dart`
-
-### 2026-10-23 - Sửa target phẳng trong Glossary đè mất cấu trúc đa tầng/từ loại của VietPhrase ở dialog cha
-- **Symptom:** Entry VietPhrase có nhiều tầng nghĩa và nhãn từ loại (VD `(n)/ký ức/hồi ức/(2)/(v)/nhớ lại`). Khi mở dialog Glossary sửa target phẳng (`ký ức/hồi ức/nhớ lại` → `hoài niệm/hồi ức/nhớ lại`), callback `_setMeaningDirectly` parse chuỗi phẳng đó thành 1 tầng duy nhất không có POS và xoá sạch phân tầng `(2)` cùng nhãn `(n)`, `(v)` của VietPhrase.
-- **Root Cause:** `GlossaryTerm.target` lưu chuỗi phẳng nối bằng `/` không kèm marker tầng/POS (`glossaryTargetOf`), trong khi `_setMeaningDirectly` lại gọi thẳng `parseVietPhraseValue(newMeaning)` và thay thế toàn bộ `_meaningRows`.
-- **Fix:** Thêm `mergeFlatGlossaryIntoMeanings(existing, newTarget)` trong `vietphrase_value.dart`: nếu giá trị mới là chuỗi phẳng không chứa marker tầng/từ loại còn entry hiện có đang có nhiều tầng/POS, phân bổ lại các cách dịch phẳng theo khung tầng và POS hiện có của VietPhrase.
-- **Do Not Repeat:** Khi đồng bộ ngược từ một định dạng rút gọn/phẳng (như `GlossaryTerm.target`) về định dạng giàu cấu trúc (như `VietPhraseMeaning` đa tầng + POS), phải bảo toàn khung tầng và nhãn từ loại hiện có thay vì ghi đè toàn bộ cấu trúc bằng kết quả parse phẳng.
-- **Related Files:** `lib/features/translation/domain/vietphrase_value.dart`, `lib/shared/widgets/entry_edit_dialog.dart`, `test/vietphrase_value_test.dart`
-
 

@@ -67,60 +67,71 @@ class AppDialog extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(24, 20, 20, 18),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 42,
-                      height: 42,
-                      decoration: BoxDecoration(
-                        color: Color.alphaBlend(
-                          accent.withValues(alpha: 0.16),
-                          scheme.surfaceContainer,
-                        ),
-                        borderRadius: BorderRadius.circular(11),
-                      ),
-                      alignment: Alignment.center,
-                      child: Icon(icon, color: accent),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            title,
-                            style: Theme.of(
-                              context,
-                            ).textTheme.titleLarge?.copyWith(color: accent),
-                          ),
-                          if (description != null) ...[
-                            const SizedBox(height: 4),
-                            Text(
-                              description!,
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(color: scheme.onSurfaceVariant),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      tooltip: 'Đóng',
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                  ],
-                ),
-              ),
-              Divider(height: 1, color: scheme.outlineVariant),
+              // Tiêu đề dài/cỡ chữ lớn phải cuộn được cùng nội dung; giữ nút
+              // thao tác ngoài vùng cuộn để luôn đóng/lưu được trên màn thấp.
               Flexible(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(24),
-                  child: child,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 20, 20, 18),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              width: 42,
+                              height: 42,
+                              decoration: BoxDecoration(
+                                color: Color.alphaBlend(
+                                  accent.withValues(alpha: 0.16),
+                                  scheme.surfaceContainer,
+                                ),
+                                borderRadius: BorderRadius.circular(11),
+                              ),
+                              alignment: Alignment.center,
+                              child: Icon(icon, color: accent),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    title,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleLarge
+                                        ?.copyWith(color: accent),
+                                  ),
+                                  if (description != null) ...[
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      description!,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(
+                                            color: scheme.onSurfaceVariant,
+                                          ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            IconButton(
+                              icon: const Icon(Icons.close),
+                              tooltip: 'Đóng',
+                              onPressed: () => Navigator.of(context).pop(),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Divider(height: 1, color: scheme.outlineVariant),
+                      Padding(padding: const EdgeInsets.all(24), child: child),
+                    ],
+                  ),
                 ),
               ),
               Divider(height: 1, color: scheme.outlineVariant),

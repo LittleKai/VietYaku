@@ -83,13 +83,6 @@ class SharedDictionaryService {
     return applyDelta(mode, pending);
   }
 
-  Future<void> clearPending(TranslationMode mode) async {
-    for (final kind in SharedDictionaryKind.values) {
-      final file = pendingFileFor(mode, kind);
-      if (file.existsSync()) await file.delete();
-    }
-  }
-
   /// Xóa khỏi file Pending đúng những mục vừa được publish thành công.
   /// Nếu trong lúc chờ HTTP có mục mới hoặc mục cùng key nhưng đã đổi giá trị,
   /// mục mới đó vẫn được giữ lại.

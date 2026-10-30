@@ -64,9 +64,13 @@ void main() {
       final userCache = paths.cacheFileFor(
         r'D:\app\userdata\dictionaries\VietPhrase_japanese.txt',
       );
+      final userCacheUpper = paths.cacheFileFor(
+        r'D:\APP\UserData\Dictionaries\VietPhrase_japanese.txt',
+      );
       final genCache = paths.cacheFileFor(
         r'D:\app\data\jp\generated\VietPhrase_japanese.txt',
       );
+      expect(userCache, equals(userCacheUpper));
       expect(userCache, isNot(equals(genCache)));
     });
 

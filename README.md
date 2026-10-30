@@ -54,7 +54,7 @@ Kế thừa và phát triển từ tinh thần của các công cụ kinh điể
 - **Bố cục QuickTranslator tối ưu:**
   - Cột trái: Văn bản nguồn / Hán Việt và Bảng hiển thị nghĩa chi tiết.
   - Cột phải: Bản dịch VietPhrase một nghĩa / Đa nghĩa / Tab Google Dịch toàn văn.
-- **Đa nghĩa phân cấp màu trực quan:** Tách bạch các tầng nghĩa ngữ pháp và từ loại (`[DT]` danh từ, `[ĐT]` động từ, `[TT]` tính từ...). Chuyển đổi giữa 1 nghĩa và đa nghĩa tức thì mà không cần nạp lại văn bản.
+- **Đa nghĩa phân cấp màu trực quan:** Tách bạch các tầng nghĩa ngữ pháp và từ loại (`(n)` danh từ, `(v)` động từ, `(adj)` tính từ...). Chuyển đổi giữa 1 nghĩa và đa nghĩa tức thì mà không cần nạp lại văn bản.
 - **Đồng bộ vị trí 3 chiều:** Nhấp chọn một từ ở bất kỳ ô nào (Nguồn / VietPhrase / Hán Việt), con trỏ và vùng sáng ở hai ô còn lại sẽ tự động cuộn đến vị trí tương ứng.
 - **Theme Material 3 hiện đại:** Hỗ trợ giao diện **Sáng (Light)**, **Tối (Dark)** và **Tự động theo hệ thống**. Chế độ ban đêm tự động tăng tương phản cho chữ Katakana, bảo vệ thị lực khi đọc lâu.
 - **Đọc giọng nói (TTS) Ngoại tuyến:** Tích hợp bộ đọc giọng Nhật/Trung ngoại tuyến với khả năng điều chỉnh cao độ, tốc độ riêng biệt.
@@ -171,7 +171,7 @@ flutter build apk --release
 
 ### 5. Chạy kiểm thử (Automated Tests)
 
-VietYaku có bộ kiểm thử tự động toàn diện với hơn 560+ bài kiểm thử:
+VietYaku có bộ kiểm thử tự động toàn diện với hơn 620+ bài kiểm thử:
 
 ```bash
 flutter analyze
@@ -202,7 +202,9 @@ lib/
 │   ├── analysis/              # Kiểm tra độ phủ, cảnh báo lệch cụm từ, phát hiện tên riêng
 │   ├── clipboard/             # Trình theo dõi Clipboard & Hotkey toàn cục
 │   ├── repair/                # Pipeline sửa lỗi từ điển tiếng Nhật QuickTranslator
-│   └── settings/              # Cài đặt thuật toán, giao diện, giọng đọc, sao lưu
+│   ├── project/               # Biên tập dự án TXT theo câu & Translation Memory
+│   ├── settings/              # Cài đặt thuật toán, giao diện, giọng đọc, sao lưu
+│   └── update/                # Kiểm tra & tự động cài đặt bản cập nhật từ GitHub Releases
 └── shared/                    # Các widget dùng chung (dialog, context menu, buttons)
 ```
 

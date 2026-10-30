@@ -166,27 +166,6 @@ CjkCharCategory charCategoryOf(int cp) {
   return CjkCharCategory.other;
 }
 
-/// Một run ký tự liên tiếp cùng category: `[start, end)` theo UTF-16 code unit.
-typedef CharCategoryRun = ({int start, int end, CjkCharCategory category});
-
-/// Tách [text] thành các run cùng category, advance theo rune
-/// (surrogate pair không bị cắt đôi).
-List<CharCategoryRun> categoryRunsOf(String text) {
-  final runs = <CharCategoryRun>[];
-  var i = 0;
-  while (i < text.length) {
-    final start = i;
-    final category = charCategoryOf(codePointAt(text, i));
-    i += runeLengthAt(text, i);
-    while (i < text.length &&
-        charCategoryOf(codePointAt(text, i)) == category) {
-      i += runeLengthAt(text, i);
-    }
-    runs.add((start: start, end: i, category: category));
-  }
-  return runs;
-}
-
 /// Số code unit của rune bắt đầu tại [index] (1 hoặc 2).
 int runeLengthAt(String text, int index) {
   final lead = text.codeUnitAt(index);

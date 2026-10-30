@@ -15,6 +15,7 @@ migrate_working_dir/
 # Antigravity/Claude local files
 .superpowers/
 .agents/
+opencode.json
 .claude/*.local.json
 .claude/*.lock
 .claude/prompt.txt
@@ -54,7 +55,6 @@ data/*
 !data/cn/
 data/cn/*
 !data/cn/LuatNhan.txt
-.claude\tmp
 
 # CodeGraph files
 .codegraph/*

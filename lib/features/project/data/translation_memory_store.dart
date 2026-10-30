@@ -21,9 +21,6 @@ class TranslationMemoryStore {
 
   File get _file => File(p.join(root.path, 'tm.jsonl'));
 
-  Future<void> upsertReviewed(ProjectSegment segment) =>
-      upsertReviewedAll([segment]);
-
   Future<void> upsertReviewedAll(Iterable<ProjectSegment> segments) async {
     final valid = [
       for (final segment in segments)

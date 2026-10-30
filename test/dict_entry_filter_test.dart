@@ -17,11 +17,12 @@ void main() {
       expect(isWordLikeEntry('あいうえおかきくけこさし'), isFalse); // 12 rune
     });
 
-    test('loại chuỗi có dấu câu', () {
+    test('loại chuỗi có dấu câu hoặc dấu =', () {
       expect(isWordLikeEntry('すごい！'), isFalse);
       expect(isWordLikeEntry('こんにちは、'), isFalse);
       expect(isWordLikeEntry('「引用」'), isFalse);
       expect(isWordLikeEntry('やった。'), isFalse);
+      expect(isWordLikeEntry('a=b'), isFalse);
     });
 
     test('loại chuỗi có khoảng trắng hoặc rỗng', () {

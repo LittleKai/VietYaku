@@ -21,28 +21,24 @@ class ProjectState {
     this.root,
     this.sourcePath,
     this.document,
-    this.selectedIndex = 0,
     this.error,
   });
 
   final Directory? root;
   final String? sourcePath;
   final ProjectDocument? document;
-  final int selectedIndex;
   final String? error;
 
   ProjectState copyWith({
     Directory? root,
     String? sourcePath,
     ProjectDocument? document,
-    int? selectedIndex,
     String? error,
     bool clearError = false,
   }) => ProjectState(
     root: root ?? this.root,
     sourcePath: sourcePath ?? this.sourcePath,
     document: document ?? this.document,
-    selectedIndex: selectedIndex ?? this.selectedIndex,
     error: clearError ? null : error ?? this.error,
   );
 }
@@ -98,12 +94,6 @@ class ProjectController extends Notifier<ProjectState> {
     } catch (error) {
       state = state.copyWith(error: '$error');
     }
-  }
-
-  void selectSegment(int index) {
-    final count = state.document?.segments.length ?? 0;
-    if (index < 0 || index >= count) return;
-    state = state.copyWith(selectedIndex: index);
   }
 
   void setTarget(int index, String target) {

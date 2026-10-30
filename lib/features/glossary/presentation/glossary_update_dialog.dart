@@ -42,9 +42,9 @@ Future<GlossaryTerm?> showGlossaryUpdateDialog(
   final service = ref.read(glossaryServiceProvider);
   final lang = GlossaryService.langFor(activeMode);
   final initialTarget = glossaryTargetOf(meaning);
-  if (source.isEmpty || initialTarget.isEmpty) {
+  if (source.trim().isEmpty) {
     if (context.mounted) {
-      _showMessage(context, 'Cần cả từ nguồn và nghĩa để cập nhật glossary.');
+      _showMessage(context, 'Cần có từ nguồn để cập nhật glossary.');
     }
     return null;
   }

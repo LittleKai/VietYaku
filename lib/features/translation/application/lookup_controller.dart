@@ -421,8 +421,6 @@ class LookupController extends Notifier<LookupResult?> {
     );
   }
 
-  void clearResult() => state = null;
-
   /// Tra lại từ đang hiển thị sau khi từ điển vừa đổi (mục AI/online vừa được
   /// ghi vào AiDict/OnlineDict/AiEntries/overlay VietPhrase, hoặc người dùng vừa
   /// sửa/xóa một mục), để ô Nghĩa đổi theo ngay thay vì bắt bấm lại đúng từ đó.

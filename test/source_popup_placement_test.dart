@@ -9,7 +9,6 @@ void main() {
       lineBottom: 42,
     );
 
-    expect(placement.isBelow, isTrue);
     expect(placement.top, 50);
     expect(placement.bottom, isNull);
   });
@@ -21,7 +20,6 @@ void main() {
       lineBottom: 472,
     );
 
-    expect(placement.isBelow, isFalse);
     expect(placement.top, isNull);
     expect(placement.bottom, 58);
   });

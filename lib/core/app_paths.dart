@@ -37,7 +37,10 @@ class AppPaths {
   /// đè lên cùng một file `.vydc`.
   String cacheFileFor(String sourcePath, {String variant = ''}) {
     final name = p.basenameWithoutExtension(sourcePath);
-    final dir = p.normalize(p.dirname(sourcePath)).replaceAll('\\', '/');
+    final dir = p
+        .normalize(p.dirname(sourcePath))
+        .replaceAll('\\', '/')
+        .toLowerCase();
     final dirHash = fnv1a64(Uint8List.fromList(dir.codeUnits))
         .toUnsigned(64)
         .toRadixString(16)
@@ -189,6 +192,4 @@ class SeedProgress {
   });
 
   double get fraction => fileCount == 0 ? 0 : fileIndex / fileCount;
-
-  bool get isDone => fileIndex >= fileCount && fileName.isEmpty;
 }

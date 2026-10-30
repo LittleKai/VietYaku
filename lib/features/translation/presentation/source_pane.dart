@@ -154,8 +154,6 @@ class SourcePopupPlacement {
   final double? top;
   final double? bottom;
   final double maxHeight;
-
-  bool get isBelow => top != null;
 }
 
 /// Chọn phía có nhiều chỗ trống hơn để popup không che dòng đang active.

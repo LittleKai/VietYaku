@@ -2,25 +2,24 @@
 ///
 /// Mã lưu trong file giữ ngắn gọn và tương thích dữ liệu QuickTranslator cũ.
 enum VietPhrasePartOfSpeech {
-  none('', 'Không phân loại', ''),
-  noun('n', 'Danh từ', 'DT'),
-  verb('v', 'Động từ', 'ĐT'),
-  adjective('adj', 'Tính từ', 'TT'),
-  adverb('adv', 'Trạng từ', 'TrT'),
-  pronoun('pron', 'Đại từ', 'ĐạiT'),
-  numeral('num', 'Số từ', 'ST'),
-  preposition('prep', 'Giới từ', 'GT'),
-  conjunction('conj', 'Liên từ', 'LT'),
-  particle('part', 'Trợ từ', 'TrợT'),
-  auxiliary('aux', 'Trợ động từ', 'TrĐT'),
-  interjection('int', 'Thán từ', 'ThánT'),
-  expression('exp', 'Cụm từ / thành ngữ', 'Cụm');
+  none('', 'Không phân loại'),
+  noun('n', 'Danh từ'),
+  verb('v', 'Động từ'),
+  adjective('adj', 'Tính từ'),
+  adverb('adv', 'Trạng từ'),
+  pronoun('pron', 'Đại từ'),
+  numeral('num', 'Số từ'),
+  preposition('prep', 'Giới từ'),
+  conjunction('conj', 'Liên từ'),
+  particle('part', 'Trợ từ'),
+  auxiliary('aux', 'Trợ động từ'),
+  interjection('int', 'Thán từ'),
+  expression('exp', 'Cụm từ / thành ngữ');
 
-  const VietPhrasePartOfSpeech(this.code, this.label, this.shortLabel);
+  const VietPhrasePartOfSpeech(this.code, this.label);
 
   final String code;
   final String label;
-  final String shortLabel;
 
   static VietPhrasePartOfSpeech? tryParseCode(String raw) {
     final code = raw.trim().toLowerCase();
@@ -169,69 +168,6 @@ String allVietPhraseMeaningsClean(String value) {
 String normalizeVietPhraseValue(String value) =>
     encodeVietPhraseValue(parseVietPhraseValue(value));
 
-/// Gộp chuỗi nghĩa phẳng [newMeaning] (VD từ Global Glossary) vào danh sách
-/// tầng nghĩa [existing] sao cho không làm mất phân tầng và nhãn từ loại.
-/// Nếu [newMeaning] tự mang marker phân tầng/từ loại thì dùng thẳng cấu trúc mới.
-List<VietPhraseMeaning> mergeFlatGlossaryIntoMeanings(
-  List<VietPhraseMeaning> existing,
-  String newMeaning,
-) {
-  final parsed = parseVietPhraseValue(newMeaning);
-  if (parsed.isEmpty || existing.isEmpty) return parsed;
-  final isFlatUnclassified =
-      parsed.length == 1 &&
-      parsed.first.partOfSpeech == VietPhrasePartOfSpeech.none;
-  if (!isFlatUnclassified) return parsed;
-
-  if (existing.length == 1) {
-    return [
-      VietPhraseMeaning(
-        text: parsed.first.text,
-        partOfSpeech: existing.first.partOfSpeech,
-      ),
-    ];
-  }
-
-  final flatAlts = parsed.first.alternatives;
-  if (flatAlts.length < existing.length) {
-    return [
-      for (var i = 0; i < flatAlts.length; i++)
-        VietPhraseMeaning(
-          text: flatAlts[i],
-          partOfSpeech: existing[i].partOfSpeech,
-        ),
-    ];
-  }
-
-  final result = <VietPhraseMeaning>[];
-  var cursor = 0;
-  for (var i = 0; i < existing.length; i++) {
-    final remainingTiers = existing.length - 1 - i;
-    if (remainingTiers == 0) {
-      result.add(
-        VietPhraseMeaning(
-          text: flatAlts.sublist(cursor).join('/'),
-          partOfSpeech: existing[i].partOfSpeech,
-        ),
-      );
-    } else {
-      final desired = existing[i].alternatives.isEmpty
-          ? 1
-          : existing[i].alternatives.length;
-      final maxTake = flatAlts.length - cursor - remainingTiers;
-      final take = desired.clamp(1, maxTake);
-      result.add(
-        VietPhraseMeaning(
-          text: flatAlts.sublist(cursor, cursor + take).join('/'),
-          partOfSpeech: existing[i].partOfSpeech,
-        ),
-      );
-      cursor += take;
-    }
-  }
-  return result;
-}
-
 /// Chuyển đổi định dạng VietPhrase sang định dạng hiển thị / lưu của Lạc Việt (escaped `\n\t`).
 ///
 /// - Nếu có từ loại:
@@ -339,13 +275,3 @@ String circledNumber(int n) {
   return '($n)';
 }
 
-/// Chỉ số trên (superscript): 2 → ², 3 → ³, ...
-String superscriptNumber(int n) {
-  const digits = ['⁰', '¹', '²', '³', '⁴', '⁵', '⁶', '⁷', '⁸', '⁹'];
-  if (n < 0) return '$n';
-  if (n < 10) return digits[n];
-  return n.toString().split('').map((c) {
-    final d = int.tryParse(c);
-    return d != null ? digits[d] : c;
-  }).join();
-}

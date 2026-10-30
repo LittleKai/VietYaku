@@ -14,9 +14,9 @@ class AiSubEntry {
   static AiSubEntry? tryParse(Object? raw) {
     if (raw is! Map) return null;
     final word = (raw['word'] as String?)?.trim();
-    final meaning = (raw['meaning'] as String?)?.trim();
+    final meaning = _singleLineMeaning(raw['meaning'] as String?);
     if (word == null || word.isEmpty) return null;
-    if (meaning == null || meaning.isEmpty) return null;
+    if (meaning.isEmpty) return null;
     return AiSubEntry(word, meaning);
   }
 
@@ -137,8 +137,8 @@ class AiLookupResult {
     }
     if (decoded is! Map) return null;
 
-    final meaning = (decoded['meaning'] as String?)?.trim();
-    if (meaning == null || meaning.isEmpty) return null;
+    final meaning = _singleLineMeaning(decoded['meaning'] as String?);
+    if (meaning.isEmpty) return null;
 
     final parts = <AiPart>[];
     if (decoded['parts'] case final List rawParts) {
@@ -165,6 +165,18 @@ class AiLookupResult {
       subEntries: subEntries,
     );
   }
+}
+
+/// Chuẩn hoá nghĩa AI về một dòng: file từ điển là `key=value` theo dòng nên
+/// xuống dòng thô trong JSON sẽ làm vỡ cấu trúc file khi ghi vào
+/// `AiEntries_<mode>.txt` hoặc `VietPhrase_<mode>.txt`.
+String _singleLineMeaning(String? raw) {
+  if (raw == null) return '';
+  return raw
+      .split(RegExp(r'\r?\n'))
+      .map((line) => line.trim())
+      .where((line) => line.isNotEmpty)
+      .join('/');
 }
 
 /// Body của một mục AI đã lưu → Markdown để hiển thị.

@@ -46,9 +46,10 @@ class AppTheme {
 
     // Scale cỡ chữ giao diện: chỉ áp lên text lấy từ theme (chrome), không đụng
     // các ô dịch (chúng đặt fontSize tuyệt đối, độc lập textTheme).
-    final TextTheme text = fontScale == 1.0
-        ? _textTheme(base.textTheme)
-        : _textTheme(base.textTheme).apply(fontSizeFactor: fontScale);
+    // ThemeData chưa ghép geometry (fontSize); phải localize trước khi scale.
+    final TextTheme text = _textTheme(
+      ThemeData.localize(base, base.typography.englishLike).textTheme,
+    ).apply(fontSizeFactor: fontScale);
 
     // Bo góc thống nhất theo cấp: nút/ô nhập < menu/card < dialog.
     final OutlinedBorder buttonShape = RoundedRectangleBorder(

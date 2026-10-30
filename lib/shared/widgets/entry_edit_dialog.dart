@@ -151,18 +151,6 @@ Future<void> showEntryEditDialog(
           ? (fieldContext) async {
               final meaning = holder.meaningText.trim();
               final source = holder.keyText.trim();
-              if (source.isEmpty || meaning.isEmpty) {
-                ScaffoldMessenger.of(fieldContext)
-                  ..hideCurrentSnackBar()
-                  ..showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Cần có từ nguồn và nghĩa để thêm vào Global Glossary.',
-                      ),
-                    ),
-                  );
-                return;
-              }
               final updatedTerm = await showGlossaryUpdateDialog(
                 fieldContext,
                 ref,
@@ -172,10 +160,6 @@ Future<void> showEntryEditDialog(
               );
               if (updatedTerm != null) {
                 holder.updateGlossaryTerm?.call(updatedTerm);
-                final initialTarget = glossaryTargetOf(meaning);
-                if (updatedTerm.target.trim() != initialTarget.trim()) {
-                  holder.setMeaning?.call(updatedTerm.target);
-                }
               }
             }
           : null,
@@ -183,18 +167,6 @@ Future<void> showEntryEditDialog(
           ? (fieldContext) async {
               final meaning = holder.meaningText.trim();
               final source = holder.keyText.trim();
-              if (source.isEmpty || meaning.isEmpty) {
-                ScaffoldMessenger.of(fieldContext)
-                  ..hideCurrentSnackBar()
-                  ..showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Cần có từ nguồn và nghĩa để cập nhật Global Glossary.',
-                      ),
-                    ),
-                  );
-                return;
-              }
               final currentTarget = glossaryTargetOf(meaning);
               final term = holder.glossaryTermNotifier.value;
               if (term != null && term.target.trim() == currentTarget.trim()) {
@@ -218,10 +190,6 @@ Future<void> showEntryEditDialog(
               );
               if (updatedTerm != null) {
                 holder.updateGlossaryTerm?.call(updatedTerm);
-                final initialTarget = glossaryTargetOf(meaning);
-                if (updatedTerm.target.trim() != initialTarget.trim()) {
-                  holder.setMeaning?.call(updatedTerm.target);
-                }
               }
             }
           : null,
@@ -390,6 +358,7 @@ Future<void> showEntryEditDialog(
   final meaning = saved == 'save' ? holder.meaningText.trim() : '';
   final autoUpdateGlossary = holder.autoUpdateGlossaryNotifier.value;
   final notifyOnGlossaryUpdate = holder.notifyOnGlossaryUpdateNotifier.value;
+  final glossarySavedAtMeaning = holder.glossarySavedAtMeaning;
   holder.disposeAfterRouteAnimation();
   if (saved != 'save') return;
   if (key.isEmpty || meaning.isEmpty) return;
@@ -409,7 +378,11 @@ Future<void> showEntryEditDialog(
 
   var glossaryAutoUpdated = false;
   String? glossaryNewTarget;
-  if (canUpdateGlossary && autoUpdateGlossary) {
+  if (canUpdateGlossary &&
+      autoUpdateGlossary &&
+      (glossarySavedAtMeaning == null ||
+          (glossarySavedAtMeaning.isNotEmpty &&
+              glossarySavedAtMeaning != meaning))) {
     final term = await glossaryService.find(mode, key);
     if (term != null) {
       final target = glossaryTargetOf(meaning);
@@ -599,18 +572,6 @@ Future<void> showSharedEntryEditDialog(
           ? (fieldContext) async {
               final meaning = holder.meaningText.trim();
               final source = holder.keyText.trim();
-              if (source.isEmpty || meaning.isEmpty) {
-                ScaffoldMessenger.of(fieldContext)
-                  ..hideCurrentSnackBar()
-                  ..showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Cần có từ nguồn và nghĩa để thêm vào Global Glossary.',
-                      ),
-                    ),
-                  );
-                return;
-              }
               final updatedTerm = await showGlossaryUpdateDialog(
                 fieldContext,
                 ref,
@@ -620,10 +581,6 @@ Future<void> showSharedEntryEditDialog(
               );
               if (updatedTerm != null) {
                 holder.updateGlossaryTerm?.call(updatedTerm);
-                final initialTarget = glossaryTargetOf(meaning);
-                if (updatedTerm.target.trim() != initialTarget.trim()) {
-                  holder.setMeaning?.call(updatedTerm.target);
-                }
               }
             }
           : null,
@@ -631,18 +588,6 @@ Future<void> showSharedEntryEditDialog(
           ? (fieldContext) async {
               final meaning = holder.meaningText.trim();
               final source = holder.keyText.trim();
-              if (source.isEmpty || meaning.isEmpty) {
-                ScaffoldMessenger.of(fieldContext)
-                  ..hideCurrentSnackBar()
-                  ..showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Cần có từ nguồn và nghĩa để cập nhật Global Glossary.',
-                      ),
-                    ),
-                  );
-                return;
-              }
               final currentTarget = glossaryTargetOf(meaning);
               final term = holder.glossaryTermNotifier.value;
               if (term != null && term.target.trim() == currentTarget.trim()) {
@@ -666,10 +611,6 @@ Future<void> showSharedEntryEditDialog(
               );
               if (updatedTerm != null) {
                 holder.updateGlossaryTerm?.call(updatedTerm);
-                final initialTarget = glossaryTargetOf(meaning);
-                if (updatedTerm.target.trim() != initialTarget.trim()) {
-                  holder.setMeaning?.call(updatedTerm.target);
-                }
               }
             }
           : null,
@@ -816,6 +757,7 @@ Future<void> showSharedEntryEditDialog(
   final meaning = saved == 'save' ? holder.meaningText.trim() : '';
   final autoUpdateGlossary = holder.autoUpdateGlossaryNotifier.value;
   final notifyOnGlossaryUpdate = holder.notifyOnGlossaryUpdateNotifier.value;
+  final glossarySavedAtMeaning = holder.glossarySavedAtMeaning;
   holder.disposeAfterRouteAnimation();
   if (saved != 'save') return;
   if (key.isEmpty || meaning.isEmpty) return;
@@ -834,11 +776,16 @@ Future<void> showSharedEntryEditDialog(
     );
   } catch (_) {
     // Controller giữ thông báo lỗi đã ánh xạ cho UI.
+    return;
   }
 
   var glossaryAutoUpdated = false;
   String? glossaryNewTarget;
-  if (canUpdateGlossary && autoUpdateGlossary) {
+  if (canUpdateGlossary &&
+      autoUpdateGlossary &&
+      (glossarySavedAtMeaning == null ||
+          (glossarySavedAtMeaning.isNotEmpty &&
+              glossarySavedAtMeaning != meaning))) {
     final term = await glossaryService.find(mode, key);
     if (term != null) {
       final target = glossaryTargetOf(meaning);
@@ -1010,26 +957,18 @@ Future<DeleteScope?> _showDeleteConfirmationDialog({
 class _EntryFieldControllers {
   String keyText = '';
   String meaningText = '';
+  String? glossarySavedAtMeaning;
   final ValueNotifier<bool> canSave = ValueNotifier(false);
   final ValueNotifier<bool> hasChanges = ValueNotifier(false);
   final ValueNotifier<GlossaryTerm?> glossaryTermNotifier = ValueNotifier(null);
-  final ValueNotifier<String> meaningNotifier = ValueNotifier('');
   final ValueNotifier<String> keyNotifier = ValueNotifier('');
   final ValueNotifier<bool> autoUpdateGlossaryNotifier = ValueNotifier(true);
   final ValueNotifier<bool> notifyOnGlossaryUpdateNotifier = ValueNotifier(
     true,
   );
 
-  /// Đọc lại mục glossary của key đang gõ. `_EntryFields` gán trong initState;
-  /// nút "Thêm/Ghi đè Glossary" (nằm ngoài widget, ở hàng action của dialog)
-  /// gọi sau khi ghi file để thẻ trạng thái + nhãn nút cập nhật ngay.
-  VoidCallback? refreshGlossary;
-
   /// Cập nhật trực tiếp mục glossary trong `_EntryFields` ngay lập tức (0ms).
   void Function(GlossaryTerm? term)? updateGlossaryTerm;
-
-  /// Cập nhật trực tiếp nghĩa trong ô nhập của dialog.
-  void Function(String newMeaning)? setMeaning;
 
   void disposeAfterRouteAnimation() {
     // showDialog hoàn tất Future trước khi reverse animation unmount toàn bộ
@@ -1039,7 +978,6 @@ class _EntryFieldControllers {
       canSave.dispose();
       hasChanges.dispose();
       glossaryTermNotifier.dispose();
-      meaningNotifier.dispose();
       keyNotifier.dispose();
       autoUpdateGlossaryNotifier.dispose();
       notifyOnGlossaryUpdateNotifier.dispose();
@@ -1170,10 +1108,7 @@ class _EntryFieldsState extends State<_EntryFields> {
       )..addListener(_sync);
     }
     _meaningSourceKey = widget.initialKey.trim();
-    widget.holder.refreshGlossary = () =>
-        _checkGlossaryIfNeeded(_keyController.text.trim(), force: true);
     widget.holder.updateGlossaryTerm = _updateGlossaryTermDirectly;
-    widget.holder.setMeaning = _setMeaningDirectly;
     // Khởi tạo trước _sync() để tránh LateInitializationError khi _sync()
     // truy cập các field này. Giá trị _initialEncodedMeaning sẽ được ghi đè
     // bằng giá trị đúng sau _sync().
@@ -1266,7 +1201,6 @@ class _EntryFieldsState extends State<_EntryFields> {
           return text.isEmpty || text.contains('\n') || text.contains('\r');
         });
     widget.holder.meaningText = meaning;
-    widget.holder.meaningNotifier.value = meaning;
     final key = _keyController.text.trim();
     _hanViet = key.isEmpty ? null : widget.hanVietOf?.call(key);
     _reading = key.isEmpty ? null : widget.readingOf?.call(key);
@@ -1326,45 +1260,14 @@ class _EntryFieldsState extends State<_EntryFields> {
       });
     }
     widget.holder.glossaryTermNotifier.value = term;
+    widget.holder.glossarySavedAtMeaning =
+        term == null ? null : widget.holder.meaningText.trim();
   }
 
-  void _setMeaningDirectly(String newMeaning) {
-    if (widget.vietPhraseFormat) {
-      final old = List.of(_meaningRows);
-      final existingMeanings = [
-        for (final row in old)
-          VietPhraseMeaning(
-            text: row.controller.text,
-            partOfSpeech: row.partOfSpeech,
-          ),
-      ];
-      final merged = mergeFlatGlossaryIntoMeanings(
-        existingMeanings,
-        newMeaning,
-      );
-      final newRows = merged.isEmpty
-          ? [_newMeaningRow(const VietPhraseMeaning(text: ''))]
-          : merged.map(_newMeaningRow).toList();
-      _meaningRows
-        ..clear()
-        ..addAll(newRows);
-      _retireRows(old);
-    } else {
-      _meaningController?.value = TextEditingValue(
-        text: widget.lacVietFormat ? unescapeLacViet(newMeaning) : newMeaning,
-      );
-    }
-    _sync();
-  }
-
-  Future<void> _checkGlossaryIfNeeded(String key, {bool force = false}) async {
+  Future<void> _checkGlossaryIfNeeded(String key) async {
     final dir = widget.glossaryDir;
-    if (dir == null) return;
-    if (!force &&
-        key == _lastGlossaryKey &&
-        (_glossaryTerm != null || _isCheckingGlossary)) {
-      return;
-    }
+    if (dir == null || key == _lastGlossaryKey) return;
+    widget.holder.glossarySavedAtMeaning = null;
     _lastGlossaryKey = key;
     final hasGlossary = _hasGlossaryFile ||
         (dir.trim().isNotEmpty &&
@@ -1385,7 +1288,7 @@ class _EntryFieldsState extends State<_EntryFields> {
     final mode = widget.mode;
 
     try {
-      final term = await service.find(mode, key, forceReload: force);
+      final term = await service.find(mode, key);
       if (!mounted || seq != _glossaryCheckSeq || _keyController.text.trim() != key) return;
       setState(() {
         _glossaryTerm = term;
@@ -1394,6 +1297,7 @@ class _EntryFieldsState extends State<_EntryFields> {
       widget.holder.glossaryTermNotifier.value = term;
     } catch (_) {
       if (!mounted || seq != _glossaryCheckSeq) return;
+      _lastGlossaryKey = null;
       setState(() {
         _glossaryTerm = null;
         _isCheckingGlossary = false;
@@ -1404,9 +1308,7 @@ class _EntryFieldsState extends State<_EntryFields> {
 
   @override
   void dispose() {
-    widget.holder.refreshGlossary = null;
     widget.holder.updateGlossaryTerm = null;
-    widget.holder.setMeaning = null;
     _keyController.dispose();
     _meaningController?.dispose();
     _disposeRetiredRows();

@@ -549,6 +549,15 @@ void main() {
       expect(result?.meaning, equals('thử nghiệm'));
     });
 
+    test('Chuẩn hoá xuống dòng trong meaning và sub_entries về một dòng', () {
+      final result = AiLookupResult.tryParse(
+        'テスト',
+        '{"meaning":"nghĩa 1\\n  nghĩa 2\\r\\n","sub_entries":[{"word":"試す","meaning":"thử\\nkiểm tra"}]}',
+      );
+      expect(result?.meaning, equals('nghĩa 1/nghĩa 2'));
+      expect(result?.subEntries.single.meaning, equals('thử/kiểm tra'));
+    });
+
     test('Drops a sub_entry that repeats the looked-up word', () {
       final result = AiLookupResult.tryParse(
         'チャラ',

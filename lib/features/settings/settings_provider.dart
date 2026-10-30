@@ -203,7 +203,6 @@ class AppSettings {
   final ThemeMode themeMode;
 
   final String syncServerUrl;
-  final bool isSyncServerUrlOverridden;
 
   /// Tỷ lệ bố cục 4 ô (lưu để khôi phục khi mở lại):
   /// - [columnsRatio]: bề rộng cột trái / tổng.
@@ -288,7 +287,6 @@ class AppSettings {
     this.uiFontFamily = '',
     this.themeMode = ThemeMode.system,
     this.syncServerUrl = defaultSyncServerUrl,
-    this.isSyncServerUrlOverridden = false,
     this.columnsRatio = 0.42,
     this.leftSplitRatio = 0.6,
     this.rightSplitRatio = 0.6,
@@ -337,9 +335,6 @@ class AppSettings {
   MeaningPanelLayout meaningPanelLayoutFor(TranslationMode mode) =>
       mode == TranslationMode.japanese ? meaningPanelJa : meaningPanelZh;
 
-  double get ttsSpeechRate => ttsSpeechRateJa;
-  List<LookupDictionaryType> get popupDictionaryTypes => popupDictionaryTypesJa;
-
   PaneFont paneFontFor(PaneId id) => paneFonts[id] ?? const PaneFont();
 
   /// Style chữ áp cho nội dung của ô [id].
@@ -367,7 +362,6 @@ class AppSettings {
     String? uiFontFamily,
     ThemeMode? themeMode,
     String? syncServerUrl,
-    bool? isSyncServerUrlOverridden,
     double? columnsRatio,
     double? leftSplitRatio,
     double? rightSplitRatio,
@@ -413,8 +407,6 @@ class AppSettings {
     uiFontFamily: uiFontFamily ?? this.uiFontFamily,
     themeMode: themeMode ?? this.themeMode,
     syncServerUrl: syncServerUrl ?? this.syncServerUrl,
-    isSyncServerUrlOverridden:
-        isSyncServerUrlOverridden ?? this.isSyncServerUrlOverridden,
     columnsRatio: columnsRatio ?? this.columnsRatio,
     leftSplitRatio: leftSplitRatio ?? this.leftSplitRatio,
     rightSplitRatio: rightSplitRatio ?? this.rightSplitRatio,
@@ -584,7 +576,6 @@ class SettingsNotifier extends Notifier<AppSettings> {
       syncServerUrl: isOverridden
           ? envUrl
           : (prefs.getString(_syncServerUrlKey) ?? defaultSyncServerUrl),
-      isSyncServerUrlOverridden: isOverridden,
       columnsRatio: prefs.getDouble(_columnsRatioKey) ?? 0.42,
       leftSplitRatio: prefs.getDouble(_leftSplitRatioKey) ?? 0.6,
       rightSplitRatio: prefs.getDouble(_rightSplitRatioKey) ?? 0.6,
@@ -792,21 +783,6 @@ class SettingsNotifier extends Notifier<AppSettings> {
     }
   }
 
-  Future<void> setDictPath(
-    TranslationMode mode,
-    DictType type,
-    String path,
-  ) async {
-    final prefs = ref.read(sharedPreferencesProvider);
-    await prefs.setString(_pathKey(mode, type), path);
-    state = state.copyWith(
-      dictPaths: {
-        ...state.dictPaths,
-        mode: {...state.dictPaths[mode]!, type: path},
-      },
-    );
-  }
-
   Future<void> setDefaultMode(TranslationMode mode) async {
     final prefs = ref.read(sharedPreferencesProvider);
     await prefs.setString(_modeKey, mode.name);
@@ -911,13 +887,6 @@ class SettingsNotifier extends Notifier<AppSettings> {
     final prefs = ref.read(sharedPreferencesProvider);
     await prefs.setString(_themeModeKey, mode.name);
     state = state.copyWith(themeMode: mode);
-  }
-
-  Future<void> setSyncServerUrl(String value) async {
-    final normalized = value.trim().replaceFirst(RegExp(r'/+$'), '');
-    final prefs = ref.read(sharedPreferencesProvider);
-    await prefs.setString(_syncServerUrlKey, normalized);
-    state = state.copyWith(syncServerUrl: normalized);
   }
 
   Future<void> setAutoCheckUpdates(bool value) async {

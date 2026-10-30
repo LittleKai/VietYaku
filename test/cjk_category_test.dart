@@ -53,31 +53,6 @@ void main() {
     });
   });
 
-  group('categoryRunsOf', () {
-    test('tách run cùng category, biên đúng theo code unit', () {
-      final runs = categoryRunsOf('スーパー30台だ');
-      expect(runs, [
-        (start: 0, end: 4, category: CjkCharCategory.katakana),
-        (start: 4, end: 6, category: CjkCharCategory.numeric),
-        (start: 6, end: 7, category: CjkCharCategory.kanji),
-        (start: 7, end: 8, category: CjkCharCategory.hiragana),
-      ]);
-    });
-
-    test('surrogate pair không bị cắt đôi', () {
-      // 𠮷 (U+20BB7, 2 code unit) ngoài các dải đã khai → other.
-      final runs = categoryRunsOf('𠮷あ');
-      expect(runs, [
-        (start: 0, end: 2, category: CjkCharCategory.other),
-        (start: 2, end: 3, category: CjkCharCategory.hiragana),
-      ]);
-    });
-
-    test('chuỗi rỗng → không có run', () {
-      expect(categoryRunsOf(''), isEmpty);
-    });
-  });
-
   group('isWordCodePoint & hasWordChar', () {
     test('chữ số ASCII và toàn-hình là word character', () {
       expect(hasWordChar('3'), isTrue);

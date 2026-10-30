@@ -71,7 +71,6 @@ void main() {
         bytesCopied: 1024,
       );
       expect(progress.fraction, closeTo(0.25, 1e-9));
-      expect(progress.isDone, isFalse);
     });
 
     test('fileCount 0 không chia cho 0', () {
@@ -82,17 +81,6 @@ void main() {
         bytesCopied: 0,
       );
       expect(progress.fraction, 0);
-    });
-
-    test('isDone khi đã hết file và không còn tên file đang chép', () {
-      const progress = SeedProgress(
-        fileIndex: 12,
-        fileCount: 12,
-        fileName: '',
-        bytesCopied: 99,
-      );
-      expect(progress.isDone, isTrue);
-      expect(progress.fraction, 1);
     });
   });
 }

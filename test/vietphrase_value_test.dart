@@ -169,15 +169,11 @@ void main() {
     expect(token.displayWithPartOfSpeech, '');
   });
 
-  test('MultiMeaningDisplayMode helper: circledNumber & superscriptNumber', () {
+  test('MultiMeaningDisplayMode helper: circledNumber', () {
     expect(circledNumber(1), '①');
     expect(circledNumber(2), '②');
     expect(circledNumber(10), '⑩');
     expect(circledNumber(21), '(21)');
-
-    expect(superscriptNumber(2), '²');
-    expect(superscriptNumber(3), '³');
-    expect(superscriptNumber(12), '¹²');
   });
 
   test('allVietPhraseMeaningsClean gom đủ các nghĩa sạch từ các tầng', () {
@@ -272,20 +268,5 @@ void main() {
     });
   });
 
-  group('mergeFlatGlossaryIntoMeanings', () {
-    test('giữ nguyên các tầng nghĩa và từ loại phía sau khi sửa nghĩa đầu phẳng', () {
-      final existing = parseVietPhraseValue(
-        '(n)/ký ức/hồi ức/(2)/(v)/nhớ lại',
-      );
-      final merged = mergeFlatGlossaryIntoMeanings(
-        existing,
-        'hoài niệm/hồi ức/nhớ lại',
-      );
-      expect(
-        encodeVietPhraseValue(merged),
-        '(n)/hoài niệm/hồi ức/(2)/(v)/nhớ lại',
-      );
-    });
-  });
 }
 

@@ -8,6 +8,10 @@ File này là **bộ định tuyến**: nói *đọc gì* và *luật nào khôn
 tiết nằm ở file nó trỏ tới. Đây là file duy nhất nạp mỗi session nên **thêm vào
 đây là lựa chọn cuối cùng, không phải mặc định.**
 
+Text files are UTF-8 without BOM. In PowerShell read them with
+`Get-Content -Encoding UTF8`; plain `Get-Content` under `-NoProfile` garbles
+Vietnamese, and writing that text back corrupts the file.
+
 ---
 
 ## 🎯 ĐẦU RA LÀ GÌ

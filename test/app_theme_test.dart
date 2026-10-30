@@ -21,6 +21,21 @@ void main() {
     final String mode = entry.key;
     final ColorScheme s = entry.value.colorScheme;
 
+    test('bug_32 AppTheme ($mode): tăng cỡ chữ giao diện đến 1.4', () {
+      final scaled = mode == 'sáng'
+          ? AppTheme.light(fontScale: 1.4)
+          : AppTheme.dark(fontScale: 1.4);
+      final normal = ThemeData.localize(
+        entry.value,
+        entry.value.typography.englishLike,
+      );
+      expect(
+        scaled.textTheme.titleLarge!.fontSize,
+        closeTo(normal.textTheme.titleLarge!.fontSize! * 1.4, 0.001),
+      );
+      expect(scaled.textTheme.bodySmall!.fontSize, closeTo(12.5 * 1.4, 0.001));
+    });
+
     group('AppTheme ($mode)', () {
       test('lớp nổi sáng hơn canvas', () {
         expect(

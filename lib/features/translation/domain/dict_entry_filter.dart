@@ -8,7 +8,7 @@ const maxWordLikeRunes = 10;
 const _sentenceMarks = {
   '。', '．', '.', '、', '，', ',', '！', '!', '？', '?', '…', '；', ';', '：', ':',
   '「', '」', '『', '』', '（', '）', '(', ')', '【', '】', '《', '》', '〈', '〉',
-  '～', '~', '—', '–', '"', "'", '“', '”', '‘', '’',
+  '～', '~', '—', '–', '"', "'", '“', '”', '‘', '’', '=',
 };
 
 /// Chuỗi [key] có phải một TỪ hoặc CỤM TỪ (danh/động/tính/trạng từ…) đủ tư cách
@@ -33,8 +33,8 @@ bool isWordLikeEntry(String key) {
     }
   }
 
-  for (final ch in trimmed.characters) {
-    if (_sentenceMarks.contains(ch)) return false;
+  for (final rune in trimmed.runes) {
+    if (_sentenceMarks.contains(String.fromCharCode(rune))) return false;
   }
 
   return trimmed.runes.length <= maxWordLikeRunes;
@@ -106,13 +106,4 @@ String headwordOf(String body) {
 bool meaningMatchesWord(String word, String body) {
   final head = headwordOf(body);
   return head.isNotEmpty && head == word.trim();
-}
-
-extension _Characters on String {
-  /// Duyệt theo rune (surrogate pair tính là một ký tự).
-  Iterable<String> get characters sync* {
-    for (final rune in runes) {
-      yield String.fromCharCode(rune);
-    }
-  }
 }

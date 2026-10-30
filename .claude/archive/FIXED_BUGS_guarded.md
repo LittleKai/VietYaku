@@ -178,3 +178,20 @@
 - **Fix:** Mọi vị trí đều được tra; `_startableMatchAt` lọc kết quả — match bắt đầu tại ký tự không-CJK chỉ được nhận khi **bản thân match chứa ít nhất một ký tự CJK**. Chỉ cần xét match dài nhất: match ngắn hơn tại cùng offset là prefix của nó.
 - **Do Not Repeat:** Đừng dùng "ký tự đầu có phải CJK không" làm điều kiện **khởi động** tra từ điển. Key từ điển CJK hợp lệ vẫn có thể mở đầu bằng latin toàn-hình, ngoặc `【『(`, hay chữ số. Nếu cần chặn văn bản latin bị dịch bậy (`SF`, `cn`, `PTSD`, `419` đều là key thật), lọc trên **nội dung match**, không lọc trên ký tự đầu. Chi phí: latin thuần chậm hơn (18KB: 0,3ms → 22ms/lần), CJK không đổi.
 - **Related Files:** `lib/features/translation/domain/translation_engine.dart`, `test/engine_test.dart`, `test/token_display_rules_test.dart`
+
+### Scale theme khi fontSize chưa được resolve (bug_32)
+
+*Đã có rào chắn: `app_theme.dart::_build` + `app_theme_test.dart::bug_32`. Giữ lại đây để biết vì sao hàm đó tồn tại — không làm theo hướng dẫn thủ công bên dưới nữa.*
+
+- **Triệu chứng:** cỡ chữ giao diện khác 1.0 làm debug crash; release chỉ đổi `bodySmall`, các kiểu chữ khác không đổi.
+- **Nguyên nhân:** `ThemeData.textTheme` chưa ghép geometry, nên `TextStyle.apply(fontSizeFactor:)` gặp `fontSize == null`.
+- **Rào chắn / Do Not Repeat:** `AppTheme._build` gọi `ThemeData.localize` trước khi scale; giữ test `bug_32` trong `test/app_theme_test.dart` để chặn tái phát. UI hiện dùng geometry `englishLike`; khi thêm locale CJK phải chọn geometry theo locale.
+
+### 2026-10-26 - Lưu Glossary ghi đè nghĩa đang nhập trong dialog cha (hoặc bị Lưu từ ghi đè ngược) (bug_31)
+
+*Đã có rào chắn: `entry_edit_dialog.dart::_updateGlossaryTermDirectly` + `entry_edit_dialog.dart::glossarySavedAtMeaning` + `entry_edit_dialog_test.dart::bug_31`. Giữ lại đây để biết vì sao hàm đó tồn tại — không làm theo hướng dẫn thủ công bên dưới nữa.*
+
+- **Triệu chứng:** Sửa target ở dialog Cập nhật Global Glossary rồi lưu làm nghĩa nháp ở VietPhrase/UserDict bị thay thế (mất tầng nghĩa/từ loại); hoặc khi vừa thêm/sửa target riêng trong Glossary rồi bấm "Lưu từ" ở dialog cha thì `autoUpdateOnSave` lại ghi đè target phẳng của nghĩa cha đè lên target riêng vừa lưu.
+- **Nguyên nhân:** Các callback thêm/cập nhật từng gọi `holder.setMeaning` bằng target phẳng của Glossary; và khi bỏ `setMeaning`, nhánh `autoUpdateGlossary` lúc bấm "Lưu từ" không biết người dùng vừa lưu Glossary thủ công cho chính nghĩa cha đó trong cùng phiên dialog.
+- **Sửa:** Bỏ đường ghi ngược `setMeaning`; `_updateGlossaryTermDirectly` ghi nhận `glossarySavedAtMeaning` để bấm "Lưu từ" ngay sau đó không tự ghi đè lại Glossary nếu nghĩa cha không đổi thêm.
+- **Related Files:** `lib/shared/widgets/entry_edit_dialog.dart`, `test/entry_edit_dialog_test.dart`

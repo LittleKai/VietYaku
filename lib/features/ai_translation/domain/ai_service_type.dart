@@ -75,16 +75,6 @@ enum AiServiceType {
     ],
   };
 
-  /// URL trang tài liệu/hỗ trợ của dịch vụ
-  String get helpUrl => switch (this) {
-    AiServiceType.geminiCli => 'https://ai.google.dev/models/gemini',
-    AiServiceType.geminiApi => 'https://ai.google.dev/models/gemini',
-    AiServiceType.chatGptApi => 'https://platform.openai.com/docs/models',
-    AiServiceType.claudeApi =>
-      'https://platform.claude.com/docs/en/about-claude/models/overview',
-    AiServiceType.grokApi => 'https://docs.x.ai/docs/models',
-  };
-
   /// Proxy URL mặc định nếu là dịch vụ proxy (Gemini CLI)
   String get defaultProxyUrl => switch (this) {
     AiServiceType.geminiCli => 'https://gcli.ggchan.dev',
