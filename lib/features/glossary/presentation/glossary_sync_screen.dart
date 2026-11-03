@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -15,7 +17,12 @@ const _pageSizes = [25, 50, 100, 200];
 /// Màn đồng bộ hàng loạt giữa Global Glossary (AI_Translation_Bridge) và
 /// VietPhrase, hai chiều trên hai tab. Chỉ mở được khi đã đăng nhập quản trị.
 class GlossarySyncScreen extends ConsumerWidget {
-  const GlossarySyncScreen({super.key});
+  const GlossarySyncScreen({
+    super.key,
+    this.isStandaloneWindow = false,
+  });
+
+  final bool isStandaloneWindow;
 
   static Route<void> route() =>
       MaterialPageRoute(builder: (_) => const GlossarySyncScreen());
@@ -27,46 +34,54 @@ class GlossarySyncScreen extends ConsumerWidget {
     );
     final lang = GlossaryService.langFor(mode);
 
-    return DefaultTabController(
-      length: GlossarySyncDirection.values.length,
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text('Đồng bộ Glossary ↔ VietPhrase ($lang)'),
-          actions: [
-            Padding(
-              padding: const EdgeInsets.only(right: 16),
-              child: SegmentedButton<TranslationMode>(
-                segments: const [
-                  ButtonSegment(
-                    value: TranslationMode.japanese,
-                    label: Text('Tiếng Nhật (JP)'),
-                  ),
-                  ButtonSegment(
-                    value: TranslationMode.chinese,
-                    label: Text('Tiếng Trung (CN)'),
-                  ),
-                ],
-                selected: {mode},
-                onSelectionChanged: (value) {
-                  ref
-                      .read(translationControllerProvider.notifier)
-                      .setMode(value.first);
-                },
+    return PopScope(
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop && !isStandaloneWindow) {
+          flushPendingGlossarySyncReload(ref);
+        }
+      },
+      child: DefaultTabController(
+        length: GlossarySyncDirection.values.length,
+        child: Scaffold(
+          appBar: AppBar(
+            automaticallyImplyLeading: !isStandaloneWindow,
+            title: Text('Đồng bộ Glossary ↔ VietPhrase ($lang)'),
+            actions: [
+              Padding(
+                padding: const EdgeInsets.only(right: 16),
+                child: SegmentedButton<TranslationMode>(
+                  segments: const [
+                    ButtonSegment(
+                      value: TranslationMode.japanese,
+                      label: Text('Tiếng Nhật (JP)'),
+                    ),
+                    ButtonSegment(
+                      value: TranslationMode.chinese,
+                      label: Text('Tiếng Trung (CN)'),
+                    ),
+                  ],
+                  selected: {mode},
+                  onSelectionChanged: (value) {
+                    ref
+                        .read(translationControllerProvider.notifier)
+                        .setMode(value.first);
+                  },
+                ),
               ),
+            ],
+            bottom: TabBar(
+              tabs: [
+                for (final direction in GlossarySyncDirection.values)
+                  Tab(text: direction.label),
+              ],
             ),
-          ],
-          bottom: TabBar(
-            tabs: [
+          ),
+          body: TabBarView(
+            children: [
               for (final direction in GlossarySyncDirection.values)
-                Tab(text: direction.label),
+                _DirectionTab(direction: direction),
             ],
           ),
-        ),
-        body: TabBarView(
-          children: [
-            for (final direction in GlossarySyncDirection.values)
-              _DirectionTab(direction: direction),
-          ],
         ),
       ),
     );
@@ -85,6 +100,7 @@ class _DirectionTab extends ConsumerStatefulWidget {
 class _DirectionTabState extends ConsumerState<_DirectionTab>
     with AutomaticKeepAliveClientMixin {
   final _searchController = TextEditingController();
+  Timer? _searchDebounce;
 
   bool _createdByAiOnly = true;
   DuplicateFilter _duplicateFilter = DuplicateFilter.notDuplicated;
@@ -105,6 +121,7 @@ class _DirectionTabState extends ConsumerState<_DirectionTab>
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -182,7 +199,6 @@ class _DirectionTabState extends ConsumerState<_DirectionTab>
         }
         _cachedSource = null;
         _cachedResult = null;
-        _page = 0;
       });
       _showMessage(
         rows.length == 1
@@ -496,6 +512,8 @@ class _DirectionTabState extends ConsumerState<_DirectionTab>
 
     final rows = ref.watch(glossarySyncRowsProvider(widget.direction));
     return rows.when(
+      skipLoadingOnRefresh: true,
+      skipLoadingOnReload: true,
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, _) => _CenteredNote('Không đọc được dữ liệu.\n$error'),
       data: (all) {
@@ -583,10 +601,26 @@ class _DirectionTabState extends ConsumerState<_DirectionTab>
                 prefixIcon: Icon(Icons.search),
                 hintText: 'Tìm từ hoặc nghĩa',
               ),
-              onChanged: (value) => setState(() {
-                _search = value;
-                _page = 0;
-              }),
+              onChanged: (value) {
+                _searchDebounce?.cancel();
+                if (total <= 50000) {
+                  setState(() {
+                    _search = value;
+                    _page = 0;
+                  });
+                } else {
+                  _searchDebounce = Timer(
+                    const Duration(milliseconds: 100),
+                    () {
+                      if (!mounted) return;
+                      setState(() {
+                        _search = value;
+                        _page = 0;
+                      });
+                    },
+                  );
+                }
+              },
             ),
           ),
           Text('$shown / $total mục'),
@@ -924,7 +958,9 @@ class _ConfirmDeleteDialogContentState
         CheckboxListTile(
           value: _deleteFromGlossary,
           title: Text('Xóa khỏi Global Glossary (${widget.lang})'),
-          subtitle: const Text('Ghi trực tiếp vào file Global Glossary.json'),
+          subtitle: const Text(
+            'Ghi trực tiếp vào Global Glossary.json và chặn ATB tự lưu lại từ AI',
+          ),
           controlAffinity: ListTileControlAffinity.leading,
           onChanged: (v) => setState(() {
             _deleteFromGlossary = v ?? false;

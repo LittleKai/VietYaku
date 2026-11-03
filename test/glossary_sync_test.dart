@@ -1,11 +1,58 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:vietyaku/core/app_paths.dart';
+import 'package:vietyaku/features/clipboard/application/clipboard_reader_controller.dart';
+import 'package:vietyaku/features/dictionary/application/dictionaries_provider.dart';
+import 'package:vietyaku/features/dictionary/data/dictionary_repository.dart';
+import 'package:vietyaku/features/dictionary/data/user_dict_service.dart';
+import 'package:vietyaku/features/dictionary/domain/dict_type.dart';
+import 'package:vietyaku/features/dictionary/domain/phrase_dictionary.dart';
 import 'package:vietyaku/features/glossary/application/glossary_sync_controller.dart';
 import 'package:vietyaku/features/glossary/data/glossary_service.dart';
+import 'package:vietyaku/features/glossary/presentation/glossary_sync_screen.dart';
+import 'package:vietyaku/features/settings/settings_provider.dart';
 import 'package:vietyaku/features/translation/domain/translation_engine.dart';
+import 'package:vietyaku/features/translation/domain/vietphrase_value.dart';
+
+class _FakeDictionariesNotifier extends DictionariesNotifier {
+  _FakeDictionariesNotifier(this.dicts);
+  final LoadedDictionaries dicts;
+  int reloadCalls = 0;
+
+  @override
+  Future<LoadedDictionaries> build() async => dicts;
+
+  @override
+  Future<void> reload() async {
+    reloadCalls++;
+  }
+}
+
+LoadedDictionaries _fakeLoadedDictionaries(Map<String, String> vietPhraseMap) {
+  final empty = PhraseDictionary(DictType.userDict, const {});
+  return LoadedDictionaries(
+    userDict: empty,
+    names: empty,
+    vietPhrase: PhraseDictionary(DictType.vietPhrase, vietPhraseMap),
+    lacViet: empty,
+    chinesePhienAm: empty,
+    pronouns: empty,
+    babylon: empty,
+    thieuChuu: empty,
+    cedict: empty,
+    chinesePhienAmEnglish: empty,
+    jaVi: empty,
+    zhVi: empty,
+    stats: const {},
+  );
+}
 
 GlossarySyncRow _row(
   String source,
@@ -192,5 +239,210 @@ void main() {
       final after = await service.fileFor(TranslationMode.japanese).readAsString();
       expect(after, before);
     });
+
+    test('removeAll ghi từ đã xóa vào blocked_sources để ATB không lưu lại từ AI, và upsertAll gỡ chặn', () async {
+      await service.removeAll(TranslationMode.japanese, ['菜畑小鳥', '白鳥沙羅']);
+      expect(await service.readAll(TranslationMode.japanese), isEmpty);
+      expect(
+        await service.readBlockedSources(TranslationMode.japanese),
+        ['菜畑小鳥', '白鳥沙羅'],
+      );
+
+      // Khi người dùng chủ động thêm lại một từ thì gỡ từ đó khỏi blocked_sources
+      await service.upsertAll(TranslationMode.japanese, {'菜畑小鳥': 'Nabata Kotori'});
+      expect(
+        await service.readBlockedSources(TranslationMode.japanese),
+        ['白鳥沙羅'],
+      );
+    });
+  });
+
+  group('allVietPhraseMeaningsClean fast-path & complex', () {
+    test('trả nguyên chuỗi đã sạch (fast-path) và chuẩn hóa chuỗi có marker', () {
+      const cleanSingle = 'ký ức';
+      const cleanMulti = 'ký ức/hồi ức/nhớ lại';
+      expect(identical(allVietPhraseMeaningsClean(cleanSingle), cleanSingle), isTrue);
+      expect(identical(allVietPhraseMeaningsClean(cleanMulti), cleanMulti), isTrue);
+
+      expect(
+        allVietPhraseMeaningsClean('(n)/ký ức/hồi ức/(2)/(v)/nhớ lại'),
+        'ký ức/hồi ức/nhớ lại',
+      );
+      expect(
+        allVietPhraseMeaningsClean('  ký ức / hồi ức // nhớ lại '),
+        'ký ức/hồi ức/nhớ lại',
+      );
+      expect(allVietPhraseMeaningsClean('   '), '');
+    });
+  });
+
+  group('UserDictService.removeGeneratedEntries', () {
+    late Directory root;
+
+    setUp(() async {
+      root = await Directory.systemTemp.createTemp('vietyaku_bulk_remove');
+    });
+
+    tearDown(() async => root.delete(recursive: true));
+
+    test('xóa hàng loạt nhiều key trong một lượt ghi cho VietPhraseOverlay và AiEntries', () async {
+      final service = UserDictService(AppPaths(root));
+      await service.upsertVietPhraseOverlay(
+        TranslationMode.japanese,
+        {'A': '1', 'B': '2', 'C': '3'},
+      );
+      await service.upsertAiEntries(
+        TranslationMode.japanese,
+        {'B': 'hai', 'D': 'bốn'},
+      );
+
+      final removed = await service.removeGeneratedEntries(
+        TranslationMode.japanese,
+        ['A', 'B'],
+      );
+      expect(removed, isTrue);
+
+      final overlayContent = await service
+          .vietPhraseOverlayFile(TranslationMode.japanese)
+          .readAsString();
+      expect(overlayContent.trim(), contains('C=3'));
+      expect(overlayContent.trim(), isNot(contains('A=1')));
+
+      final aiEntriesContent = await service
+          .aiEntriesFile(TranslationMode.japanese)
+          .readAsString();
+      expect(aiEntriesContent.trim(), contains('D=bốn'));
+      expect(aiEntriesContent.trim(), isNot(contains('B=hai')));
+    });
+  });
+
+  group('WindowsClipboardBridge multi-window channel', () {
+    const channel = MethodChannel('vietyaku/windows_bridge');
+
+    tearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    });
+
+    testWidgets('gửi openGlossarySyncWindow và notify giữa 2 cửa sổ', (tester) async {
+      final calls = <MethodCall>[];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            calls.add(call);
+            if (call.method == 'openGlossarySyncWindow') return true;
+            return true;
+          });
+
+      final bridge = WindowsClipboardBridge();
+      final opened = await bridge.openGlossarySyncWindow(mode: 'japanese');
+      await bridge.notifyGlossaryWindow({'type': 'vietPhraseChanged'});
+      await bridge.notifyMainWindow({'type': 'glossaryWindowChanged'});
+      await bridge.closeGlossarySyncWindow();
+
+      if (Platform.isWindows) {
+        expect(opened, isTrue);
+        expect(
+          calls.map((c) => c.method),
+          [
+            'openGlossarySyncWindow',
+            'notifyGlossaryWindow',
+            'notifyMainWindow',
+            'closeGlossarySyncWindow',
+          ],
+        );
+      }
+    });
+  });
+
+  group('GlossarySyncScreen standalone & incremental sync index', () {
+    late Directory tempRoot;
+    late Directory glossaryRoot;
+
+    setUp(() async {
+      GlossaryService.clearCache();
+      invalidateVietPhraseSyncIndex();
+      tempRoot = await Directory.systemTemp.createTemp('vietyaku_sync_ui');
+      glossaryRoot = Directory(p.join(tempRoot.path, 'glossary'));
+      final jpDir = Directory(p.join(glossaryRoot.path, 'JP'));
+      await jpDir.create(recursive: true);
+      await File(
+        p.join(jpDir.path, GlossaryService.globalGlossaryFileName),
+      ).writeAsString(_glossary, encoding: utf8, flush: true);
+    });
+
+    tearDown(() async {
+      GlossaryService.clearCache();
+      invalidateVietPhraseSyncIndex();
+      if (tempRoot.existsSync()) {
+        await tempRoot.delete(recursive: true);
+      }
+    });
+
+    testWidgets(
+      'cửa sổ độc lập ẩn nút Back và cập nhật dòng tức thì mà không reload từ điển nặng',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 800);
+        addTearDown(tester.view.resetPhysicalSize);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        SharedPreferences.setMockInitialValues({
+          'glossary.dir': glossaryRoot.path,
+        });
+        final prefs = await SharedPreferences.getInstance();
+        final fakeNotifier = _FakeDictionariesNotifier(
+          _fakeLoadedDictionaries({'学校': 'trường học'}),
+        );
+
+        final container = ProviderContainer(
+          overrides: [
+            sharedPreferencesProvider.overrideWithValue(prefs),
+            appPathsProvider.overrideWith((ref) async => AppPaths(tempRoot)),
+            dictionariesProvider.overrideWith(() => fakeNotifier),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        await tester.runAsync(() async {
+          await GlossaryService(glossaryRoot.path).readAll(TranslationMode.japanese);
+        });
+
+        await tester.pumpWidget(
+          UncontrolledProviderScope(
+            container: container,
+            child: const MaterialApp(
+              home: GlossarySyncScreen(isStandaloneWindow: true),
+            ),
+          ),
+        );
+
+        await tester.runAsync(() async {
+          await container.read(
+            glossarySyncRowsProvider(GlossarySyncDirection.glossaryToVietPhrase).future,
+          );
+        });
+        await tester.pumpAndSettle();
+
+        final appBar = tester.widget<AppBar>(find.byType(AppBar));
+        expect(appBar.automaticallyImplyLeading, isFalse);
+        expect(find.text('菜畑小鳥'), findsOneWidget);
+
+        // Bấm Cập nhật trên dòng '菜畑小鳥'
+        await tester.tap(find.text('Cập nhật'));
+        await tester.pump();
+        for (var i = 0; i < 20; i++) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 20)),
+          );
+          await tester.pump(const Duration(milliseconds: 20));
+        }
+        await tester.pumpAndSettle();
+
+        // Không gọi reload() nặng trên DictionariesNotifier nhưng mục đã chuyển
+        // sang Giống hệt nhờ chỉ mục VietPhrase cập nhật tại chỗ.
+        expect(fakeNotifier.reloadCalls, 0);
+        expect(find.text('菜畑小鳥'), findsNothing);
+      },
+    );
   });
 }

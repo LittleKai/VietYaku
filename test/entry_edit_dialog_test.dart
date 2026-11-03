@@ -17,6 +17,7 @@ import 'package:vietyaku/features/dictionary_sync/application/dictionary_sync_co
 import 'package:vietyaku/features/dictionary_sync/data/dictionary_sync_api.dart';
 import 'package:vietyaku/features/dictionary_sync/domain/shared_dictionary_entry.dart';
 import 'package:vietyaku/features/glossary/data/glossary_service.dart';
+import 'package:vietyaku/features/glossary/data/user_glossary_service.dart';
 import 'package:vietyaku/features/glossary/domain/glossary_term.dart';
 import 'package:vietyaku/features/settings/settings_provider.dart';
 import 'package:vietyaku/features/translation/application/translation_controller.dart';
@@ -169,6 +170,7 @@ void main() {
 
   setUp(() async {
     GlossaryService.clearCache();
+    UserGlossaryService.clearCache();
     tempDir = await Directory.systemTemp.createTemp('vietyaku_dialog_test');
     final jpDir = Directory(p.join(tempDir.path, 'JP'));
     await jpDir.create(recursive: true);
@@ -179,6 +181,7 @@ void main() {
 
   tearDown(() async {
     GlossaryService.clearCache();
+    UserGlossaryService.clearCache();
     try {
       await tempDir.delete(recursive: true);
     } catch (_) {}
@@ -193,7 +196,7 @@ void main() {
   });
 
   testWidgets(
-    'GlossaryStatusCard hiển thị đúng và ẩn nút Cập nhật Glossary khi nghĩa giống hệt',
+    'GlossaryStatusCard hiển thị đúng và vẫn hiện nút cập nhật thủ công khi autoUpdate bật',
     (tester) async {
       tester.view.physicalSize = const Size(1200, 900);
       addTearDown(tester.view.resetPhysicalSize);
@@ -259,18 +262,106 @@ void main() {
       expect(find.text('ĐÃ CÓ TRONG GLOSSARY'), findsOneWidget);
       expect(find.text('Nabata Kotori'), findsWidgets);
 
-      expect(find.text('Cập nhật theo VietPhrase'), findsNothing);
+      // Kể cả khi autoUpdate đang bật, vẫn hiện nút cập nhật thủ công
+      expect(find.text('Cập nhật theo VietPhrase'), findsOneWidget);
       expect(find.text('Thêm vào Glossary JP'), findsNothing);
+    },
+  );
 
-      // Tắt autoUpdate → hiện nút "Cập nhật theo VietPhrase" trong thẻ trạng thái
-      final autoUpdateCheckbox = find.widgetWithText(
-        InkWell,
-        'Tự động cập nhật Glossary JP khi bấm "Lưu từ"',
+  testWidgets(
+    'GlossaryStatusCard hiển thị User Glossary nếu có, và hiển thị cả hai khi có cả Global',
+    (tester) async {
+      tester.view.physicalSize = const Size(1200, 900);
+      addTearDown(tester.view.resetPhysicalSize);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final jpDir = Directory(p.join(tempDir.path, 'JP'));
+      File(p.join(jpDir.path, 'User Glossary.json')).writeAsStringSync(
+        '{\r\n'
+        '  "name": "User Glossary",\r\n'
+        '  "lang": "JP",\r\n'
+        '  "terms": [\r\n'
+        '    {\r\n'
+        '      "source": "菜畑小鳥",\r\n'
+        '      "target": "Kotori (User Priority)",\r\n'
+        '      "created_by": "user"\r\n'
+        '    }\r\n'
+        '  ]\r\n'
+        '}',
+        encoding: utf8,
       );
-      await tester.tap(autoUpdateCheckbox);
+
+      SharedPreferences.setMockInitialValues({'glossary.dir': tempDir.path});
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('glossary.dir', tempDir.path);
+
+      final mockData = _createMock(
+        vietPhraseEntries: {'菜畑小鳥': 'Nabata Kotori'},
+      );
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          dictionariesProvider.overrideWith(
+            () => MockDictionariesNotifier(mockData),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.read(currentModeProvider.notifier).state =
+          TranslationMode.japanese;
+      await container.read(dictionariesProvider.future);
+      await container
+          .read(settingsProvider.notifier)
+          .setGlossaryDir(tempDir.path);
+
+      await tester.runAsync(() async {
+        await GlossaryService(tempDir.path).readAll(TranslationMode.japanese);
+        await UserGlossaryService(tempDir.path).readAll(TranslationMode.japanese);
+      });
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: Scaffold(
+              body: Builder(
+                builder: (context) {
+                  return ElevatedButton(
+                    onPressed: () => showSharedEntryEditDialog(
+                      context,
+                      WidgetRefContext(context, container),
+                      word: '菜畑小鳥',
+                      kind: SharedDictionaryKind.vietPhrase,
+                    ),
+                    child: const Text('Open Dialog'),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Open Dialog'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Cập nhật theo VietPhrase'), findsOneWidget);
+      expect(find.text('Sửa vào VietPhrase'), findsOneWidget);
+      expect(find.text('Trạng thái Glossary JP'), findsOneWidget);
+
+      // Hiển thị badge CẢ 2 GLOSSARY
+      expect(find.text('CẢ 2 GLOSSARY'), findsOneWidget);
+
+      // Hiển thị cả 2 khối: User Glossary (Ưu tiên ATB) và Global Glossary (Chung)
+      expect(find.text('User Glossary (Ưu tiên ATB)'), findsOneWidget);
+      expect(find.text('Kotori (User Priority)'), findsOneWidget);
+
+      expect(find.text('Global Glossary (Chung)'), findsOneWidget);
+      expect(find.text('Nabata Kotori'), findsWidgets);
+
+      // Hiển thị nút sửa cho cả 2
+      expect(find.text('Sửa User Glossary'), findsOneWidget);
+      expect(find.text('Sửa nghĩa Glossary JP'), findsOneWidget);
     },
   );
 
@@ -1103,7 +1194,7 @@ void main() {
   });
 
   testWidgets(
-    'Khi tắt Tự động cập nhật Glossary, hiện nút Cập nhật theo VietPhrase trước nút Sửa nghĩa Glossary với 2 màu khác nhau',
+    'Cả khi bật hay tắt Tự động cập nhật Glossary, vẫn hiện nút Cập nhật theo VietPhrase trước nút Sửa nghĩa Glossary với 2 màu khác nhau',
     (tester) async {
       tester.view.physicalSize = const Size(1200, 900);
       addTearDown(tester.view.resetPhysicalSize);
@@ -1163,20 +1254,7 @@ void main() {
       await tester.tap(find.text('Open Dialog'));
       await tester.pumpAndSettle();
 
-      // Mặc định autoUpdate bật → chưa hiện 2 nút này
-      expect(find.text('Cập nhật theo VietPhrase'), findsNothing);
-      expect(find.text('Sửa nghĩa Glossary JP'), findsNothing);
-
-      // Tắt checkbox "Tự động cập nhật Glossary JP khi bấm 'Lưu từ'"
-      final autoUpdateCheckbox = find.widgetWithText(
-        InkWell,
-        'Tự động cập nhật Glossary JP khi bấm "Lưu từ"',
-      );
-      expect(autoUpdateCheckbox, findsOneWidget);
-      await tester.tap(autoUpdateCheckbox);
-      await tester.pumpAndSettle();
-
-      // Sau khi tắt autoUpdate, cả 2 nút đều xuất hiện
+      // Cho dù autoUpdate đang bật, cả 2 nút thủ công đều xuất hiện
       final vpBtnFinder = find.widgetWithText(
         TextButton,
         'Cập nhật theo VietPhrase',

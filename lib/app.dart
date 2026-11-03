@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -9,14 +10,20 @@ import 'core/platform_features.dart';
 import 'core/theme/app_theme.dart';
 import 'core/window_maximize.dart';
 import 'features/clipboard/application/clipboard_reader_controller.dart';
+import 'features/dictionary/application/dictionaries_provider.dart';
 import 'features/dictionary_search/presentation/dictionary_search_screen.dart';
 import 'features/dictionary_sync/application/dictionary_sync_controller.dart';
 import 'features/dictionary_sync/presentation/sync_reminder_dialog.dart';
 import 'features/epub_converter/presentation/epub_converter_screen.dart';
+import 'features/glossary/application/glossary_sync_controller.dart';
+import 'features/glossary/data/glossary_service.dart';
+import 'features/glossary/data/user_glossary_service.dart';
+import 'features/glossary/presentation/glossary_sync_screen.dart';
 import 'features/project/presentation/project_screen.dart';
 import 'features/settings/appearance_screen.dart';
 import 'features/settings/settings_provider.dart';
 import 'features/settings/settings_screen.dart';
+import 'features/translation/application/translation_controller.dart';
 import 'features/translation/domain/translation_engine.dart';
 import 'features/translation/presentation/translate_screen.dart';
 import 'features/update/application/update_controller.dart';
@@ -52,6 +59,96 @@ class VietYakuApp extends ConsumerWidget {
   }
 }
 
+/// Ứng dụng độc lập cho cửa sổ Windows tách rời "Đồng bộ Glossary ↔ VietPhrase".
+class GlossarySyncWindowApp extends ConsumerStatefulWidget {
+  const GlossarySyncWindowApp({
+    super.key,
+    this.initialMode = TranslationMode.japanese,
+  });
+
+  final TranslationMode initialMode;
+
+  @override
+  ConsumerState<GlossarySyncWindowApp> createState() =>
+      _GlossarySyncWindowAppState();
+}
+
+class _GlossarySyncWindowAppState extends ConsumerState<GlossarySyncWindowApp> {
+  @override
+  void initState() {
+    super.initState();
+    final bridge = ref.read(windowsClipboardBridgeProvider);
+    bridge.onWindowSyncEvent = _handleSyncWindowEvent;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final currentMode = ref.read(translationControllerProvider).mode;
+      if (currentMode != widget.initialMode) {
+        ref
+            .read(translationControllerProvider.notifier)
+            .setMode(widget.initialMode);
+      }
+    });
+  }
+
+  Future<void> _handleSyncWindowEvent(
+    String method,
+    Map<String, Object?> payload,
+  ) async {
+    if (!mounted) return;
+    if (method == 'syncWindowActivated') {
+      final modeName = payload['mode'];
+      if (modeName is String) {
+        final targetMode = modeName == TranslationMode.chinese.name
+            ? TranslationMode.chinese
+            : TranslationMode.japanese;
+        if (ref.read(translationControllerProvider).mode != targetMode) {
+          ref.read(translationControllerProvider.notifier).setMode(targetMode);
+        }
+      }
+    }
+    try {
+      await ref.read(sharedPreferencesProvider).reload();
+      if (!mounted) return;
+      ref.invalidate(settingsProvider);
+    } catch (_) {}
+    GlossaryService.clearCache();
+    UserGlossaryService.clearCache();
+    final type = payload['type'];
+    final vietPhraseChanged =
+        type == 'vietPhraseChanged' || payload['vietPhraseChanged'] == true;
+    if (vietPhraseChanged) {
+      invalidateVietPhraseSyncIndex();
+      await ref.read(dictionariesProvider.notifier).reload();
+      if (!mounted) return;
+    }
+    ref.invalidate(
+      glossarySyncRowsProvider(GlossarySyncDirection.glossaryToVietPhrase),
+    );
+    ref.invalidate(
+      glossarySyncRowsProvider(GlossarySyncDirection.vietPhraseToGlossary),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fontFamily = ref.watch(
+      settingsProvider.select((s) => s.uiFontFamily),
+    );
+    final fontScale = ref.watch(settingsProvider.select((s) => s.uiFontScale));
+    final themeMode = ref.watch(settingsProvider.select((s) => s.themeMode));
+    return MaterialApp(
+      title: 'Đồng bộ Glossary ↔ VietPhrase — VietYaku',
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.light(fontFamily: fontFamily, fontScale: fontScale),
+      darkTheme: AppTheme.dark(fontFamily: fontFamily, fontScale: fontScale),
+      themeMode: themeMode,
+      builder: (context, child) =>
+          ExcludeSemantics(child: child ?? const SizedBox.shrink()),
+      home: const GlossarySyncScreen(isStandaloneWindow: true),
+    );
+  }
+}
+
 class HomeShell extends ConsumerStatefulWidget {
   const HomeShell({super.key});
 
@@ -66,6 +163,8 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   @override
   void initState() {
     super.initState();
+    ref.read(windowsClipboardBridgeProvider).onWindowSyncEvent =
+        _handleMainWindowSyncEvent;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
@@ -101,11 +200,42 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     });
   }
 
+  void _handleMainWindowSyncEvent(
+    String method,
+    Map<String, Object?> payload,
+  ) {
+    if (!mounted || method != 'glossaryWindowChanged') return;
+    GlossaryService.clearCache();
+    UserGlossaryService.clearCache();
+    final vietPhraseChanged = payload['vietPhraseChanged'] == true;
+    if (vietPhraseChanged) {
+      invalidateVietPhraseSyncIndex();
+      unawaited(
+        ref.read(dictionarySyncProvider.notifier).reloadCurrentTranslation(),
+      );
+    }
+    ref.invalidate(
+      glossarySyncRowsProvider(GlossarySyncDirection.glossaryToVietPhrase),
+    );
+    ref.invalidate(
+      glossarySyncRowsProvider(GlossarySyncDirection.vietPhraseToGlossary),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Khởi tạo bridge Windows ngay khi app chạy; setting quyết định có đăng ký
     // WM_CLIPBOARDUPDATE + Ctrl+Shift+V hay không.
     ref.watch(clipboardReaderControllerProvider);
+    ref.listen(settingsProvider, (previous, next) {
+      if (previous != null && previous != next) {
+        unawaited(
+          ref.read(windowsClipboardBridgeProvider).notifyGlossaryWindow({
+            'type': 'settingsChanged',
+          }),
+        );
+      }
+    });
     ref.listen(updateControllerProvider.select((s) => s.phase), (
       previous,
       next,

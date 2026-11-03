@@ -7,6 +7,7 @@ import '../../translation/domain/translation_engine.dart';
 import '../../translation/domain/vietphrase_value.dart';
 import '../application/glossary_service_provider.dart';
 import '../application/glossary_sync_controller.dart';
+import '../application/user_glossary_service_provider.dart';
 import '../data/glossary_service.dart';
 import '../domain/glossary_term.dart';
 
@@ -40,6 +41,7 @@ Future<GlossaryTerm?> showGlossaryUpdateDialog(
 }) async {
   final TranslationMode activeMode = mode ?? ref.read(currentModeProvider);
   final service = ref.read(glossaryServiceProvider);
+  final userService = ref.read(userGlossaryServiceProvider);
   final lang = GlossaryService.langFor(activeMode);
   final initialTarget = glossaryTargetOf(meaning);
   if (source.trim().isEmpty) {
@@ -49,20 +51,23 @@ Future<GlossaryTerm?> showGlossaryUpdateDialog(
     return null;
   }
 
-  final GlossaryTerm? existing;
+  final GlossaryTerm? userTerm;
+  final GlossaryTerm? globalTerm;
   try {
-    existing = await service.find(activeMode, source);
+    userTerm = await userService.find(activeMode, source);
+    globalTerm = await service.find(activeMode, source);
   } catch (_) {
     if (context.mounted) {
-      _showMessage(context, 'Không đọc được Global Glossary $lang.');
+      _showMessage(context, 'Không đọc được Glossary $lang.');
     }
     return null;
   }
+  final existing = userTerm ?? globalTerm;
   if (!context.mounted) return null;
 
   final holder = _TargetHolder(initialTarget);
 
-  final confirmed = await showAppDialog<bool>(
+  final confirmed = await showAppDialog<String>(
     context: context,
     icon: Icons.menu_book_outlined,
     accentColor: _glossaryAccent,
@@ -70,7 +75,7 @@ Future<GlossaryTerm?> showGlossaryUpdateDialog(
     description: existing == null
         ? 'Từ này chưa có trong glossary — sẽ được thêm mới.'
         : 'Từ này đã có trong glossary — nghĩa sẽ được ghi đè.',
-    width: 560,
+    width: 640,
     content: _GlossaryPreview(
       lang: lang,
       source: source,
@@ -80,17 +85,26 @@ Future<GlossaryTerm?> showGlossaryUpdateDialog(
     ),
     actionsBuilder: (dialogContext) => [
       TextButton(
-        onPressed: () => Navigator.pop(dialogContext, false),
+        onPressed: () => Navigator.pop(dialogContext),
         child: const Text('Hủy'),
       ),
       FilledButton.icon(
+        icon: const Icon(Icons.bookmark_add_outlined, size: 18),
+        onPressed: () => Navigator.pop(dialogContext, 'user'),
+        style: FilledButton.styleFrom(
+          backgroundColor: const Color(0xFF00897B),
+          foregroundColor: Colors.white,
+        ),
+        label: const Text('Lưu vào User Glossary'),
+      ),
+      FilledButton.icon(
         icon: const Icon(Icons.menu_book_outlined, size: 18),
-        onPressed: () => Navigator.pop(dialogContext, true),
+        onPressed: () => Navigator.pop(dialogContext, 'global'),
         label: Text(existing == null ? 'Thêm vào glossary' : 'Ghi đè glossary'),
       ),
     ],
   );
-  if (confirmed != true) return null;
+  if (confirmed == null) return null;
 
   final target = holder.text.trim();
   if (target.isEmpty) {
@@ -100,18 +114,54 @@ Future<GlossaryTerm?> showGlossaryUpdateDialog(
     return null;
   }
 
-  if (existing != null && existing.target.trim() == target) {
+  if (confirmed == 'user') {
+    // Lưu vào User Glossary (AI_Translation_Bridge)
+    if (userTerm != null && userTerm.target.trim() == target) {
+      if (context.mounted) {
+        _showMessage(
+          context,
+          'Nghĩa User Glossary $lang đã trùng khớp: $source → $target',
+        );
+      }
+      return userTerm;
+    }
+    final newTerm = (userTerm != null)
+        ? userTerm.copyWith(target: target, createdBy: 'user')
+        : GlossaryTerm(
+            source: source.trim(),
+            target: target,
+            dateAdded: GlossaryService.todayStamp(),
+          );
+    try {
+      await userService.upsert(activeMode, source: source, target: target);
+    } catch (_) {
+      if (context.mounted) {
+        _showMessage(context, 'Không ghi được User Glossary $lang.');
+      }
+      return null;
+    }
+    if (context.mounted) {
+      _showMessage(
+        context,
+        'Đã lưu vào User Glossary $lang: $source → $target',
+      );
+    }
+    return newTerm;
+  }
+
+  // confirmed == 'global': lưu vào Global Glossary
+  if (globalTerm != null && globalTerm.target.trim() == target) {
     if (context.mounted) {
       _showMessage(
         context,
         'Nghĩa Global Glossary $lang đã trùng khớp: $source → $target',
       );
     }
-    return existing;
+    return globalTerm;
   }
 
-  final newTerm = (existing != null)
-      ? existing.copyWith(target: target, createdBy: 'user')
+  final newTerm = (globalTerm != null)
+      ? globalTerm.copyWith(target: target, createdBy: 'user')
       : GlossaryTerm(
           source: source.trim(),
           target: target,
@@ -127,14 +177,12 @@ Future<GlossaryTerm?> showGlossaryUpdateDialog(
     return null;
   }
   // Bảng đồng bộ hàng loạt đang mở phải bỏ mục vừa xử lý (cả hai chiều).
-  ref.invalidate(
-    glossarySyncRowsProvider(GlossarySyncDirection.glossaryToVietPhrase),
-  );
-  ref.invalidate(
-    glossarySyncRowsProvider(GlossarySyncDirection.vietPhraseToGlossary),
-  );
+  notifyGlossaryChanged(ref, activeMode);
   if (context.mounted) {
-    _showMessage(context, 'Đã cập nhật Global Glossary $lang: $source → $target');
+    _showMessage(
+      context,
+      'Đã cập nhật Global Glossary $lang: $source → $target',
+    );
   }
   return newTerm;
 }
@@ -288,17 +336,21 @@ Future<GlossaryTerm?> showGlossaryEditDialog(
   WidgetRef ref, {
   required GlossaryTerm term,
   TranslationMode? mode,
+  bool isUserGlossary = false,
 }) async {
   final TranslationMode activeMode = mode ?? ref.read(currentModeProvider);
   final service = ref.read(glossaryServiceProvider);
+  final userService = ref.read(userGlossaryServiceProvider);
   final lang = GlossaryService.langFor(activeMode);
   final holder = _TargetHolder(term.target);
 
   final confirmed = await showAppDialog<bool>(
     context: context,
     icon: Icons.edit_calendar_outlined,
-    accentColor: _glossaryAccent,
-    title: 'Sửa Global Glossary $lang',
+    accentColor: isUserGlossary ? const Color(0xFF00897B) : _glossaryAccent,
+    title: isUserGlossary
+        ? 'Sửa User Glossary $lang'
+        : 'Sửa Global Glossary $lang',
     description: 'Chỉ đổi nghĩa bên glossary; nghĩa VietPhrase giữ nguyên.',
     width: 560,
     content: _GlossaryTargetEditor(holder: holder, term: term),
@@ -310,6 +362,12 @@ Future<GlossaryTerm?> showGlossaryEditDialog(
       FilledButton.icon(
         icon: const Icon(Icons.save_outlined, size: 18),
         onPressed: () => Navigator.pop(dialogContext, true),
+        style: isUserGlossary
+            ? FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF00897B),
+                foregroundColor: Colors.white,
+              )
+            : null,
         label: const Text('Lưu glossary'),
       ),
     ],
@@ -329,28 +387,31 @@ Future<GlossaryTerm?> showGlossaryEditDialog(
 
   final updatedTerm = term.copyWith(target: target, createdBy: 'user');
   try {
-    await service.upsert(activeMode, source: term.source, target: target);
+    if (isUserGlossary) {
+      await userService.upsert(activeMode, source: term.source, target: target);
+    } else {
+      await service.upsert(activeMode, source: term.source, target: target);
+    }
   } catch (_) {
     if (context.mounted) {
-      _showMessage(context, 'Không ghi được Global Glossary $lang.');
+      _showMessage(
+        context,
+        'Không ghi được ${isUserGlossary ? "User" : "Global"} Glossary $lang.',
+      );
     }
     return null;
   }
-  ref.invalidate(
-    glossarySyncRowsProvider(GlossarySyncDirection.glossaryToVietPhrase),
-  );
-  ref.invalidate(
-    glossarySyncRowsProvider(GlossarySyncDirection.vietPhraseToGlossary),
-  );
+  if (!isUserGlossary) {
+    notifyGlossaryChanged(ref, activeMode);
+  }
   if (context.mounted) {
     _showMessage(
       context,
-      'Đã cập nhật Global Glossary $lang: ${term.source} → $target',
+      'Đã cập nhật ${isUserGlossary ? "User" : "Global"} Glossary $lang: ${term.source} → $target',
     );
   }
   return updatedTerm;
 }
-
 
 class _GlossaryTargetEditor extends StatefulWidget {
   const _GlossaryTargetEditor({required this.holder, required this.term});

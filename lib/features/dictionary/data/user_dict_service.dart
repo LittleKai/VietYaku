@@ -108,19 +108,31 @@ class UserDictService {
     TranslationMode mode,
     String key, {
     String? inDir,
+  }) => removeGeneratedEntries(mode, [key], inDir: inDir);
+
+  /// Như [removeGeneratedEntry] nhưng xóa nhiều key trong một lượt đọc/ghi file.
+  Future<bool> removeGeneratedEntries(
+    TranslationMode mode,
+    Iterable<String> keys, {
+    String? inDir,
   }) async {
+    final keySet = keys.where((k) => k.isNotEmpty).toSet();
+    if (keySet.isEmpty) return false;
     var changed = false;
     for (final file in [
       vietPhraseOverlayFile(mode, inDir: inDir),
       aiEntriesFile(mode, inDir: inDir),
     ]) {
-      if (await _removeKey(file, key)) changed = true;
+      if (await _removeKeys(file, keySet)) changed = true;
     }
     return changed;
   }
 
-  static Future<bool> _removeKey(File file, String key) async {
-    if (!file.existsSync()) return false;
+  static Future<bool> _removeKey(File file, String key) =>
+      _removeKeys(file, {key});
+
+  static Future<bool> _removeKeys(File file, Set<String> keys) async {
+    if (keys.isEmpty || !file.existsSync()) return false;
     var text = await file.readAsString();
     if (text.isNotEmpty && text.codeUnitAt(0) == 0xFEFF) {
       text = text.substring(1);
@@ -131,7 +143,8 @@ class UserDictService {
     for (final raw in text.split('\n')) {
       final line = raw.endsWith('\r') ? raw.substring(0, raw.length - 1) : raw;
       if (line.isEmpty) continue;
-      if (line.startsWith('$key=')) {
+      final eq = line.indexOf('=');
+      if (eq > 0 && keys.contains(line.substring(0, eq))) {
         removed = true;
         continue;
       }

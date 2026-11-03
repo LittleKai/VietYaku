@@ -11,6 +11,11 @@ import 'language_pack_provider.dart';
 
 final appPathsProvider = FutureProvider<AppPaths>((ref) => AppPaths.init());
 
+/// Khi bật `true` (cửa sổ Đồng bộ Glossary ↔ VietPhrase độc lập), chỉ nạp riêng
+/// VietPhrase và các lớp overlay của nó — bỏ qua 20 từ điển còn lại (Mazii,
+/// JaVi, ZhVi, Lạc Việt...) để mở cửa sổ cực nhanh và tiết kiệm RAM.
+final vietPhraseOnlyModeProvider = Provider<bool>((ref) => false);
+
 class DictionariesNotifier extends AsyncNotifier<LoadedDictionaries> {
   DictionaryBase? _base;
   String? _baseKey;
@@ -49,12 +54,14 @@ class DictionariesNotifier extends AsyncNotifier<LoadedDictionaries> {
     // bản phát hành; luôn nạp cho mọi người dùng (mục cá nhân trong userdata đè
     // lên khi trùng key).
     final generatedDir = generatedDictDir(mode);
+    final vietPhraseOnly = ref.watch(vietPhraseOnlyModeProvider);
     // Mọi thứ quyết định nội dung phần nền; lệch một mục là nạp lại toàn bộ.
     final baseKey = [
       paths.dictionariesDir.path,
       mode.name,
       useSudachiVariants,
       trad2simp?.signature,
+      vietPhraseOnly,
       for (final e in dictPaths.entries) '${e.key.name}=${e.value}',
     ].join('\n');
     final base = reuseBase && baseKey == _baseKey ? _base : null;
@@ -66,6 +73,7 @@ class DictionariesNotifier extends AsyncNotifier<LoadedDictionaries> {
       trad2simp: trad2simp,
       generatedDir: generatedDir,
       base: base,
+      vietPhraseOnly: vietPhraseOnly,
     );
     _base = loaded.base;
     _baseKey = baseKey;

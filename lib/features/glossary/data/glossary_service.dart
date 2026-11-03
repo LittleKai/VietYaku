@@ -106,7 +106,20 @@ class GlossaryService {
       }
     }
     if (applied.isEmpty) return;
-    final nextPayload = <String, dynamic>{...payload, 'terms': terms};
+    final upsertedLower = {
+      for (final s in applied.keys) s.trim().toLowerCase(),
+    };
+    final existingBlocked = _blockedSourcesOf(payload);
+    final nextBlocked = [
+      for (final s in existingBlocked)
+        if (!upsertedLower.contains(s.toLowerCase())) s,
+    ];
+    final nextPayload = <String, dynamic>{
+      ...payload,
+      'terms': terms,
+      if (nextBlocked.isNotEmpty || payload.containsKey('blocked_sources'))
+        'blocked_sources': nextBlocked,
+    };
     await _writePayload(mode, nextPayload);
     await onChanged?.call(mode, applied, const []);
   }
@@ -125,15 +138,31 @@ class GlossaryService {
         .toList();
   }
 
-  /// Xóa các mục từ khỏi glossary theo [sources].
+  /// Danh sách từ nguồn đã bị xóa khỏi Global Glossary để AI_Translation_Bridge
+  /// tự động chặn không cho AI trích xuất/lưu lại.
+  Future<List<String>> readBlockedSources(
+    TranslationMode mode, {
+    bool forceReload = false,
+  }) async {
+    final payload = await _readPayload(mode, forceReload: forceReload);
+    if (payload == null) return const [];
+    return _blockedSourcesOf(payload);
+  }
+
+  /// Xóa các mục từ khỏi glossary theo [sources] và ghi vào `blocked_sources`
+  /// để AI_Translation_Bridge không tự động lưu lại các từ này từ AI nữa.
   Future<void> removeAll(
     TranslationMode mode,
     Iterable<String> sources,
   ) async {
-    if (sources.isEmpty) return;
+    final trimmedSources = [
+      for (final s in sources)
+        if (s.trim().isNotEmpty) s.trim(),
+    ];
+    if (trimmedSources.isEmpty) return;
     final payload = await _readPayload(mode);
     if (payload == null) return;
-    final keysToRemove = sources.map((s) => s.trim().toLowerCase()).toSet();
+    final keysToRemove = {for (final s in trimmedSources) s.toLowerCase()};
     final terms = _termsOf(payload);
     // Giữ đúng chữ hoa/thường của mục bị xóa: server khớp `source` từng ký tự.
     final removed = [
@@ -148,7 +177,19 @@ class GlossaryService {
         (term['source'] ?? '').toString().trim().toLowerCase(),
       ),
     );
-    final nextPayload = <String, dynamic>{...payload, 'terms': terms};
+    final blocked = _blockedSourcesOf(payload);
+    final blockedLower = {for (final s in blocked) s.toLowerCase()};
+    for (final s in [...removed, ...trimmedSources]) {
+      final key = s.toLowerCase();
+      if (key.isNotEmpty && blockedLower.add(key)) {
+        blocked.add(s);
+      }
+    }
+    final nextPayload = <String, dynamic>{
+      ...payload,
+      'terms': terms,
+      'blocked_sources': blocked,
+    };
     await _writePayload(mode, nextPayload);
     await onChanged?.call(mode, const {}, removed);
   }
@@ -227,6 +268,20 @@ class GlossaryService {
     final raw = payload['terms'];
     if (raw is! List) return <Map<String, dynamic>>[];
     return raw.whereType<Map<String, dynamic>>().toList();
+  }
+
+  static List<String> _blockedSourcesOf(Map<String, dynamic> payload) {
+    final raw = payload['blocked_sources'];
+    if (raw is! List) return <String>[];
+    final seen = <String>{};
+    final result = <String>[];
+    for (final item in raw) {
+      final s = item?.toString().trim() ?? '';
+      if (s.isNotEmpty && seen.add(s.toLowerCase())) {
+        result.add(s);
+      }
+    }
+    return result;
   }
 }
 

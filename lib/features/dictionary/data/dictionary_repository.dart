@@ -193,6 +193,7 @@ class DictionaryRepository {
     Trad2SimpTable? trad2simp,
     String? generatedDir,
     DictionaryBase? base,
+    bool vietPhraseOnly = false,
   }) async {
     // Áp dụng mọi mục pending (bao gồm cả các từ đã xóa) vào file Shared trước khi nạp.
     final sharedService = SharedDictionaryService(paths);
@@ -226,6 +227,11 @@ class DictionaryRepository {
       return loadPath(type, source);
     }
 
+    Future<LoadResult> Function() skipWhenVpOnly(
+      DictType type,
+      Future<LoadResult> Function() loader,
+    ) => vietPhraseOnly ? () => emptyResult(type) : loader;
+
     // Dict nền: có `base` thì lấy lại kết quả cũ theo đúng chỉ số, không đọc đĩa.
     Future<LoadResult> Function() fromBase(
       int index,
@@ -244,21 +250,63 @@ class DictionaryRepository {
     // trong RAM một lúc → vượt heap Android. Chạy tối đa 2; desktop giữ nguyên
     // song song hết. Thứ tự kết quả không đổi nên các chỉ số bên dưới vẫn đúng.
     final results = await runWithConcurrency<LoadResult>([
-      () => load(DictType.userDict), // 0
-      fromBase(1, () => load(DictType.names)), // 1
+      skipWhenVpOnly(DictType.userDict, () => load(DictType.userDict)), // 0
+      fromBase(
+        1,
+        skipWhenVpOnly(DictType.names, () => load(DictType.names)),
+      ), // 1
       fromBase(2, () => load(DictType.vietPhrase)), // 2
-      fromBase(3, () => load(DictType.lacViet)), // 3
-      fromBase(4, () => load(DictType.chinesePhienAm)), // 4
-      fromBase(5, () => load(DictType.pronouns)), // 5
-      fromBase(6, () => load(DictType.babylon)), // 6
-      fromBase(7, () => load(DictType.thieuChuu)), // 7
-      fromBase(8, () => load(DictType.cedict)), // 8
-      fromBase(9, () => load(DictType.chinesePhienAmEnglish)), // 9
-      fromBase(10, () => load(DictType.jaVi)), // 10
-      fromBase(11, () => load(DictType.zhVi)), // 11
-      () => loadPath(DictType.names, userNamesPath), // 12 (overlay "Thêm vào Names")
+      fromBase(
+        3,
+        skipWhenVpOnly(DictType.lacViet, () => load(DictType.lacViet)),
+      ), // 3
+      fromBase(
+        4,
+        skipWhenVpOnly(
+          DictType.chinesePhienAm,
+          () => load(DictType.chinesePhienAm),
+        ),
+      ), // 4
+      fromBase(
+        5,
+        skipWhenVpOnly(DictType.pronouns, () => load(DictType.pronouns)),
+      ), // 5
+      fromBase(
+        6,
+        skipWhenVpOnly(DictType.babylon, () => load(DictType.babylon)),
+      ), // 6
+      fromBase(
+        7,
+        skipWhenVpOnly(DictType.thieuChuu, () => load(DictType.thieuChuu)),
+      ), // 7
+      fromBase(
+        8,
+        skipWhenVpOnly(DictType.cedict, () => load(DictType.cedict)),
+      ), // 8
+      fromBase(
+        9,
+        skipWhenVpOnly(
+          DictType.chinesePhienAmEnglish,
+          () => load(DictType.chinesePhienAmEnglish),
+        ),
+      ), // 9
+      fromBase(
+        10,
+        skipWhenVpOnly(DictType.jaVi, () => load(DictType.jaVi)),
+      ), // 10
+      fromBase(
+        11,
+        skipWhenVpOnly(DictType.zhVi, () => load(DictType.zhVi)),
+      ), // 11
+      skipWhenVpOnly(
+        DictType.names,
+        () => loadPath(DictType.names, userNamesPath),
+      ), // 12 (overlay "Thêm vào Names")
       () => loadPath(DictType.vietPhrase, sharedVietPhrasePath(mode)), // 13
-      () => loadPath(DictType.lacViet, sharedLacVietPath(mode)), // 14
+      skipWhenVpOnly(
+        DictType.lacViet,
+        () => loadPath(DictType.lacViet, sharedLacVietPath(mode)),
+      ), // 14
       fromBase(
         15,
         () => useSudachiVariants
@@ -267,22 +315,37 @@ class DictionaryRepository {
       ), // 15
       fromBase(
         16,
-        () => loadPath(DictType.jaVi, sudachiPath('SudachiReadings.txt')),
+        skipWhenVpOnly(
+          DictType.jaVi,
+          () => loadPath(DictType.jaVi, sudachiPath('SudachiReadings.txt')),
+        ),
       ), // 16
-      fromBase(17, () => load(DictType.mazii)), // 17
-      () => loadPath(DictType.onlineDict, onlineDictPath(mode)), // 18
-      () => loadPath(DictType.aiDict, aiDictPath(mode)), // 19
-      () => loadPath(DictType.aiEntries, aiEntriesPath(mode)), // 20
+      fromBase(
+        17,
+        skipWhenVpOnly(DictType.mazii, () => load(DictType.mazii)),
+      ), // 17
+      skipWhenVpOnly(
+        DictType.onlineDict,
+        () => loadPath(DictType.onlineDict, onlineDictPath(mode)),
+      ), // 18
+      skipWhenVpOnly(
+        DictType.aiDict,
+        () => loadPath(DictType.aiDict, aiDictPath(mode)),
+      ), // 19
+      skipWhenVpOnly(
+        DictType.aiEntries,
+        () => loadPath(DictType.aiEntries, aiEntriesPath(mode)),
+      ), // 20
       // 21-23: bản dùng chung do admin sinh ra, nằm trong data/<lang>/generated
       // và được đóng gói theo bản phát hành. Không phải admin → generatedDir
       // null → bỏ qua, không tốn isolate đọc file không tồn tại.
-      () => generatedDir == null
+      () => vietPhraseOnly || generatedDir == null
           ? emptyResult(DictType.onlineDict)
           : loadPath(DictType.onlineDict, onlineDictPath(mode, inDir: generatedDir)), // 21
-      () => generatedDir == null
+      () => vietPhraseOnly || generatedDir == null
           ? emptyResult(DictType.aiDict)
           : loadPath(DictType.aiDict, aiDictPath(mode, inDir: generatedDir)), // 22
-      () => generatedDir == null
+      () => vietPhraseOnly || generatedDir == null
           ? emptyResult(DictType.aiEntries)
           : loadPath(DictType.aiEntries, aiEntriesPath(mode, inDir: generatedDir)), // 23
       // 24-25: từ tra được mà VietPhrase gốc chưa có → overlay VietPhrase.
@@ -327,6 +390,9 @@ class DictionaryRepository {
     }
 
     Future<RuleDocument<PersonTranslationRule>> loadPersonRules() async {
+      if (vietPhraseOnly) {
+        return const RuleDocument(source: '', rules: [], errors: []);
+      }
       final personRuleFile = File(
         p.join(p.dirname(dictPaths[DictType.vietPhrase]!), 'LuatNhan.txt'),
       );
@@ -421,13 +487,15 @@ class DictionaryRepository {
       aiEntries: aiEntries,
       sudachiReadings: results[16].dictionary,
       ruleEngine: TranslationRuleEngine(personRules: personRules.rules),
-      searchLayers: [
-        DictionarySearchLayer(
-          id: 'userDict',
-          label: 'UserDict',
-          type: DictType.userDict,
-          entries: userDict.entries,
-        ),
+      searchLayers: vietPhraseOnly
+          ? const []
+          : [
+              DictionarySearchLayer(
+                id: 'userDict',
+                label: 'UserDict',
+                type: DictType.userDict,
+                entries: userDict.entries,
+              ),
         DictionarySearchLayer(
           id: 'userNames',
           label: 'UserNames (overlay)',

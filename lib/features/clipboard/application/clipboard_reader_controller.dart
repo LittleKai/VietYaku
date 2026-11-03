@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show BindingBase;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
@@ -40,16 +41,36 @@ class WindowsClipboardBridge {
   static const _channel = MethodChannel('vietyaku/windows_bridge');
 
   Future<void> Function(String event)? onEvent;
+  FutureOr<void> Function(String method, Map<String, Object?> payload)?
+  onWindowSyncEvent;
+
+  static bool get _hasBinding => BindingBase.debugBindingType() != null;
 
   WindowsClipboardBridge() {
+    if (!_hasBinding) return;
     _channel.setMethodCallHandler((call) async {
       if (call.method == 'clipboardChanged' || call.method == 'hotkeyPressed') {
         await onEvent?.call(call.method);
+      } else if (call.method == 'syncWindowActivated' ||
+          call.method == 'mainWindowChanged' ||
+          call.method == 'glossaryWindowChanged') {
+        final args = call.arguments;
+        final payload = <String, Object?>{};
+        if (args is Map) {
+          for (final entry in args.entries) {
+            final k = entry.key;
+            if (k is String) {
+              payload[k] = entry.value;
+            }
+          }
+        }
+        await onWindowSyncEvent?.call(call.method, payload);
       }
     });
   }
 
   Future<bool> setEnabled(bool enabled) async {
+    if (!_hasBinding) return false;
     final response = await _channel.invokeMapMethod<String, Object?>(
       'setEnabled',
       enabled,
@@ -57,9 +78,65 @@ class WindowsClipboardBridge {
     return response?['hotkeyRegistered'] == true;
   }
 
+  /// Mở (hoặc đưa lên trước) cửa sổ OS riêng cho Đồng bộ Glossary ↔ VietPhrase.
+  /// Trả `false` nếu không phải Windows hoặc môi trường test không có runner C++.
+  Future<bool> openGlossarySyncWindow({required String mode}) async {
+    if (!Platform.isWindows || !_hasBinding) return false;
+    try {
+      final opened = await _channel.invokeMethod<bool>(
+        'openGlossarySyncWindow',
+        <String, Object?>{'mode': mode},
+      );
+      return opened == true;
+    } on MissingPluginException {
+      return false;
+    } on PlatformException {
+      return false;
+    }
+  }
+
+  /// Gửi thông báo từ cửa sổ chính sang cửa sổ Đồng bộ Glossary (nếu đang mở).
+  Future<void> notifyGlossaryWindow(Map<String, Object?> payload) async {
+    if (!Platform.isWindows || !_hasBinding) return;
+    try {
+      await _channel.invokeMethod<bool>('notifyGlossaryWindow', payload);
+    } on MissingPluginException {
+      // Bỏ qua trong môi trường test.
+    } on PlatformException {
+      // Bỏ qua khi cửa sổ phụ chưa khởi tạo.
+    }
+  }
+
+  /// Gửi thông báo từ cửa sổ Đồng bộ Glossary về cửa sổ chính.
+  Future<void> notifyMainWindow(Map<String, Object?> payload) async {
+    if (!Platform.isWindows || !_hasBinding) return;
+    try {
+      await _channel.invokeMethod<bool>('notifyMainWindow', payload);
+    } on MissingPluginException {
+      // Bỏ qua trong môi trường test.
+    } on PlatformException {
+      // Bỏ qua nếu không gửi được.
+    }
+  }
+
+  /// Đóng/ẩn cửa sổ Đồng bộ Glossary (dùng khi admin đăng xuất ở cửa sổ chính).
+  Future<void> closeGlossarySyncWindow() async {
+    if (!Platform.isWindows || !_hasBinding) return;
+    try {
+      await _channel.invokeMethod<bool>('closeGlossarySyncWindow');
+    } on MissingPluginException {
+      // Bỏ qua trong môi trường test.
+    } on PlatformException {
+      // Bỏ qua.
+    }
+  }
+
   void dispose() {
     onEvent = null;
-    _channel.setMethodCallHandler(null);
+    onWindowSyncEvent = null;
+    if (_hasBinding) {
+      _channel.setMethodCallHandler(null);
+    }
   }
 }
 

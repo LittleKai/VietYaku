@@ -1231,7 +1231,7 @@ class _GlossaryDirSetting extends ConsumerWidget {
   }
 }
 
-/// Mở màn đồng bộ hàng loạt Glossary ↔ VietPhrase.
+/// Mở cửa sổ đồng bộ hàng loạt Glossary ↔ VietPhrase.
 class _GlossarySyncSetting extends ConsumerWidget {
   const _GlossarySyncSetting();
 
@@ -1246,16 +1246,23 @@ class _GlossarySyncSetting extends ConsumerWidget {
     return SettingsControlRow(
       title: 'Đồng bộ Glossary ↔ VietPhrase',
       description: ready
-          ? 'So sánh hai bên theo từng chiều, lọc trùng/không trùng và created_by, tick chọn rồi cập nhật hàng loạt.'
+          ? 'Mở cửa sổ tách rời để so sánh hai bên theo từng chiều, lọc trùng/không trùng và created_by, tick chọn rồi cập nhật hàng loạt song song với cửa sổ Dịch.'
           : 'Cần chọn đúng thư mục Glossary có "Global Glossary.json" của ngôn ngữ đang dịch.',
-      controlWidth: 210,
+      controlWidth: 220,
       control: Align(
         alignment: Alignment.centerRight,
         child: FilledButton.tonalIcon(
-          icon: const Icon(Icons.sync_alt),
-          label: const Text('Mở màn đồng bộ'),
+          icon: const Icon(Icons.open_in_new),
+          label: const Text('Mở cửa sổ đồng bộ'),
           onPressed: ready
-              ? () => Navigator.of(context).push(GlossarySyncScreen.route())
+              ? () async {
+                  final opened = await ref
+                      .read(windowsClipboardBridgeProvider)
+                      .openGlossarySyncWindow(mode: mode.name);
+                  if (!opened && context.mounted) {
+                    Navigator.of(context).push(GlossarySyncScreen.route());
+                  }
+                }
               : null,
         ),
       ),

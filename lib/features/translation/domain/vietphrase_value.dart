@@ -150,10 +150,54 @@ String firstVietPhraseMeaning(String value) {
   return meanings.isEmpty ? '' : meanings.first.primaryText;
 }
 
+bool _isTrimWhitespace(int cu) =>
+    cu <= 0x20 ||
+    cu == 0x85 ||
+    cu == 0xA0 ||
+    (cu >= 0x1680 &&
+        (cu == 0x1680 ||
+            (cu >= 0x2000 && cu <= 0x200A) ||
+            cu == 0x2028 ||
+            cu == 0x2029 ||
+            cu == 0x202F ||
+            cu == 0x205F ||
+            cu == 0x3000 ||
+            cu == 0xFEFF));
+
+/// Kiểm tra nhanh chuỗi nghĩa VietPhrase không chứa dấu `(` (không có marker từ
+/// loại/tầng nghĩa) và các phần ngăn bởi `/` đã gọn sẵn — khi đó kết quả của
+/// [allVietPhraseMeaningsClean] chính là [value], không cần tách mảng/regex.
+bool _isAlreadyCleanSimpleMeaning(String value) {
+  final len = value.length;
+  if (len == 0) return false;
+  final first = value.codeUnitAt(0);
+  final last = value.codeUnitAt(len - 1);
+  if (_isTrimWhitespace(first) ||
+      _isTrimWhitespace(last) ||
+      first == 0x2F ||
+      last == 0x2F) {
+    return false;
+  }
+  var prevSlash = false;
+  var prevSpace = false;
+  for (var i = 0; i < len; i++) {
+    final cu = value.codeUnitAt(i);
+    if (cu == 0x28) return false; // '('
+    final isSlash = cu == 0x2F; // '/'
+    final isSpace = _isTrimWhitespace(cu);
+    if (isSlash && (prevSlash || prevSpace)) return false;
+    if (isSpace && prevSlash) return false;
+    prevSlash = isSlash;
+    prevSpace = isSpace;
+  }
+  return true;
+}
+
 /// Gom tất cả các cách dịch sạch (đã lọc bỏ marker số tầng và marker từ loại)
 /// từ tất cả các tầng nghĩa, nối bằng dấu `/`.
 /// VD: `(n)/ký ức/hồi ức/(2)/(v)/nhớ lại` -> `ký ức/hồi ức/nhớ lại`.
 String allVietPhraseMeaningsClean(String value) {
+  if (_isAlreadyCleanSimpleMeaning(value)) return value;
   final meanings = parseVietPhraseValue(value);
   if (meanings.isEmpty) return value.trim();
   final allAlternatives = meanings

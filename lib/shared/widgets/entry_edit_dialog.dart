@@ -13,7 +13,9 @@ import '../../features/dictionary_sync/data/shared_dictionary_service.dart';
 import '../../features/dictionary_sync/domain/shared_dictionary_entry.dart';
 import '../../features/glossary/application/glossary_service_provider.dart';
 import '../../features/glossary/application/glossary_sync_controller.dart';
+import '../../features/glossary/application/user_glossary_service_provider.dart';
 import '../../features/glossary/data/glossary_service.dart';
+import '../../features/glossary/data/user_glossary_service.dart';
 import '../../features/glossary/domain/glossary_term.dart';
 import '../../features/glossary/presentation/glossary_update_dialog.dart';
 import '../../features/settings/settings_provider.dart';
@@ -99,8 +101,11 @@ Future<void> showEntryEditDialog(
   final glossaryDir = settings.glossaryDir;
   final glossaryLang = GlossaryService.langFor(mode);
   final glossaryService = ref.read(glossaryServiceProvider);
+  final userGlossaryService = ref.read(userGlossaryServiceProvider);
   final canUpdateGlossary =
-      !toNames && glossaryService.hasGlossaryFor(mode);
+      !toNames &&
+      (glossaryService.hasGlossaryFor(mode) ||
+          userGlossaryService.hasGlossaryFor(mode));
   holder.autoUpdateGlossaryNotifier.value = settings.autoUpdateGlossaryOnSave;
   holder.notifyOnGlossaryUpdateNotifier.value =
       settings.notifyOnGlossaryAutoUpdate;
@@ -167,20 +172,6 @@ Future<void> showEntryEditDialog(
           ? (fieldContext) async {
               final meaning = holder.meaningText.trim();
               final source = holder.keyText.trim();
-              final currentTarget = glossaryTargetOf(meaning);
-              final term = holder.glossaryTermNotifier.value;
-              if (term != null && term.target.trim() == currentTarget.trim()) {
-                ScaffoldMessenger.of(fieldContext)
-                  ..hideCurrentSnackBar()
-                  ..showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        'Nghĩa Global Glossary $glossaryLang đã trùng khớp với VietPhrase: "$currentTarget"',
-                      ),
-                    ),
-                  );
-                return;
-              }
               final updatedTerm = await showGlossaryUpdateDialog(
                 fieldContext,
                 ref,
@@ -200,6 +191,21 @@ Future<void> showEntryEditDialog(
                 ref,
                 term: term,
                 mode: mode,
+                isUserGlossary: false,
+              );
+              if (updatedTerm != null) {
+                holder.updateGlossaryTerm?.call(updatedTerm);
+              }
+            }
+          : null,
+      onEditUserGlossary: canUpdateGlossary
+          ? (fieldContext, term) async {
+              final updatedTerm = await showGlossaryEditDialog(
+                fieldContext,
+                ref,
+                term: term,
+                mode: mode,
+                isUserGlossary: true,
               );
               if (updatedTerm != null) {
                 holder.updateGlossaryTerm?.call(updatedTerm);
@@ -272,9 +278,13 @@ Future<void> showEntryEditDialog(
     final targetKey = holder.keyText.trim().isNotEmpty
         ? holder.keyText.trim()
         : word;
-    final inGlossary = !toNames &&
+    final hasGlobalGlossary = !toNames &&
         canUpdateGlossary &&
         (await glossaryService.find(mode, targetKey)) != null;
+    final hasUserGlossary = !toNames &&
+        canUpdateGlossary &&
+        (await userGlossaryService.find(mode, targetKey)) != null;
+    final inGlossary = hasGlobalGlossary || hasUserGlossary;
     final inDict = toNames
         ? targetDictHasEntry(targetKey)
         : currentValueOf(targetKey) != null;
@@ -318,17 +328,22 @@ Future<void> showEntryEditDialog(
     if (!toNames &&
         (deleteScope == DeleteScope.glossaryOnly ||
             deleteScope == DeleteScope.both)) {
-      try {
-        await glossaryService.removeAll(mode, [targetKey]);
-        ref.invalidate(
-          glossarySyncRowsProvider(GlossarySyncDirection.glossaryToVietPhrase),
-        );
-        ref.invalidate(
-          glossarySyncRowsProvider(GlossarySyncDirection.vietPhraseToGlossary),
-        );
-        messages.add('Đã xóa khỏi Global Glossary $glossaryLang.');
-      } catch (_) {
-        messages.add('Không xóa được khỏi Global Glossary $glossaryLang.');
+      if (hasGlobalGlossary) {
+        try {
+          await glossaryService.removeAll(mode, [targetKey]);
+          notifyGlossaryChanged(ref, mode);
+          messages.add('Đã xóa khỏi Global Glossary $glossaryLang.');
+        } catch (_) {
+          messages.add('Không xóa được khỏi Global Glossary $glossaryLang.');
+        }
+      }
+      if (hasUserGlossary) {
+        try {
+          await userGlossaryService.remove(mode, targetKey);
+          messages.add('Đã xóa khỏi User Glossary $glossaryLang.');
+        } catch (_) {
+          messages.add('Không xóa được khỏi User Glossary $glossaryLang.');
+        }
       }
     }
 
@@ -384,29 +399,26 @@ Future<void> showEntryEditDialog(
           (glossarySavedAtMeaning.isNotEmpty &&
               glossarySavedAtMeaning != meaning))) {
     final term = await glossaryService.find(mode, key);
-    if (term != null) {
-      final target = glossaryTargetOf(meaning);
-      if (term.target.trim() != target.trim()) {
-        try {
-          await glossaryService.upsert(
-            mode,
-            source: key,
-            target: target,
-          );
-          ref.invalidate(
-            glossarySyncRowsProvider(
-              GlossarySyncDirection.glossaryToVietPhrase,
-            ),
-          );
-          ref.invalidate(
-            glossarySyncRowsProvider(
-              GlossarySyncDirection.vietPhraseToGlossary,
-            ),
-          );
-          glossaryAutoUpdated = true;
-          glossaryNewTarget = target;
-        } catch (_) {}
-      }
+    final userTerm = await userGlossaryService.find(mode, key);
+    final target = glossaryTargetOf(meaning);
+    if (userTerm != null && userTerm.target.trim() != target.trim()) {
+      try {
+        await userGlossaryService.upsert(mode, source: key, target: target);
+        glossaryAutoUpdated = true;
+        glossaryNewTarget = target;
+      } catch (_) {}
+    }
+    if (term != null && term.target.trim() != target.trim()) {
+      try {
+        await glossaryService.upsert(
+          mode,
+          source: key,
+          target: target,
+        );
+        notifyGlossaryChanged(ref, mode);
+        glossaryAutoUpdated = true;
+        glossaryNewTarget = target;
+      } catch (_) {}
     }
   }
 
@@ -496,8 +508,11 @@ Future<void> showSharedEntryEditDialog(
   final glossaryDir = settings.glossaryDir;
   final glossaryLang = GlossaryService.langFor(mode);
   final glossaryService = ref.read(glossaryServiceProvider);
+  final userGlossaryService = ref.read(userGlossaryServiceProvider);
   final canUpdateGlossary =
-      isVietPhrase && glossaryService.hasGlossaryFor(mode);
+      isVietPhrase &&
+      (glossaryService.hasGlossaryFor(mode) ||
+          userGlossaryService.hasGlossaryFor(mode));
   holder.autoUpdateGlossaryNotifier.value = settings.autoUpdateGlossaryOnSave;
   holder.notifyOnGlossaryUpdateNotifier.value =
       settings.notifyOnGlossaryAutoUpdate;
@@ -588,20 +603,6 @@ Future<void> showSharedEntryEditDialog(
           ? (fieldContext) async {
               final meaning = holder.meaningText.trim();
               final source = holder.keyText.trim();
-              final currentTarget = glossaryTargetOf(meaning);
-              final term = holder.glossaryTermNotifier.value;
-              if (term != null && term.target.trim() == currentTarget.trim()) {
-                ScaffoldMessenger.of(fieldContext)
-                  ..hideCurrentSnackBar()
-                  ..showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        'Nghĩa Global Glossary $glossaryLang đã trùng khớp với VietPhrase: "$currentTarget"',
-                      ),
-                    ),
-                  );
-                return;
-              }
               final updatedTerm = await showGlossaryUpdateDialog(
                 fieldContext,
                 ref,
@@ -621,6 +622,21 @@ Future<void> showSharedEntryEditDialog(
                 ref,
                 term: term,
                 mode: mode,
+                isUserGlossary: false,
+              );
+              if (updatedTerm != null) {
+                holder.updateGlossaryTerm?.call(updatedTerm);
+              }
+            }
+          : null,
+      onEditUserGlossary: canUpdateGlossary
+          ? (fieldContext, term) async {
+              final updatedTerm = await showGlossaryEditDialog(
+                fieldContext,
+                ref,
+                term: term,
+                mode: mode,
+                isUserGlossary: true,
               );
               if (updatedTerm != null) {
                 holder.updateGlossaryTerm?.call(updatedTerm);
@@ -693,9 +709,13 @@ Future<void> showSharedEntryEditDialog(
     final targetKey = holder.keyText.trim().isNotEmpty
         ? holder.keyText.trim()
         : word;
-    final inGlossary =
+    final hasGlobalGlossary =
         canUpdateGlossary &&
         (await glossaryService.find(mode, targetKey)) != null;
+    final hasUserGlossary =
+        canUpdateGlossary &&
+        (await userGlossaryService.find(mode, targetKey)) != null;
+    final inGlossary = hasGlobalGlossary || hasUserGlossary;
     final inSharedDict = dictHasEntry(targetKey);
 
     holder.disposeAfterRouteAnimation();
@@ -728,17 +748,22 @@ Future<void> showSharedEntryEditDialog(
 
     if (deleteScope == DeleteScope.glossaryOnly ||
         deleteScope == DeleteScope.both) {
-      try {
-        await glossaryService.removeAll(mode, [targetKey]);
-        ref.invalidate(
-          glossarySyncRowsProvider(GlossarySyncDirection.glossaryToVietPhrase),
-        );
-        ref.invalidate(
-          glossarySyncRowsProvider(GlossarySyncDirection.vietPhraseToGlossary),
-        );
-        messages.add('Đã xóa khỏi Global Glossary $glossaryLang.');
-      } catch (_) {
-        messages.add('Không xóa được khỏi Global Glossary $glossaryLang.');
+      if (hasGlobalGlossary) {
+        try {
+          await glossaryService.removeAll(mode, [targetKey]);
+          notifyGlossaryChanged(ref, mode);
+          messages.add('Đã xóa khỏi Global Glossary $glossaryLang.');
+        } catch (_) {
+          messages.add('Không xóa được khỏi Global Glossary $glossaryLang.');
+        }
+      }
+      if (hasUserGlossary) {
+        try {
+          await userGlossaryService.remove(mode, targetKey);
+          messages.add('Đã xóa khỏi User Glossary $glossaryLang.');
+        } catch (_) {
+          messages.add('Không xóa được khỏi User Glossary $glossaryLang.');
+        }
       }
     }
 
@@ -787,25 +812,22 @@ Future<void> showSharedEntryEditDialog(
           (glossarySavedAtMeaning.isNotEmpty &&
               glossarySavedAtMeaning != meaning))) {
     final term = await glossaryService.find(mode, key);
-    if (term != null) {
-      final target = glossaryTargetOf(meaning);
-      if (term.target.trim() != target.trim()) {
-        try {
-          await glossaryService.upsert(mode, source: key, target: target);
-          ref.invalidate(
-            glossarySyncRowsProvider(
-              GlossarySyncDirection.glossaryToVietPhrase,
-            ),
-          );
-          ref.invalidate(
-            glossarySyncRowsProvider(
-              GlossarySyncDirection.vietPhraseToGlossary,
-            ),
-          );
-          glossaryAutoUpdated = true;
-          glossaryNewTarget = target;
-        } catch (_) {}
-      }
+    final userTerm = await userGlossaryService.find(mode, key);
+    final target = glossaryTargetOf(meaning);
+    if (userTerm != null && userTerm.target.trim() != target.trim()) {
+      try {
+        await userGlossaryService.upsert(mode, source: key, target: target);
+        glossaryAutoUpdated = true;
+        glossaryNewTarget = target;
+      } catch (_) {}
+    }
+    if (term != null && term.target.trim() != target.trim()) {
+      try {
+        await glossaryService.upsert(mode, source: key, target: target);
+        notifyGlossaryChanged(ref, mode);
+        glossaryAutoUpdated = true;
+        glossaryNewTarget = target;
+      } catch (_) {}
     }
   }
 
@@ -1011,6 +1033,7 @@ class _EntryFields extends StatefulWidget {
     this.onAddToGlossary,
     this.onUpdateFromVietPhrase,
     this.onEditGlossary,
+    this.onEditUserGlossary,
   });
 
   final _EntryFieldControllers holder;
@@ -1051,8 +1074,9 @@ class _EntryFields extends StatefulWidget {
   final void Function(BuildContext context)? onUpdateFromVietPhrase;
 
   /// Mở dialog sửa riêng nghĩa bên glossary (chỉ dialog VietPhrase truyền).
-  /// Nút chỉ hiện khi mục đã có trong glossary và tự động cập nhật đang TẮT.
+  /// Nút hiện khi mục đã có trong glossary.
   final void Function(BuildContext context, GlossaryTerm term)? onEditGlossary;
+  final void Function(BuildContext context, GlossaryTerm term)? onEditUserGlossary;
 
   @override
   State<_EntryFields> createState() => _EntryFieldsState();
@@ -1077,6 +1101,8 @@ class _EntryFieldsState extends State<_EntryFields> {
   String? _hanViet;
   String? _reading;
   GlossaryTerm? _glossaryTerm;
+  GlossaryTerm? _userGlossaryTerm;
+  GlossaryTerm? _globalGlossaryTerm;
   bool _isCheckingGlossary = false;
   String? _lastGlossaryKey;
   bool _hasGlossaryFile = false;
@@ -1094,7 +1120,8 @@ class _EntryFieldsState extends State<_EntryFields> {
     _glossaryLang = GlossaryService.langFor(widget.mode);
     final dir = widget.glossaryDir;
     if (dir != null && dir.trim().isNotEmpty) {
-      _hasGlossaryFile = GlossaryService(dir).hasGlossaryFor(widget.mode);
+      _hasGlossaryFile = GlossaryService(dir).hasGlossaryFor(widget.mode) ||
+          UserGlossaryService(dir).hasGlossaryFor(widget.mode);
     }
     _keyController = TextEditingController(text: widget.initialKey)
       ..addListener(_onKeyChanged);
@@ -1258,10 +1285,33 @@ class _EntryFieldsState extends State<_EntryFields> {
         _glossaryTerm = term;
         _isCheckingGlossary = false;
       });
+      _refreshGlossaryTermsAfterDirectUpdate();
     }
     widget.holder.glossaryTermNotifier.value = term;
     widget.holder.glossarySavedAtMeaning =
         term == null ? null : widget.holder.meaningText.trim();
+  }
+
+  Future<void> _refreshGlossaryTermsAfterDirectUpdate() async {
+    final dir = widget.glossaryDir;
+    final key = _keyController.text.trim();
+    if (dir == null || key.isEmpty) return;
+    final seq = ++_glossaryCheckSeq;
+    final service = GlossaryService(dir);
+    final userService = UserGlossaryService(dir);
+    try {
+      final results = await Future.wait([
+        service.find(widget.mode, key, forceReload: true),
+        userService.find(widget.mode, key),
+      ]);
+      if (!mounted || seq != _glossaryCheckSeq || _keyController.text.trim() != key) return;
+      setState(() {
+        _globalGlossaryTerm = results[0];
+        _userGlossaryTerm = results[1];
+        _glossaryTerm = _userGlossaryTerm ?? _globalGlossaryTerm;
+      });
+      widget.holder.glossaryTermNotifier.value = _glossaryTerm;
+    } catch (_) {}
   }
 
   Future<void> _checkGlossaryIfNeeded(String key) async {
@@ -1271,12 +1321,15 @@ class _EntryFieldsState extends State<_EntryFields> {
     _lastGlossaryKey = key;
     final hasGlossary = _hasGlossaryFile ||
         (dir.trim().isNotEmpty &&
-            GlossaryService(dir).hasGlossaryFor(widget.mode));
+            (GlossaryService(dir).hasGlossaryFor(widget.mode) ||
+                UserGlossaryService(dir).hasGlossaryFor(widget.mode)));
     if (hasGlossary) {
       _hasGlossaryFile = true;
     }
     if (!hasGlossary || key.isEmpty) {
       _glossaryTerm = null;
+      _userGlossaryTerm = null;
+      _globalGlossaryTerm = null;
       _isCheckingGlossary = false;
       widget.holder.glossaryTermNotifier.value = null;
       return;
@@ -1285,20 +1338,30 @@ class _EntryFieldsState extends State<_EntryFields> {
     final seq = ++_glossaryCheckSeq;
     _isCheckingGlossary = true;
     final service = GlossaryService(dir);
+    final userService = UserGlossaryService(dir);
     final mode = widget.mode;
 
     try {
-      final term = await service.find(mode, key);
+      final results = await Future.wait([
+        service.find(mode, key),
+        userService.find(mode, key),
+      ]);
+      final globalTerm = results[0];
+      final userTerm = results[1];
       if (!mounted || seq != _glossaryCheckSeq || _keyController.text.trim() != key) return;
       setState(() {
-        _glossaryTerm = term;
+        _globalGlossaryTerm = globalTerm;
+        _userGlossaryTerm = userTerm;
+        _glossaryTerm = userTerm ?? globalTerm;
         _isCheckingGlossary = false;
       });
-      widget.holder.glossaryTermNotifier.value = term;
+      widget.holder.glossaryTermNotifier.value = _glossaryTerm;
     } catch (_) {
       if (!mounted || seq != _glossaryCheckSeq) return;
       _lastGlossaryKey = null;
       setState(() {
+        _globalGlossaryTerm = null;
+        _userGlossaryTerm = null;
         _glossaryTerm = null;
         _isCheckingGlossary = false;
       });
@@ -1369,12 +1432,15 @@ class _EntryFieldsState extends State<_EntryFields> {
                 builder: (_, notifyOnUpdate, _) {
                   final term = _glossaryTerm;
                   final onEditGlossary = widget.onEditGlossary;
+                  final onEditUserGlossary = widget.onEditUserGlossary;
                   final onUpdateFromVietPhrase = widget.onUpdateFromVietPhrase;
                   final onAddToGlossary = widget.onAddToGlossary;
                   return _GlossaryStatusCard(
                     hasGlossaryFile: _hasGlossaryFile,
                     glossaryLang: _glossaryLang,
                     term: term,
+                    userTerm: _userGlossaryTerm,
+                    globalTerm: _globalGlossaryTerm,
                     isChecking: _isCheckingGlossary,
                     autoUpdate: autoUpdate,
                     onAutoUpdateChanged: (val) {
@@ -1394,9 +1460,12 @@ class _EntryFieldsState extends State<_EntryFields> {
                         onUpdateFromVietPhrase == null || term == null
                             ? null
                             : () => onUpdateFromVietPhrase(context),
-                    onEditGlossary: onEditGlossary == null || term == null
+                    onEditGlossary: onEditGlossary == null
                         ? null
-                        : () => onEditGlossary(context, term),
+                        : (gTerm) => onEditGlossary(context, gTerm),
+                    onEditUserGlossary: onEditUserGlossary == null
+                        ? null
+                        : (uTerm) => onEditUserGlossary(context, uTerm),
                   );
                 },
               );
@@ -1835,6 +1904,8 @@ class _GlossaryStatusCard extends StatelessWidget {
     required this.hasGlossaryFile,
     required this.glossaryLang,
     required this.term,
+    this.userTerm,
+    this.globalTerm,
     required this.isChecking,
     required this.autoUpdate,
     required this.onAutoUpdateChanged,
@@ -1843,11 +1914,14 @@ class _GlossaryStatusCard extends StatelessWidget {
     this.onAddToGlossary,
     this.onUpdateFromVietPhrase,
     this.onEditGlossary,
+    this.onEditUserGlossary,
   });
 
   final bool hasGlossaryFile;
   final String glossaryLang;
   final GlossaryTerm? term;
+  final GlossaryTerm? userTerm;
+  final GlossaryTerm? globalTerm;
   final bool isChecking;
   final bool autoUpdate;
   final ValueChanged<bool> onAutoUpdateChanged;
@@ -1860,14 +1934,17 @@ class _GlossaryStatusCard extends StatelessWidget {
   /// Cập nhật mục glossary theo nghĩa VietPhrase hiện tại.
   final VoidCallback? onUpdateFromVietPhrase;
 
-  /// Sửa riêng nghĩa bên glossary. Chỉ hiện khi [autoUpdate] TẮT — bật thì
-  /// glossary đã bám theo nghĩa VietPhrase lúc lưu, không cần sửa tay.
-  final VoidCallback? onEditGlossary;
+  /// Sửa riêng nghĩa bên Global Glossary.
+  final void Function(GlossaryTerm term)? onEditGlossary;
+
+  /// Sửa riêng nghĩa bên User Glossary.
+  final void Function(GlossaryTerm term)? onEditUserGlossary;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     const accentColor = Color(0xFF6A1B9A);
+    const userAccentColor = Color(0xFF00897B);
 
     if (!hasGlossaryFile) {
       return Container(
@@ -1893,18 +1970,25 @@ class _GlossaryStatusCard extends StatelessWidget {
       );
     }
 
-    final exists = term != null;
+    final uTerm = userTerm;
+    final gTerm = globalTerm ?? (uTerm == null ? term : null);
+    final hasUser = uTerm != null;
+    final hasGlobal = gTerm != null;
+    final exists = hasUser || hasGlobal;
+    final hasBoth = hasUser && hasGlobal;
+    final cardAccent = hasUser ? userAccentColor : accentColor;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: exists
-            ? accentColor.withValues(alpha: 0.08)
+            ? cardAccent.withValues(alpha: 0.08)
             : scheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: exists
-              ? accentColor.withValues(alpha: 0.4)
+              ? cardAccent.withValues(alpha: 0.4)
               : scheme.outlineVariant,
           width: exists ? 1.5 : 1.0,
         ),
@@ -1919,7 +2003,7 @@ class _GlossaryStatusCard extends StatelessWidget {
                     ? Icons.check_circle_rounded
                     : Icons.help_outline_rounded,
                 size: 20,
-                color: exists ? accentColor : scheme.onSurfaceVariant,
+                color: exists ? cardAccent : scheme.onSurfaceVariant,
               ),
               const SizedBox(width: 8),
               Text(
@@ -1927,7 +2011,7 @@ class _GlossaryStatusCard extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.bold,
-                  color: exists ? accentColor : scheme.onSurface,
+                  color: exists ? cardAccent : scheme.onSurface,
                 ),
               ),
               const Spacer(),
@@ -1935,16 +2019,22 @@ class _GlossaryStatusCard extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
                   color: exists
-                      ? accentColor
+                      ? (hasBoth
+                          ? userAccentColor
+                          : (hasUser ? userAccentColor : accentColor))
                       : scheme.onSurfaceVariant.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
                   isChecking
                       ? 'Đang kiểm tra...'
-                      : (exists
-                            ? 'ĐÃ CÓ TRONG GLOSSARY'
-                            : 'CHƯA CÓ TRONG GLOSSARY'),
+                      : (hasBoth
+                            ? 'CẢ 2 GLOSSARY'
+                            : (hasUser
+                                  ? 'USER GLOSSARY'
+                                  : (hasGlobal
+                                        ? 'ĐÃ CÓ TRONG GLOSSARY'
+                                        : 'CHƯA CÓ TRONG GLOSSARY'))),
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.bold,
@@ -1958,19 +2048,23 @@ class _GlossaryStatusCard extends StatelessWidget {
             const SizedBox(height: 8),
             const Divider(height: 1),
             const SizedBox(height: 8),
-            _GlossaryInfoRow(
-              label: 'Nghĩa (target)',
-              value: term!.target,
-              isBold: true,
-            ),
-            _GlossaryInfoRow(
-              label: 'Người tạo (created_by)',
-              value: term!.createdBy,
-            ),
-            if (term!.kind.isNotEmpty)
-              _GlossaryInfoRow(label: 'Phân loại (kind)', value: term!.kind),
-            if (term!.notes.isNotEmpty)
-              _GlossaryInfoRow(label: 'Ghi chú (notes)', value: term!.notes),
+            if (hasUser) ...[
+              _GlossarySectionBlock(
+                title: 'User Glossary (Ưu tiên ATB)',
+                accentColor: userAccentColor,
+                icon: Icons.bookmark_added_outlined,
+                term: uTerm,
+              ),
+            ],
+            if (hasBoth) const SizedBox(height: 8),
+            if (hasGlobal) ...[
+              _GlossarySectionBlock(
+                title: 'Global Glossary (Chung)',
+                accentColor: accentColor,
+                icon: Icons.public,
+                term: gTerm,
+              ),
+            ],
             const SizedBox(height: 6),
             const Divider(height: 1),
             const SizedBox(height: 4),
@@ -1987,7 +2081,7 @@ class _GlossaryStatusCard extends StatelessWidget {
                       child: Checkbox(
                         value: autoUpdate,
                         onChanged: (val) => onAutoUpdateChanged(val ?? false),
-                        activeColor: accentColor,
+                        activeColor: cardAccent,
                         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
                     ),
@@ -2006,8 +2100,9 @@ class _GlossaryStatusCard extends StatelessWidget {
                 ),
               ),
             ),
-            if (!autoUpdate &&
-                (onUpdateFromVietPhrase != null || onEditGlossary != null))
+            if (onUpdateFromVietPhrase != null ||
+                (onEditUserGlossary != null && hasUser) ||
+                (onEditGlossary != null && hasGlobal))
               Padding(
                 padding: const EdgeInsets.only(left: 32, top: 4),
                 child: Wrap(
@@ -2034,9 +2129,30 @@ class _GlossaryStatusCard extends StatelessWidget {
                           ),
                         ),
                       ),
-                    if (onEditGlossary != null)
+                    if (onEditUserGlossary != null && hasUser)
                       TextButton.icon(
-                        onPressed: onEditGlossary,
+                        onPressed: () => onEditUserGlossary!(uTerm),
+                        icon: const Icon(
+                          Icons.drive_file_rename_outline,
+                          size: 18,
+                        ),
+                        label: const Text('Sửa User Glossary'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: userAccentColor,
+                          backgroundColor:
+                              userAccentColor.withValues(alpha: 0.08),
+                          side: BorderSide(
+                            color: userAccentColor.withValues(alpha: 0.35),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                        ),
+                      ),
+                    if (onEditGlossary != null && hasGlobal)
+                      TextButton.icon(
+                        onPressed: () => onEditGlossary!(gTerm),
                         icon: const Icon(
                           Icons.drive_file_rename_outline,
                           size: 18,
@@ -2078,7 +2194,7 @@ class _GlossaryStatusCard extends StatelessWidget {
                         child: Switch(
                           value: notifyOnUpdate,
                           onChanged: onNotifyOnUpdateChanged,
-                          activeColor: accentColor,
+                          activeColor: cardAccent,
                         ),
                       ),
                     ),
@@ -2092,7 +2208,7 @@ class _GlossaryStatusCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    'Từ này chưa có trong file Global Glossary $glossaryLang.',
+                    'Từ này chưa có trong file Glossary $glossaryLang.',
                     style: TextStyle(
                       fontSize: 12.5,
                       color: scheme.onSurfaceVariant,
@@ -2121,6 +2237,65 @@ class _GlossaryStatusCard extends StatelessWidget {
               ],
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _GlossarySectionBlock extends StatelessWidget {
+  const _GlossarySectionBlock({
+    required this.title,
+    required this.accentColor,
+    required this.icon,
+    required this.term,
+  });
+
+  final String title;
+  final Color accentColor;
+  final IconData icon;
+  final GlossaryTerm term;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: accentColor.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: accentColor.withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 15, color: accentColor),
+              const SizedBox(width: 6),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: accentColor,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          _GlossaryInfoRow(
+            label: 'Nghĩa (target)',
+            value: term.target,
+            isBold: true,
+          ),
+          _GlossaryInfoRow(
+            label: 'Người tạo (created_by)',
+            value: term.createdBy,
+          ),
+          if (term.kind.isNotEmpty)
+            _GlossaryInfoRow(label: 'Phân loại (kind)', value: term.kind),
+          if (term.notes.isNotEmpty)
+            _GlossaryInfoRow(label: 'Ghi chú (notes)', value: term.notes),
         ],
       ),
     );

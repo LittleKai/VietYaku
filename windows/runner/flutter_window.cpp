@@ -1,7 +1,9 @@
 #include "flutter_window.h"
 
 #include <optional>
+#include <string>
 #include <variant>
+#include <vector>
 
 #include <flutter/standard_method_codec.h>
 
@@ -11,8 +13,12 @@ namespace {
 constexpr int kClipboardHotkeyId = 0x5659;
 }  // namespace
 
-FlutterWindow::FlutterWindow(const flutter::DartProject& project)
-    : project_(project) {}
+FlutterWindow::FlutterWindow(const flutter::DartProject& project,
+                             bool is_secondary,
+                             FlutterWindow* parent_window)
+    : project_(project),
+      is_secondary_(is_secondary),
+      parent_window_(parent_window) {}
 
 FlutterWindow::~FlutterWindow() {}
 
@@ -31,7 +37,9 @@ bool FlutterWindow::OnCreate() {
   if (!flutter_controller_->engine() || !flutter_controller_->view()) {
     return false;
   }
-  RegisterPlugins(flutter_controller_->engine());
+  if (!is_secondary_) {
+    RegisterPlugins(flutter_controller_->engine());
+  }
   windows_bridge_channel_ =
       std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
           flutter_controller_->engine()->messenger(),
@@ -39,25 +47,68 @@ bool FlutterWindow::OnCreate() {
           &flutter::StandardMethodCodec::GetInstance());
   windows_bridge_channel_->SetMethodCallHandler(
       [this](const auto& call, auto result) {
-        if (call.method_name() != "setEnabled") {
-          result->NotImplemented();
+        const auto& method = call.method_name();
+        if (method == "setEnabled") {
+          const auto* enabled = std::get_if<bool>(call.arguments());
+          if (enabled == nullptr) {
+            result->Error("invalid-arguments", "setEnabled expects a bool");
+            return;
+          }
+          SetClipboardBridgeEnabled(*enabled);
+          flutter::EncodableMap response;
+          response[flutter::EncodableValue("hotkeyRegistered")] =
+              flutter::EncodableValue(hotkey_registered_);
+          result->Success(flutter::EncodableValue(response));
           return;
         }
-        const auto* enabled = std::get_if<bool>(call.arguments());
-        if (enabled == nullptr) {
-          result->Error("invalid-arguments", "setEnabled expects a bool");
+        if (method == "openGlossarySyncWindow") {
+          const bool ok = OpenOrActivateGlossarySyncWindow(call.arguments());
+          result->Success(flutter::EncodableValue(ok));
           return;
         }
-        SetClipboardBridgeEnabled(*enabled);
-        flutter::EncodableMap response;
-        response[flutter::EncodableValue("hotkeyRegistered")] =
-            flutter::EncodableValue(hotkey_registered_);
-        result->Success(flutter::EncodableValue(response));
+        if (method == "notifyGlossaryWindow") {
+          if (glossary_sync_window_ &&
+              glossary_sync_window_->windows_bridge_channel_) {
+            const auto* args = call.arguments();
+            glossary_sync_window_->windows_bridge_channel_->InvokeMethod(
+                "mainWindowChanged",
+                args != nullptr
+                    ? std::make_unique<flutter::EncodableValue>(*args)
+                    : std::make_unique<flutter::EncodableValue>());
+          }
+          result->Success(flutter::EncodableValue(true));
+          return;
+        }
+        if (method == "closeGlossarySyncWindow") {
+          if (glossary_sync_window_ &&
+              glossary_sync_window_->GetHandle() != nullptr) {
+            ShowWindow(glossary_sync_window_->GetHandle(), SW_HIDE);
+          }
+          result->Success(flutter::EncodableValue(true));
+          return;
+        }
+        if (method == "notifyMainWindow") {
+          if (parent_window_ != nullptr &&
+              parent_window_->windows_bridge_channel_) {
+            const auto* args = call.arguments();
+            parent_window_->windows_bridge_channel_->InvokeMethod(
+                "glossaryWindowChanged",
+                args != nullptr
+                    ? std::make_unique<flutter::EncodableValue>(*args)
+                    : std::make_unique<flutter::EncodableValue>());
+          }
+          result->Success(flutter::EncodableValue(true));
+          return;
+        }
+        result->NotImplemented();
       });
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
-  flutter_controller_->engine()->SetNextFrameCallback([&]() {
+  flutter_controller_->engine()->SetNextFrameCallback([this]() {
     this->Show();
+    if (is_secondary_ && GetHandle() != nullptr) {
+      SetForegroundWindow(GetHandle());
+    }
   });
 
   // Flutter can complete the first frame before the "show window" callback is
@@ -68,7 +119,63 @@ bool FlutterWindow::OnCreate() {
   return true;
 }
 
+bool FlutterWindow::OpenOrActivateGlossarySyncWindow(
+    const flutter::EncodableValue* args) {
+  std::string mode_arg;
+  if (args != nullptr) {
+    if (const auto* map = std::get_if<flutter::EncodableMap>(args)) {
+      auto it = map->find(flutter::EncodableValue("mode"));
+      if (it != map->end()) {
+        if (const auto* s = std::get_if<std::string>(&it->second)) {
+          mode_arg = *s;
+        }
+      }
+    }
+  }
+
+  if (glossary_sync_window_ &&
+      glossary_sync_window_->GetHandle() != nullptr) {
+    HWND child_hwnd = glossary_sync_window_->GetHandle();
+    if (IsIconic(child_hwnd)) {
+      ShowWindow(child_hwnd, SW_RESTORE);
+    } else {
+      ShowWindow(child_hwnd, SW_SHOW);
+    }
+    SetForegroundWindow(child_hwnd);
+    if (glossary_sync_window_->windows_bridge_channel_) {
+      glossary_sync_window_->windows_bridge_channel_->InvokeMethod(
+          "syncWindowActivated",
+          args != nullptr
+              ? std::make_unique<flutter::EncodableValue>(*args)
+              : std::make_unique<flutter::EncodableValue>());
+    }
+    return true;
+  }
+
+  flutter::DartProject child_project(L"data");
+  child_project.set_dart_entrypoint("glossarySyncMain");
+  if (!mode_arg.empty()) {
+    child_project.set_dart_entrypoint_arguments({mode_arg});
+  }
+
+  auto window = std::make_unique<FlutterWindow>(child_project, true, this);
+  window->SetQuitOnClose(false);
+  Win32Window::Point origin(120, 80);
+  Win32Window::Size size(1180, 760);
+  if (!window->Create(
+          L"\x0110\x1ED3ng b\x1ED9 Glossary \x2194 VietPhrase \x2014 VietYaku",
+          origin, size)) {
+    return false;
+  }
+  glossary_sync_window_ = std::move(window);
+  return true;
+}
+
 void FlutterWindow::OnDestroy() {
+  if (glossary_sync_window_) {
+    glossary_sync_window_->Destroy();
+    glossary_sync_window_.reset();
+  }
   SetClipboardBridgeEnabled(false);
   windows_bridge_channel_.reset();
   if (flutter_controller_) {
@@ -119,6 +226,22 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
   }
 
   switch (message) {
+    case WM_CLOSE:
+      if (is_secondary_) {
+        ShowWindow(hwnd, SW_HIDE);
+        return 0;
+      }
+      break;
+    case WM_GETMINMAXINFO:
+      if (is_secondary_ && lparam != 0) {
+        auto* info = reinterpret_cast<MINMAXINFO*>(lparam);
+        const UINT dpi = FlutterDesktopGetDpiForHWND(hwnd);
+        const double scale_factor = dpi / 96.0;
+        info->ptMinTrackSize.x = static_cast<LONG>(900 * scale_factor);
+        info->ptMinTrackSize.y = static_cast<LONG>(560 * scale_factor);
+        return 0;
+      }
+      break;
     case WM_CLIPBOARDUPDATE:
       if (clipboard_listener_registered_ && windows_bridge_channel_) {
         windows_bridge_channel_->InvokeMethod(

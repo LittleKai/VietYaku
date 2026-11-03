@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 
+import '../../clipboard/application/clipboard_reader_controller.dart';
 import '../../dictionary/application/dictionaries_provider.dart';
 import '../../dictionary/data/user_dict_service.dart';
 import '../../glossary/data/glossary_term_queue.dart';
@@ -122,9 +123,7 @@ class DictionarySyncController extends Notifier<DictionarySyncState> {
   }
 
   Future<void> logout() async {
-    final prefs = ref.read(sharedPreferencesProvider);
-    await prefs.remove(_sessionUsernameKey);
-    await prefs.remove(_sessionTokenKey);
+    await _clearPersistedSession();
     state = state.copyWith(clearSession: true, message: 'Đã đăng xuất.');
   }
 
@@ -144,6 +143,12 @@ class DictionarySyncController extends Notifier<DictionarySyncState> {
     final service = SharedDictionaryService(paths);
     await service.stageLocalEdit(mode, entry);
     await _reloadCurrentTranslation();
+    unawaited(
+      ref.read(windowsClipboardBridgeProvider).notifyGlossaryWindow({
+        'type': 'vietPhraseChanged',
+        'mode': mode.name,
+      }),
+    );
     final dictionaryName = kind == SharedDictionaryKind.vietPhrase
         ? 'VietPhrase'
         : 'Lạc Việt';
@@ -223,6 +228,12 @@ class DictionarySyncController extends Notifier<DictionarySyncState> {
     final service = SharedDictionaryService(paths);
     await service.stageLocalEdit(mode, entry);
     await _reloadCurrentTranslation();
+    unawaited(
+      ref.read(windowsClipboardBridgeProvider).notifyGlossaryWindow({
+        'type': 'vietPhraseChanged',
+        'mode': mode.name,
+      }),
+    );
     final dictionaryName = kind == SharedDictionaryKind.vietPhrase
         ? 'VietPhrase'
         : 'Lạc Việt';
@@ -237,22 +248,28 @@ class DictionarySyncController extends Notifier<DictionarySyncState> {
   Future<void> stageLocalEditsBulk({
     required TranslationMode mode,
     required List<SharedDictionaryEntry> entries,
+    bool reloadDictionaries = true,
   }) async {
     if (!state.isAdmin || entries.isEmpty) return;
     final paths = await ref.read(appPathsProvider.future);
     final userDicts = UserDictService(paths);
-    for (final entry in entries) {
-      if (entry.kind == SharedDictionaryKind.vietPhrase && entry.isDelete) {
-        await userDicts.removeGeneratedEntry(mode, entry.source);
-        await userDicts.removeGeneratedEntry(
-          mode,
+    final deleteKeys = [
+      for (final entry in entries)
+        if (entry.kind == SharedDictionaryKind.vietPhrase && entry.isDelete)
           entry.source,
-          inDir: generatedDictDir(mode),
-        );
-      }
+    ];
+    if (deleteKeys.isNotEmpty) {
+      await userDicts.removeGeneratedEntries(mode, deleteKeys);
+      await userDicts.removeGeneratedEntries(
+        mode,
+        deleteKeys,
+        inDir: generatedDictDir(mode),
+      );
     }
     await SharedDictionaryService(paths).stageLocalEdits(mode, entries);
-    await _reloadCurrentTranslation();
+    if (reloadDictionaries) {
+      await _reloadCurrentTranslation();
+    }
     state = state.copyWith(
       message:
           'Đã lưu ${entries.length} mục. Bấm Update để gửi lên server.',
@@ -372,6 +389,12 @@ class DictionarySyncController extends Notifier<DictionarySyncState> {
       await _setReminderBaseline(DateTime.now());
       if (changed > 0 || restored > 0) {
         await _reloadCurrentTranslation();
+        unawaited(
+          ref.read(windowsClipboardBridgeProvider).notifyGlossaryWindow({
+            'type': 'vietPhraseChanged',
+            'mode': mode.name,
+          }),
+        );
       }
       state = state.copyWith(
         isSyncing: false,
@@ -428,6 +451,15 @@ class DictionarySyncController extends Notifier<DictionarySyncState> {
         .setInt(_reminderBaselineKey, at.millisecondsSinceEpoch);
   }
 
+  /// Nạp lại overlay từ điển và dịch lại văn bản hiện tại (khi cửa sổ Đồng bộ
+  /// Glossary vừa ghi thay đổi vào VietPhrase).
+  Future<void> reloadCurrentTranslation({String? statusMessage}) async {
+    await _reloadCurrentTranslation();
+    if (statusMessage != null) {
+      state = state.copyWith(message: statusMessage);
+    }
+  }
+
   Future<void> _reloadCurrentTranslation() async {
     await ref.read(dictionariesProvider.notifier).reload();
     final translation = ref.read(translationControllerProvider);
@@ -445,6 +477,9 @@ class DictionarySyncController extends Notifier<DictionarySyncState> {
     final prefs = ref.read(sharedPreferencesProvider);
     await prefs.remove(_sessionUsernameKey);
     await prefs.remove(_sessionTokenKey);
+    unawaited(
+      ref.read(windowsClipboardBridgeProvider).closeGlossarySyncWindow(),
+    );
   }
 }
 
