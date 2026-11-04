@@ -129,8 +129,10 @@ nên làm tài liệu **ngắn đi hoặc chặt hơn**, không chỉ dài thêm
 
 ## 🗂️ BỘ KHUNG
 
-**Công cụ:** Flutter 3.44.2 · Dart ^3.12 · Riverpod 2 manual providers (KHÔNG
-codegen) · Material 3. Lệnh chạy & file quan trọng: `PROJECT_SUMMARY.md` §2, §9.
+**Công cụ:** Flutter 3.44.2 · Dart ^3.12 (`flutter pub`, khoá `pubspec.lock`) · Riverpod 2 manual
+providers (KHÔNG codegen) · Material 3 · Python tooling/guard: `D:/Dev/conda-envs/py312/python.exe`
+(stdlib cho `.claude/guard_check.py`, tách biệt với runtime Flutter đóng gói). Lệnh chạy & file
+quan trọng: `PROJECT_SUMMARY.md` §2, §9.
 
 | Tầng | Ở đâu | Xóa được? |
 |---|---|---|

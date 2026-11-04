@@ -1,6 +1,6 @@
 # Quyết định thiết kế đã chốt — VietYaku
 
-**Last Updated:** 2026-09-14
+**Last Updated:** 2026-11-03
 
 > Chuyển nguyên văn từ `CLAUDE.md` (bản 1). Đây là các quyết định **không bàn lại**
 > — đọc trước khi đụng engine dịch, từ điển, nguồn online, hoặc đường ghi dữ liệu.
@@ -57,3 +57,23 @@
 - Engine options (constructor, chữ ký `translate()` không đổi): `TranslationAlgorithm` — `leftToRight` (mặc định) / `longestPhrase` (cụm dài toàn văn đặt trước, khe trống dịch trái→phải chặn biên) / `longestPhrase4` (chỉ cụm ≥4 code unit vào vòng global); `prioritizeNames` — tiered: dict đứng trước có match (bất kỳ độ dài) thắng dict sau (UserDict ngắn vẫn thắng cụm dài — cố ý). Settings áp dụng ở lần Dịch kế tiếp.
 - Japanese deinflection chỉ là fallback opt-in (`enableJapaneseDeinflection`): static lookup thắng trước, candidate được tra lại đúng chuỗi ưu tiên dict, giữ toàn bộ surface và offset UTF-16; prototype giới hạn bảng luật và không tự chèn tiền tố ngữ pháp tiếng Việt.
 - Project TXT lưu `project.json` + `segments.jsonl` và TM exact riêng `tm.jsonl`; chỉ segment `reviewed` mới vào TM, gợi ý không tự ghi đè bản dịch đang chỉnh, autosave phiên làm việc không thuộc phạm vi.
+
+## Chuẩn hóa tầng nghĩa · nạp lại từ điển / cache `.vydc` · mốc kiểm chứng & GDI Windows
+
+> Chuyển nguyên văn từ `PROJECT_SUMMARY.md` §1, §3, §5 (2026-11-03) để giữ gọn file trạng thái.
+
+- Value VietPhrase bundle JP/CN đã được chuẩn hóa thống nhất theo **tầng nghĩa**: dấu `/` thường chỉ ngăn các cách dịch trong cùng tầng (`xào xạc/sà sà/sàn sạt` vẫn là tầng 1); chỉ marker số/từ loại mở tầng mới. Canonical: `(n)/cách 1/cách 2/(2)/(v)/cách 3`. Sau khi phục hồi value gốc rồi migration đúng, 1.145 mục JP + 191 mục CN được sửa; `tool/normalize_vietphrase_values.dart` dry-run hiện `0/190.085` và `0/691.761`. File nguồn ngoài dự án không bị ghi đè.
+
+**Rebuild tự động** (không cần gọi tay) — `dictionariesProvider` watch: `appPathsProvider` · `currentModeProvider` · `settings.dictPathsFor(mode)` · `settings.sudachiVariants` · `settings.convertTraditionalToSimplified`. Đổi thuật toán dịch / `prioritizeNames` **không** reload dict (áp ở `engineWith`, có hiệu lực lần Dịch kế tiếp).
+
+**`reload()` vs `reloadAll()`** — `reload()` chỉ đọc lại file overlay (UserDict, UserNames, Shared*, OnlineDict/AiDict/AiEntries, VietPhrase overlay) và dùng lại `DictionaryBase` (dict nguồn lớn + `SudachiVariantGroups` + LuatNhan) mà `loadAll` trả kèm; chỉ dùng lại khi khóa cấu hình (thư mục, mode, dictPaths, sudachiVariants, trad2simp) không đổi. Ghi vào dict NGUỒN ⇒ phải `reloadAll()`. Rebuild do watch/`ref.invalidate` luôn nạp toàn bộ.
+
+> ⚠️ **KHÔNG** watch `translationControllerProvider` từ `dictionariesProvider` — vòng phụ thuộc Riverpod, xem `.claude/IMPORTANT_FIXED_BUGS.md`. Mode phải tách riêng qua `currentModeProvider`.
+>
+> Cache `.vydc` có invalidation riêng, độc lập với Riverpod: size lệch ⇒ bỏ; size khớp + mtime khớp **và** nguồn cũ hơn file cache ≥2s (`BinaryCache.trustsMtime`) ⇒ dùng; còn lại hash FNV-1a. Đổi format cache phải tăng `BinaryCache.version`. Bộ CN đã quy giản mang `Trad2SimpTable.signature` trong tên file cache.
+
+**Verify end-to-end:** `dart run tool/normalize_vietphrase_values.dart` → JP `0/190.085`, CN `0/691.761` entry cần chuẩn hóa. `dart run tool/export_jp.dart` → VietPhrase_JP.txt + LacViet_JP.txt cạnh file gốc; hết key `覚 悟`/`军`, value nguyên vẹn từng byte; dịch Nhật match dài, dịch Trung có fallback phiên âm. Sau chặng offline intelligence: `flutter test` và `flutter analyze` phải chạy lại trong cùng session. Autosave phiên làm việc/khôi phục tự động vẫn ngoài phạm vi.
+
+**Verify Android (emulator `Medium_Phone_API_36.1`, API 36):** `flutter build apk --debug` → cài chạy được; lần đầu seed `data/jp` (14 file, ~96MB) rồi nạp 14 dict trong ~18s, lần sau đọc `.vydc` — không OOM, không ANR; dán & dịch đoạn Nhật ra đúng tầng nghĩa; nhấn giữ token hiện menu "Chèn vào Bản dịch / Thêm vào UserDict / Thêm vào Names / Tra online"; tab Google Dịch trả kết quả online (xác nhận quyền `INTERNET` trong bản không-debug bằng `aapt2 dump permissions`).
+
+- Screenshot GDI `CopyFromScreen` chụp được cửa sổ Flutter bình thường, NHƯNG chỉ khi cửa sổ thật sự đang foreground. Windows khoá `SetForegroundWindow` với tiến trình nền → phải `AttachThreadInput` vào thread của cửa sổ foreground rồi `SwitchToThisWindow`, và kiểm lại `GetForegroundWindow()` ngay trước khi chụp (đừng gõ ALT để "gỡ khoá" — nó mở Task View). Click tự động cũng cần chuỗi move → hover → down → up, nhảy thẳng vào rồi click ngay thì Flutter chưa kịp hit-test.

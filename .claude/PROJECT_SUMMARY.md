@@ -1,6 +1,6 @@
 # Project Summary — VietYaku
 ---
-**Last updated:** 2026-11-05
+**Last updated:** 2026-11-05 · **Setup baseline:** 2026-11-03
 
 > File này phản ánh **trạng thái hiện tại** của dự án. **Không** dùng làm changelog,
 > recent changes, hay bug-fix log — git history là nguồn lịch sử. Lỗi quan trọng,
@@ -17,8 +17,7 @@
 
 **Giữ gọn (file này nạp mỗi session):** ô `Details` của dòng ✅ ≤ ~120 ký tự — nói
 *cái gì*, không kể từng nút/màu. *Cơ chế + vì sao* ⇒ `DESIGN_DECISIONS.md`; bẫy ⇒
-`IMPORTANT_FIXED_BUGS.md`; chi tiết UI ⇒ không ghi (code + git đã có). Vượt ~45KB ⇒
-dọn trước khi thêm.
+`IMPORTANT_FIXED_BUGS.md`; chi tiết UI ⇒ không ghi (code + git đã có). Vượt ~45KB ⇒ dọn trước khi thêm.
 
 Không tồn tại file này ⇒ coi như task "review toàn bộ dự án". Thấy nó lệch so với
 code ⇒ **hỏi user trước khi làm tiếp**.
@@ -43,7 +42,7 @@ Dữ liệu từ điển bundle trong dự án (KHÔNG commit git, đi theo bả
 - `data/cn/` (nguồn `D:\Software\QuickTranslator\Quick Translator Chinese\Data` + userdata migrate): VietPhrase.txt (691.762), LacViet.txt (66.450), Names.txt, ZhViDict.txt (161.194), + bộ chung như trên.
 - JaViDict/ZhViDict generate từ SQLite của VocabFlip bằng `tool/export_vocabflip_dicts.py` (chạy 1 lần, conda py312), value escape `\n\t` như LacViet.
 - Nguồn gốc (KHÔNG ghi đè): Drive `JP CN Tool\QuickTranslator_Jap` và `D:\Software\QuickTranslator\`.
-- Value VietPhrase bundle JP/CN đã được chuẩn hóa thống nhất theo **tầng nghĩa**: dấu `/` thường chỉ ngăn các cách dịch trong cùng tầng (`xào xạc/sà sà/sàn sạt` vẫn là tầng 1); chỉ marker số/từ loại mở tầng mới. Canonical: `(n)/cách 1/cách 2/(2)/(v)/cách 3`. Sau khi phục hồi value gốc rồi migration đúng, 1.145 mục JP + 191 mục CN được sửa; `tool/normalize_vietphrase_values.dart` dry-run hiện `0/190.085` và `0/691.761`. File nguồn ngoài dự án không bị ghi đè.
+- Chuẩn hóa tầng nghĩa VietPhrase (`(n)/cách 1/cách 2/(2)/(v)/cách 3`, `tool/normalize_vietphrase_values.dart`) ⇒ **`.claude/DESIGN_DECISIONS.md` §"Chuẩn hóa tầng nghĩa · nạp lại từ điển / cache `.vydc` · mốc kiểm chứng & GDI Windows"**.
 
 ---
 
@@ -172,13 +171,7 @@ flowchart LR
 | Ghi Glossary hai chiều (`glossary_sync_controller.dart:217,220`) | `invalidate(glossarySyncRowsProvider(...))` **cả 2 chiều** | Bảng đồng bộ vẫn liệt kê mục vừa xử lý |
 | Ghi Glossary từ dialog sửa entry (`glossary_update_dialog.dart`) | `invalidate(glossarySyncRowsProvider(...))` **cả 2 chiều** + trả `GlossaryTerm?` để dialog cha gọi `_updateGlossaryTermDirectly` | Bảng đồng bộ và thẻ trạng thái Glossary trong dialog vẫn hiện dữ liệu trước khi ghi |
 
-**Rebuild tự động** (không cần gọi tay) — `dictionariesProvider` watch: `appPathsProvider` · `currentModeProvider` · `settings.dictPathsFor(mode)` · `settings.sudachiVariants` · `settings.convertTraditionalToSimplified`. Đổi thuật toán dịch / `prioritizeNames` **không** reload dict (áp ở `engineWith`, có hiệu lực lần Dịch kế tiếp).
-
-**`reload()` vs `reloadAll()`** — `reload()` chỉ đọc lại file overlay (UserDict, UserNames, Shared*, OnlineDict/AiDict/AiEntries, VietPhrase overlay) và dùng lại `DictionaryBase` (dict nguồn lớn + `SudachiVariantGroups` + LuatNhan) mà `loadAll` trả kèm; chỉ dùng lại khi khóa cấu hình (thư mục, mode, dictPaths, sudachiVariants, trad2simp) không đổi. Ghi vào dict NGUỒN ⇒ phải `reloadAll()`. Rebuild do watch/`ref.invalidate` luôn nạp toàn bộ.
-
-> ⚠️ **KHÔNG** watch `translationControllerProvider` từ `dictionariesProvider` — vòng phụ thuộc Riverpod, xem `.claude/IMPORTANT_FIXED_BUGS.md`. Mode phải tách riêng qua `currentModeProvider`.
->
-> Cache `.vydc` có invalidation riêng, độc lập với Riverpod: size lệch ⇒ bỏ; size khớp + mtime khớp **và** nguồn cũ hơn file cache ≥2s (`BinaryCache.trustsMtime`) ⇒ dùng; còn lại hash FNV-1a. Đổi format cache phải tăng `BinaryCache.version`. Bộ CN đã quy giản mang `Trad2SimpTable.signature` trong tên file cache.
+Cơ chế rebuild tự động · `reload()` vs `reloadAll()` · tách `currentModeProvider` (tránh vòng phụ thuộc Riverpod) · invalidation cache `.vydc` (`BinaryCache.trustsMtime`, `Trad2SimpTable.signature`) ⇒ **`.claude/DESIGN_DECISIONS.md` §"Chuẩn hóa tầng nghĩa · nạp lại từ điển / cache `.vydc` · mốc kiểm chứng & GDI Windows"**.
 
 ### Layout màn hình Dịch (kiểu QuickTranslator, tham khảo .claude/image.png)
 Menu bar trên cùng (chọn Nhật/Trung + Dán & Dịch). Trái (flex 2): tabs [Nguồn | Hán Việt] qua TabBar + IndexedStack (giữ state SourcePane) trên, LacVietPanel ("Nghĩa", có nút tra online) dưới. Phải (flex 3): ResultPane với tabs [VietPhrase một nghĩa | VietPhrase (đa nghĩa) — mặc định | Google Dịch (tab tạo khi bấm nút, dịch online cả đoạn)] — 1 TokenTextView duy nhất, đổi tab chỉ đổi `textOf` (display/displayAll). Nút chỉnh cỡ chữ + font các ô nằm ở NavigationRail trái.
@@ -231,9 +224,7 @@ Menu bar trên cùng (chọn Nhật/Trung + Dán & Dịch). Trái (flex 2): tabs
 | Search Center / tra ngược | ✅ Done | features/dictionary_search/*, app.dart | Exact/prefix/wildcard/full-text, overlay winner |
 | Quét mã QR ủng hộ nhà phát triển | ✅ Done | features/settings/presentation/donate_dialog.dart, settings_screen.dart | VietQR Vietcombank 0071000718658, sao chép STK, tải ảnh QR về máy (file_selector trên desktop + Downloads trên mobile) |
 
-**Verify end-to-end:** `dart run tool/normalize_vietphrase_values.dart` → JP `0/190.085`, CN `0/691.761` entry cần chuẩn hóa. `dart run tool/export_jp.dart` → VietPhrase_JP.txt + LacViet_JP.txt cạnh file gốc; hết key `覚 悟`/`军`, value nguyên vẹn từng byte; dịch Nhật match dài, dịch Trung có fallback phiên âm. Sau chặng offline intelligence: `flutter test` và `flutter analyze` phải chạy lại trong cùng session. Autosave phiên làm việc/khôi phục tự động vẫn ngoài phạm vi.
-
-**Verify Android (emulator `Medium_Phone_API_36.1`, API 36):** `flutter build apk --debug` → cài chạy được; lần đầu seed `data/jp` (14 file, ~96MB) rồi nạp 14 dict trong ~18s, lần sau đọc `.vydc` — không OOM, không ANR; dán & dịch đoạn Nhật ra đúng tầng nghĩa; nhấn giữ token hiện menu "Chèn vào Bản dịch / Thêm vào UserDict / Thêm vào Names / Tra online"; tab Google Dịch trả kết quả online (xác nhận quyền `INTERNET` trong bản không-debug bằng `aapt2 dump permissions`).
+Chi tiết mốc kiểm chứng end-to-end (normalize/export_jp) và Android emulator API 36 ⇒ **`.claude/DESIGN_DECISIONS.md` §"Chuẩn hóa tầng nghĩa · nạp lại từ điển / cache `.vydc` · mốc kiểm chứng & GDI Windows"**.
 
 ---
 
@@ -261,7 +252,7 @@ Menu bar trên cùng (chọn Nhật/Trung + Dán & Dịch). Trái (flex 2): tabs
 ### Giới hạn đã biết (by design)
 - Quy tắc vàng: ký tự đã hợp lệ JP không convert → không sửa được `后→後`, `干→幹` theo ngữ cảnh; ghi vào RepairReport.ambiguous.
 - Ambiguous cố ý không resolve: 复(復/複/覆), 舍(舎/捨), 获(獲/穫), 泛(氾/汎) + ~30 chữ hiếm.
-- Screenshot GDI `CopyFromScreen` chụp được cửa sổ Flutter bình thường, NHƯNG chỉ khi cửa sổ thật sự đang foreground. Windows khoá `SetForegroundWindow` với tiến trình nền → phải `AttachThreadInput` vào thread của cửa sổ foreground rồi `SwitchToThisWindow`, và kiểm lại `GetForegroundWindow()` ngay trước khi chụp (đừng gõ ALT để "gỡ khoá" — nó mở Task View). Click tự động cũng cần chuỗi move → hover → down → up, nhảy thẳng vào rồi click ngay thì Flutter chưa kịp hit-test.
+- Chụp ảnh màn hình GDI `CopyFromScreen` / click tự động cửa sổ Flutter Windows ⇒ **`.claude/DESIGN_DECISIONS.md` §"Chuẩn hóa tầng nghĩa · nạp lại từ điển / cache `.vydc` · mốc kiểm chứng & GDI Windows"**.
 
 ---
 
@@ -293,7 +284,7 @@ Menu bar trên cùng (chọn Nhật/Trung + Dán & Dịch). Trái (flex 2): tabs
 | Credential Backblaze B2 | `.env`: `B2_ACCESS_KEY_ID`, `B2_SECRET_ACCESS_KEY`, `B2_BUCKET_NAME`, `CDN_BASE_URL` | Cùng giá trị với `alpha-studio-backend/.env`; chỉ `upload-b2.ps1` đọc |
 
 - 4 nguồn tra online (Mazii, Jisho, Weblio, Youdao) + Google gtx đều **keyless** — theo thiết kế không dùng API cần key/trả phí.
-- `.env` ở root đã nằm trong `.gitignore` (dòng 48).
+- `.env` ở root đã nằm trong `.gitignore` (dòng 48); app runtime **không** nạp `.env` (chỉ script phát hành `release.ps1` / `upload-b2.ps1` đọc; URL server truyền lúc build qua `--dart-define`).
 
 > Chỉ ghi **tên biến và nơi lưu**. Không bao giờ ghi giá trị thật của JWT/mật khẩu vào file này.
 
