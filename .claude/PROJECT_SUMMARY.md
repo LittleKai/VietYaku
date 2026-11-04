@@ -1,6 +1,6 @@
 # Project Summary — VietYaku
 ---
-**Last updated:** 2026-11-03
+**Last updated:** 2026-11-05
 
 > File này phản ánh **trạng thái hiện tại** của dự án. **Không** dùng làm changelog,
 > recent changes, hay bug-fix log — git history là nguồn lịch sử. Lỗi quan trọng,
@@ -255,7 +255,7 @@ Menu bar trên cùng (chọn Nhật/Trung + Dán & Dịch). Trái (flex 2): tabs
 - [ ] AiTranslationEngine (chữ ký `translate()` đã chừa sẵn).
 - [ ] Fuzzy match / gợi ý sửa key còn sót.
 - [x] Quy tắc hậu xử lý regex + Luật Nhân + rule tester đã hoàn tất; Luật Nhân dùng bộ hơn 200 rule sạch từ QuickTranslator_Jap và 4 phạm vi sử dụng.
-- [x] `test/widget_test.dart` đã cập nhật NavigationRail có destination `Tìm kiếm`; full suite 627 test pass.
+- [x] `test/widget_test.dart` đã cập nhật NavigationRail có destination `Tìm kiếm`; full suite 643 test pass.
 - [ ] Batch dịch cả thư mục + xuất file (QuickConverter) — chưa có nhu cầu, đã loại khỏi scope đợt này.
 
 ### Giới hạn đã biết (by design)
