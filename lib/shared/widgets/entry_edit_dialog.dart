@@ -483,7 +483,10 @@ Future<void> showSharedEntryEditDialog(
     if (dicts == null) return null;
     final k = normKey(key);
     if (isVietPhrase) {
-      return dicts.vietPhrase.entries[k] ?? dicts.vietPhrase.entries[key];
+      final vp = dicts.vietPhrase.entries[k] ?? dicts.vietPhrase.entries[key];
+      if (vp != null && vp.trim().isNotEmpty) return vp;
+      return (hanVietReadingOf(dicts, k) ?? hanVietReadingOf(dicts, key))
+          ?.toLowerCase();
     }
     final lacViet = dicts.lacViet.entries[k] ?? dicts.lacViet.entries[key];
     if (lacViet != null && lacViet.trim().isNotEmpty) return lacViet;

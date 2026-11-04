@@ -479,7 +479,7 @@ class LookupController extends Notifier<LookupResult?> {
     );
   }
 
-  /// Chèn kết quả tra online vào cuối ô Nghĩa (bỏ mục cũ cùng nhãn khi tra lại).
+  /// Chèn kết quả tra online vào cuối ô Nghĩa (thay tại chỗ nếu mục cùng nhãn đã có).
   /// Bỏ qua nếu người dùng đã chọn từ khác trong lúc chờ mạng.
   void addOnlineSections(String word, List<LookupSection> online) {
     final current = state;
@@ -488,6 +488,8 @@ class LookupController extends Notifier<LookupResult?> {
     _sessionSections
       ..removeWhere((s) => labels.contains(s.label))
       ..addAll(online);
+    final byLabel = {for (final s in online) s.label: s};
+    final replaced = <String>{};
     state = LookupResult(
       word: current.word,
       matchedKey: current.matchedKey,
@@ -496,8 +498,13 @@ class LookupController extends Notifier<LookupResult?> {
       hanViet: current.hanViet,
       body: current.body,
       sections: [
-        ...current.sections.where((s) => !labels.contains(s.label)),
-        ...online,
+        for (final s in current.sections)
+          if (byLabel.containsKey(s.label) && replaced.add(s.label))
+            byLabel[s.label]!
+          else if (!byLabel.containsKey(s.label))
+            s,
+        for (final s in online)
+          if (!replaced.contains(s.label)) s,
       ],
     );
   }

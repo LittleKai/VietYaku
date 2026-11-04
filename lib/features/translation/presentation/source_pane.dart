@@ -484,15 +484,6 @@ class _SourcePaneState extends ConsumerState<SourcePane> {
             },
           ),
           IconContextMenuItem(
-            icon: Icons.search,
-            iconColor: scheme.primary,
-            label: 'Tra từ điển',
-            onPressed: () {
-              hide();
-              ref.read(lookupControllerProvider.notifier).lookup(selection);
-            },
-          ),
-          IconContextMenuItem(
             icon: Icons.travel_explore,
             iconColor: meaningLabelColor('Google Dịch', scheme),
             label: dicts?.onlineDict.entries.containsKey(savedKey) == true

@@ -284,4 +284,25 @@ void main() {
       );
     });
   });
+
+  group('Katakana unmatched tokens spacing', () {
+    test('Katakana liên tiếp (VD カッター) không bị chèn khoảng trắng ở giữa dù không có Lạc Việt', () {
+      const tokens = [
+        Token(source: 'カ', sourceStart: 0, kind: TokenKind.unmatched),
+        Token(source: 'ッ', sourceStart: 1, kind: TokenKind.unmatched),
+        Token(source: 'タ', sourceStart: 2, kind: TokenKind.unmatched),
+        Token(source: 'ー', sourceStart: 3, kind: TokenKind.unmatched),
+        Token(
+          source: 'を',
+          sourceStart: 4,
+          kind: TokenKind.matched,
+          rawValue: 'đem',
+        ),
+      ];
+      expect(
+        TokenTextView.plainText(tokens, (t) => t.display),
+        'カッター đem',
+      );
+    });
+  });
 }

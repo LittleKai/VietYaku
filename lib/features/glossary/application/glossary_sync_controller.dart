@@ -296,18 +296,24 @@ class _VietPhraseSyncIndex {
     final rows = _baseRows;
     final indexMap = _indexByNormKey;
     if (rows != null && indexMap != null) {
-      if (normKeysToRemove.length == 1) {
-        final single = normKeysToRemove.first;
+      final existingKeys = [
+        for (final k in normKeysToRemove)
+          if (indexMap.containsKey(k)) k,
+      ];
+      if (existingKeys.isEmpty) return;
+      if (existingKeys.length == 1) {
+        final single = existingKeys.first;
         final idx = indexMap[single];
         if (idx != null) {
           _removeRowAt(rows, indexMap, idx, single);
         }
       } else {
+        final removeSet = existingKeys.toSet();
         final nextRows = <GlossarySyncRow>[];
         final nextIndex = <String, int>{};
         for (final row in rows) {
           final norm = _fastNormKey(row.source);
-          if (normKeysToRemove.contains(norm)) continue;
+          if (removeSet.contains(norm)) continue;
           nextIndex[norm] = nextRows.length;
           nextRows.add(row);
         }
@@ -341,6 +347,19 @@ void invalidateVietPhraseSyncIndex([TranslationMode? mode]) {
   } else {
     _syncIndexByMode.remove(mode);
   }
+}
+
+/// Nạp lại dữ liệu Glossary và VietPhrase từ đĩa cho màn hình đồng bộ.
+Future<void> refreshGlossarySyncData(WidgetRef ref) async {
+  GlossaryService.clearCache();
+  invalidateVietPhraseSyncIndex();
+  await ref.read(dictionariesProvider.notifier).reload();
+  ref.invalidate(
+    glossarySyncRowsProvider(GlossarySyncDirection.glossaryToVietPhrase),
+  );
+  ref.invalidate(
+    glossarySyncRowsProvider(GlossarySyncDirection.vietPhraseToGlossary),
+  );
 }
 
 /// Báo cho bảng đồng bộ (trong cùng cửa sổ và cửa sổ tách rời nếu đang mở)
@@ -679,7 +698,7 @@ Future<void> editGlossarySyncRow(
     if (sourceChanged) {
       await service.removeAll(mode, [oldSource]);
     }
-    await service.upsert(mode, source: source, target: target);
+    await service.upsertAll(mode, {source: target});
   }
 
   if (updateVietPhrase) {

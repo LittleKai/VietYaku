@@ -22,12 +22,14 @@ final glossaryServiceProvider = Provider<GlossaryService>((ref) {
       await GlossaryTermQueue(
         paths,
       ).enqueue(mode, upserts: upserts, deletes: deletes);
-      // Sửa lẻ từng từ thì đủ ngưỡng là tự Update, như stageLocalEdit. Ghi
-      // hàng loạt (màn đồng bộ Glossary ↔ VietPhrase) giữ nguyên quy ước của
-      // stageLocalEditsBulk: số lượng lớn để admin tự bấm Update.
-      if (upserts.length + deletes.length == 1) {
-        await ref.read(dictionarySyncProvider.notifier).maybeAutoPublish();
-      }
+    },
+    onSingleEdit: () async {
+      if (!ref.read(dictionarySyncProvider).isAdmin) return;
+      // Chỉ sửa lẻ từng từ qua hộp thoại tra từ chính mới tự Update khi đủ
+      // ngưỡng (như stageLocalEdit). Mọi thao tác trong màn đồng bộ Glossary ↔
+      // VietPhrase (dù 1 hay nhiều mục) dùng upsertAll/removeAll nên chỉ xếp
+      // hàng cục bộ, không chặn UI chờ mạng.
+      await ref.read(dictionarySyncProvider.notifier).maybeAutoPublish();
     },
   );
 });

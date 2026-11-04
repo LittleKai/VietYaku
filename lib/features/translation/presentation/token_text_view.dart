@@ -99,6 +99,15 @@ class TokenTextView extends ConsumerStatefulWidget {
     }
     if (_closePunct.contains(firstNext)) return false;
     if (_openPunct.contains(lastCur)) return false;
+    final lastCp = codePointAt(
+      cur,
+      cur.length - runeLengthBefore(cur, cur.length),
+    );
+    final firstCp = codePointAt(next, 0);
+    if (charCategoryOf(lastCp) == CjkCharCategory.katakana &&
+        charCategoryOf(firstCp) == CjkCharCategory.katakana) {
+      return false;
+    }
     return true;
   }
 
@@ -912,17 +921,6 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
             title: '${verb(namesMeaning != null)} vào Names',
             initialMeaning: namesMeaning ?? defaultNamesMeaning,
           );
-        },
-      ),
-    );
-    custom.add(
-      IconContextMenuItem(
-        icon: Icons.search,
-        iconColor: scheme.primary,
-        label: 'Tra từ điển',
-        onPressed: () {
-          editableTextState.hideToolbar();
-          ref.read(lookupControllerProvider.notifier).lookup(word);
         },
       ),
     );

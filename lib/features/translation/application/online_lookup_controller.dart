@@ -3,10 +3,13 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/app_paths.dart';
+import '../../../core/google_translate.dart';
+import '../../ai_translation/application/ai_settings_controller.dart';
 import '../../dictionary/application/dictionaries_provider.dart';
 import '../../dictionary/data/user_dict_service.dart';
 import '../../dictionary_sync/application/dictionary_sync_controller.dart';
 import '../../settings/settings_provider.dart';
+import '../data/weblio_api.dart';
 import '../domain/dict_entry_filter.dart';
 import '../domain/online_lookup_source.dart';
 import '../domain/trad2simp_table.dart';
@@ -89,13 +92,14 @@ List<OnlineLookupTask> startOnlineLookup(WidgetRef ref, String rawWord) {
         );
       // Weblio 日中中日辞典 là từ điển thật (~1.6 triệu mục, có cả pinyin) nên
       // dùng thay máy dịch; chỉ có chiều Nhật nên mode Trung bỏ qua.
+      // Ban đầu tự động dịch nội dung sang tiếng Việt bằng Google Dịch.
       case OnlineLookupSource.chinese:
         if (!isJa) continue; // Trung→Trung vô nghĩa.
         tasks.add((
           source: source,
           label: 'Weblio 日中',
           saved: true,
-          body: weblio.lookup(word),
+          body: lookupWeblioWithGoogle(weblio, google, word),
         ));
     }
   }
@@ -208,4 +212,297 @@ Future<void> _persist(
   } catch (_) {
     // Mất mạng / lỗi ghi file: kết quả đã hiện trên dialog là đủ.
   }
+}
+
+final _rawWeblioLabels = RegExp(
+  r'(読み方|中国語訳|ピンイン|中国語品詞|対訳の関係|日本語での説明|用例)',
+);
+final _embeddedWeblioLabels = RegExp(
+  r'(?<!^)(?<!\n)(読み方|中国語訳|ピンイン|中国語品詞|対訳の関係|日本語での説明|中国語での説明|英語での説明|解説|用例)',
+);
+final _pinyinThenCjk = RegExp(
+  r'(ピンイン\s+[^\u3000-\u9fff\uff00-\uffef\n]+)([\u3000-\u9fff\uff00-\uffef])',
+);
+
+/// Lưu bản gốc Weblio 日中 trong phiên để khi bấm `Dịch AI` có thể dịch lại
+/// chuẩn từ bản gốc thay vì dịch chồng lên bản Google Dịch.
+final _rawWeblioCache = <String, String>{};
+final _aiTranslatedWeblioWords = <String>{};
+
+/// Nội dung mục `Weblio 日中` còn nguyên nhãn tiếng Nhật/Trung chưa qua dịch.
+bool isRawWeblioBody(String body) => _rawWeblioLabels.hasMatch(body);
+
+/// Tra `Weblio 日中` rồi tự động dịch sang tiếng Việt bằng Google Dịch.
+Future<String?> lookupWeblioWithGoogle(
+  WeblioApi weblio,
+  GoogleTranslateClient google,
+  String word,
+) async {
+  _aiTranslatedWeblioWords.remove(word);
+  final raw = await weblio.lookup(word);
+  if (raw == null || raw.trim().isEmpty) return null;
+  _rawWeblioCache[word] = raw;
+  return await translateWeblioWithGoogle(google, raw) ?? raw;
+}
+
+/// Dịch nội dung gốc `Weblio 日中` sang tiếng Việt bằng Google Dịch:
+/// tách phần nghĩa tiếng Trung (`zh-CN`) và phần giải thích tiếng Nhật (`ja`)
+/// để Google không nhận nhầm ngôn ngữ.
+Future<String?> translateWeblioWithGoogle(
+  GoogleTranslateClient google,
+  String raw,
+) async {
+  final normalized = raw
+      .replaceAllMapped(_embeddedWeblioLabels, (m) => '\n${m[1]} ')
+      .replaceAllMapped(_pinyinThenCjk, (m) => '${m[1]}\n${m[2]}');
+  final lines = [
+    for (final l in normalized.split('\n'))
+      if (l.trim().isNotEmpty) l.trim(),
+  ];
+  if (lines.isEmpty) return null;
+
+  final out = List<String?>.filled(lines.length, null);
+  final zhItems = <(int, String)>[];
+  final zhTexts = <String>[];
+  final jaItems = <(int, String)>[];
+  final jaTexts = <String>[];
+
+  for (var i = 0; i < lines.length; i++) {
+    final l = lines[i];
+    if (l.startsWith('読み方')) {
+      out[i] = 'Cách đọc: ${l.substring(3).trim()}';
+    } else if (l.startsWith('ピンイン')) {
+      out[i] = 'Pinyin: ${l.substring(4).trim()}';
+    } else if (l.startsWith('中国語訳')) {
+      zhItems.add((i, 'Nghĩa: '));
+      zhTexts.add(l.substring(4).trim());
+    } else if (l.startsWith('中国語での説明')) {
+      zhItems.add((i, 'Giải thích (Trung): '));
+      zhTexts.add(l.substring(7).trim());
+    } else if (l.startsWith('中国語品詞')) {
+      jaItems.add((i, 'Từ loại: '));
+      jaTexts.add(l.substring(5).trim());
+    } else if (l.startsWith('対訳の関係')) {
+      jaItems.add((i, 'Quan hệ đối dịch: '));
+      jaTexts.add(l.substring(5).trim());
+    } else if (l.startsWith('日本語での説明')) {
+      jaItems.add((i, 'Giải thích: '));
+      jaTexts.add(l.substring(7).trim());
+    } else if (l.startsWith('用例')) {
+      jaItems.add((i, 'Ví dụ: '));
+      jaTexts.add(l.substring(2).trim());
+    } else if (l.startsWith('解説')) {
+      jaItems.add((i, 'Giải thích: '));
+      jaTexts.add(l.substring(2).trim());
+    } else {
+      jaItems.add((i, ''));
+      jaTexts.add(l);
+    }
+  }
+
+  final results = await Future.wait([
+    zhTexts.isEmpty
+        ? Future<String?>.value('')
+        : google.translate(zhTexts.join('\n'), sourceLang: 'zh-CN'),
+    jaTexts.isEmpty
+        ? Future<String?>.value('')
+        : google.translate(jaTexts.join('\n'), sourceLang: 'ja'),
+  ]);
+  final zhTranslated = results[0];
+  final jaTranslated = results[1];
+  if ((zhTexts.isNotEmpty && zhTranslated == null) ||
+      (jaTexts.isNotEmpty && jaTranslated == null)) {
+    return null;
+  }
+
+  if (zhTexts.isNotEmpty && zhTranslated != null) {
+    final parts = zhTranslated.split('\n');
+    for (var k = 0; k < zhItems.length; k++) {
+      final (idx, prefix) = zhItems[k];
+      final text = k < parts.length ? parts[k].trim() : zhTexts[k];
+      out[idx] = '$prefix$text';
+    }
+  }
+  if (jaTexts.isNotEmpty && jaTranslated != null) {
+    final parts = jaTranslated.split('\n');
+    for (var k = 0; k < jaItems.length; k++) {
+      final (idx, prefix) = jaItems[k];
+      final text = k < parts.length ? parts[k].trim() : jaTexts[k];
+      out[idx] = '$prefix$text';
+    }
+  }
+  final joined = out.whereType<String>().join('\n').trim();
+  return joined.isEmpty ? null : joined;
+}
+
+/// Tự động dịch mục `Weblio 日中` còn nguyên bản sang tiếng Việt bằng Google Dịch
+/// và cập nhật vào `OnlineDict_<mode>.txt`.
+Future<void> translateWeblioSectionWithGoogle(
+  WidgetRef ref, {
+  required String word,
+  required String body,
+}) async {
+  if (!isRawWeblioBody(body)) return;
+  final mode = ref.read(currentModeProvider);
+  final isJa = mode == TranslationMode.japanese;
+  final settings = ref.read(settingsProvider);
+  final normWord = !isJa && settings.convertTraditionalToSimplified
+      ? (ref.read(trad2SimpTableProvider).valueOrNull ?? Trad2SimpTable.empty)
+            .convert(word)
+      : word;
+  _rawWeblioCache[normWord] = body;
+  final google = ref.read(googleTranslateProvider);
+  final lookup = ref.read(lookupControllerProvider.notifier);
+  final dictionaries = ref.read(dictionariesProvider.notifier);
+  final appPathsFuture = ref.read(appPathsProvider.future);
+  final targetDir = ref.read(dictionarySyncProvider).isAdmin
+      ? generatedDictDir(mode)
+      : null;
+  final dicts = ref.read(dictionariesProvider).valueOrNull;
+  final existingRaw =
+      dicts?.onlineDict.entries[normWord] ?? dicts?.onlineDict.entries[word];
+  final currentSections =
+      ref.read(lookupControllerProvider)?.sections ?? const [];
+
+  final translated = await translateWeblioWithGoogle(google, body);
+  if (translated == null ||
+      translated.trim().isEmpty ||
+      _aiTranslatedWeblioWords.contains(normWord)) {
+    return;
+  }
+  await _replaceWeblioSection(
+    normWord: normWord,
+    translatedBody: translated.trim(),
+    mode: mode,
+    lookup: lookup,
+    dictionaries: dictionaries,
+    appPathsFuture: appPathsFuture,
+    targetDir: targetDir,
+    existingRaw: existingRaw,
+    currentSections: currentSections,
+  );
+}
+
+String buildWeblioAiTranslatePrompt(String word, String body) =>
+    'Dịch nội dung mục từ điển Weblio 日中 của từ "$word" dưới đây sang tiếng Việt '
+    'ngắn gọn, chuẩn xác (giữ nguyên cách đọc kana/pinyin nếu có, chỉ trả về nội dung '
+    'đã dịch, không giải thích thêm, không dùng markdown code block):\n\n$body';
+
+/// Dịch nội dung mục `Weblio 日中` của [word] sang tiếng Việt bằng AI, thay thế
+/// bản Google Dịch trong `OnlineDict_<mode>.txt` (giữ nguyên các mục online khác).
+/// Trả về `null` nếu thành công, hoặc chuỗi thông báo lỗi nếu thất bại.
+Future<String?> translateWeblioSectionWithAi(
+  WidgetRef ref, {
+  required String word,
+  required String body,
+}) async {
+  final mode = ref.read(currentModeProvider);
+  final isJa = mode == TranslationMode.japanese;
+  final settings = ref.read(settingsProvider);
+  final normWord = !isJa && settings.convertTraditionalToSimplified
+      ? (ref.read(trad2SimpTableProvider).valueOrNull ?? Trad2SimpTable.empty)
+            .convert(word)
+      : word;
+  if (isRawWeblioBody(body)) {
+    _rawWeblioCache[normWord] = body;
+  }
+  final weblio = ref.read(weblioApiProvider);
+  final lookup = ref.read(lookupControllerProvider.notifier);
+  final dictionaries = ref.read(dictionariesProvider.notifier);
+  final appPathsFuture = ref.read(appPathsProvider.future);
+  final targetDir = ref.read(dictionarySyncProvider).isAdmin
+      ? generatedDictDir(mode)
+      : null;
+  final dicts = ref.read(dictionariesProvider).valueOrNull;
+  final existingRaw =
+      dicts?.onlineDict.entries[normWord] ?? dicts?.onlineDict.entries[word];
+  final currentSections =
+      ref.read(lookupControllerProvider)?.sections ?? const [];
+  final apiClient = ref.read(aiApiClientProvider);
+  final aiSettings = await ref.read(aiSettingsControllerProvider.future);
+  if (!aiSettings.hasConfiguredKey) {
+    return 'Chưa cấu hình API Key trong phần Dịch AI.';
+  }
+
+  final sourceBody = isRawWeblioBody(body)
+      ? body
+      : (_rawWeblioCache[normWord] ?? await weblio.lookup(normWord) ?? body);
+  final response = await apiClient.callAi(
+    prompt: buildWeblioAiTranslatePrompt(normWord, sourceBody),
+    serviceType: aiSettings.activeService,
+    config: aiSettings.activeConfig,
+  );
+  if (!response.isSuccess) {
+    return response.error ?? 'Lỗi không xác định khi gọi AI.';
+  }
+  _aiTranslatedWeblioWords.add(normWord);
+  await _replaceWeblioSection(
+    normWord: normWord,
+    translatedBody: response.text!.trim(),
+    mode: mode,
+    lookup: lookup,
+    dictionaries: dictionaries,
+    appPathsFuture: appPathsFuture,
+    targetDir: targetDir,
+    existingRaw: existingRaw,
+    currentSections: currentSections,
+  );
+  return null;
+}
+
+Future<void> _replaceWeblioSection({
+  required String normWord,
+  required String translatedBody,
+  required TranslationMode mode,
+  required LookupController lookup,
+  required DictionariesNotifier dictionaries,
+  required Future<AppPaths> appPathsFuture,
+  required String? targetDir,
+  required String? existingRaw,
+  required List<LookupSection> currentSections,
+}) async {
+  final updatedSection = LookupSection(normWord, 'Weblio 日中', translatedBody);
+  final existingSections = existingRaw != null
+      ? decodeOnlineSections(normWord, existingRaw)
+      : [
+          for (final s in currentSections)
+            if (s.word == normWord &&
+                const {
+                  'Mazii Online',
+                  'Jisho',
+                  'Youdao 中英',
+                  'Weblio 日中',
+                }.contains(s.label))
+              s,
+        ];
+  final updatedList = <LookupSection>[];
+  var replaced = false;
+  for (final s in existingSections) {
+    if (s.label == 'Weblio 日中') {
+      if (!replaced) {
+        updatedList.add(updatedSection);
+        replaced = true;
+      }
+    } else {
+      updatedList.add(s);
+    }
+  }
+  if (!replaced) updatedList.add(updatedSection);
+
+  final encoded = encodeOnlineSections(updatedList);
+  final service = UserDictService(await appPathsFuture);
+  final isWord = isWordLikeEntry(normWord);
+  await service.upsertOnlineDict(
+    mode,
+    normWord,
+    encoded,
+    inDir: isWord ? targetDir : null,
+  );
+  if (targetDir != null && isWord) {
+    await service.upsertOnlineDict(mode, normWord, encoded);
+  }
+
+  await dictionaries.reload();
+  lookup.refreshCurrent();
+  lookup.addOnlineSections(normWord, [updatedSection]);
 }

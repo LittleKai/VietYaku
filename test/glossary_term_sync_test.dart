@@ -249,6 +249,50 @@ void main() {
         hasLength(12),
       );
     });
+
+    test(
+      'xóa hoặc cập nhật chỉ 1 mục qua removeAll/upsertAll (màn đồng bộ) không tự Update kể cả khi hàng đợi đã vượt ngưỡng',
+      () async {
+        final posted = <String>[];
+        final container = containerWith(
+          MockClient((request) async {
+            posted.add(request.url.path);
+            return http.Response('{"data":{"revision":1,"accepted":13}}', 200);
+          }),
+        );
+        final queue = GlossaryTermQueue(AppPaths(temp));
+        await queue.enqueue(
+          TranslationMode.japanese,
+          upserts: {for (var i = 0; i < 12; i++) 'từ$i': 'nghĩa$i'},
+        );
+
+        // Xóa đúng 1 mục ở màn đồng bộ: chỉ xếp hàng cục bộ, tuyệt đối không
+        // gọi publishPending() chặn UI chờ mạng như trước.
+        await container.read(glossaryServiceProvider).removeAll(
+          TranslationMode.japanese,
+          ['菜畑小鳥'],
+        );
+        expect(posted, isEmpty);
+        expect(await queue.pending(TranslationMode.japanese), hasLength(13));
+
+        // Cập nhật đúng 1 mục qua upsertAll (màn đồng bộ) cũng không tự Update.
+        await container.read(glossaryServiceProvider).upsertAll(
+          TranslationMode.japanese,
+          {'白鳥沙羅': 'Shiratori Sara'},
+        );
+        expect(posted, isEmpty);
+        expect(await queue.pending(TranslationMode.japanese), hasLength(14));
+
+        // Ngược lại, sửa lẻ qua upsert() (hộp thoại tra từ chính) thì tự Update.
+        await container.read(glossaryServiceProvider).upsert(
+          TranslationMode.japanese,
+          source: '田中',
+          target: 'Tanaka',
+        );
+        expect(posted, ['/api/glossary/terms/sync']);
+        expect(await queue.pending(TranslationMode.japanese), isEmpty);
+      },
+    );
   });
 
   test('mục sai định dạng bị loại trước khi lên server', () async {

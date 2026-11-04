@@ -27,7 +27,10 @@ class GlossaryService {
   )?
   onChanged;
 
-  const GlossaryService(this.rootDir, {this.onChanged});
+  /// Gọi sau khi [upsert] lẻ từng từ (ngoài màn đồng bộ hàng loạt) hoàn tất.
+  final Future<void> Function()? onSingleEdit;
+
+  const GlossaryService(this.rootDir, {this.onChanged, this.onSingleEdit});
 
   static String langFor(TranslationMode mode) =>
       mode == TranslationMode.japanese ? 'JP' : 'CN';
@@ -38,6 +41,26 @@ class GlossaryService {
   /// Thư mục đã trỏ đúng chỗ khi `Global Glossary.json` của [mode] tồn tại.
   bool hasGlossaryFor(TranslationMode mode) =>
       rootDir.trim().isNotEmpty && fileFor(mode).existsSync();
+
+  /// Mở thư mục chứa `Global Glossary.json` trong File Explorer (Windows).
+  Future<bool> openFolder([TranslationMode? mode]) async {
+    if (rootDir.trim().isEmpty || !Platform.isWindows) return false;
+    if (mode != null) {
+      final langDir = fileFor(mode).parent;
+      if (langDir.existsSync()) {
+        final winPath = p.normalize(langDir.absolute.path).replaceAll('/', r'\');
+        await Process.run('explorer.exe', [winPath]);
+        return true;
+      }
+    }
+    final root = Directory(rootDir);
+    if (root.existsSync()) {
+      final winPath = p.normalize(root.absolute.path).replaceAll('/', r'\');
+      await Process.run('explorer.exe', [winPath]);
+      return true;
+    }
+    return false;
+  }
 
   /// Mục từ hiện có trong glossary, khớp theo `source` (bỏ hoa/thường như
   /// `GlossaryManager.merge_terms` bên Python). `null` nếu chưa có.
@@ -63,7 +86,10 @@ class GlossaryService {
     TranslationMode mode, {
     required String source,
     required String target,
-  }) => upsertAll(mode, {source: target});
+  }) async {
+    await upsertAll(mode, {source: target});
+    await onSingleEdit?.call();
+  }
 
   /// Như [upsert] nhưng ghi nhiều mục trong một lần đọc/ghi file — dùng cho
   /// màn đồng bộ hàng loạt (file glossary hơn 5000 mục, ghi từng cái rất chậm).

@@ -205,7 +205,7 @@ Menu bar trên cùng (chọn Nhật/Trung + Dán & Dịch). Trái (flex 2): tabs
 | Quy key từ điển Trung về giản thể | ✅ Done | dictionary_loader (`normalizeKeysToSimplified`), dictionary_repository | Chạy trong isolate, key giản thể thắng |
 | Menu bar Nhật/Trung + Dịch Lại + Dán & Dịch | ✅ Done | translate_screen, translation_controller, source_pane | Màu nhấn riêng biệt từng nút |
 | Chỉnh cỡ chữ + font các ô & toàn giao diện | ✅ Done | appearance_screen, settings_provider, app_theme | Scale 80–140%, font áp lên theme chrome |
-| Tra nghĩa online (4 nguồn song song) | ✅ Done | online_lookup_source, online_lookup_controller, online_lookup_dialog | Mazii, Google, Jisho / Youdao, Weblio; lưu offline |
+| Tra nghĩa online (4 nguồn song song) | ✅ Done | online_lookup_source, online_lookup_controller, online_lookup_dialog, lacviet_panel | Mazii, Google, Jisho / Youdao, Weblio (ban đầu tự động dùng Google Dịch, nút Dịch AI thay thế cho Google Dịch & cập nhật OnlineDict); lưu offline |
 | Tab Google Dịch cả đoạn | ✅ Done | result_pane, google_translate | gtx endpoint + fallback crawl |
 | Layout tabs kiểu QT + VietPhrase đa nghĩa/từ loại | ✅ Done | vietphrase_value, token, translate_screen, result_pane, token_text_view, appearance_screen, settings_provider, entry_edit_dialog | Đổi tab không re-translate; nhãn từ loại `(n)`…; 3 kiểu hiển thị đa nghĩa (Cài đặt → Giao diện, mặc định phân cấp màu) |
 | Tab Hán Việt toàn văn | ✅ Done | han_viet_pane, translation_controller | Tính cùng lượt dịch |

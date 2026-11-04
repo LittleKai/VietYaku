@@ -32,6 +32,9 @@ class GlossarySyncScreen extends ConsumerWidget {
     final mode = ref.watch(
       translationControllerProvider.select((state) => state.mode),
     );
+    final glossaryDir = ref.watch(
+      settingsProvider.select((s) => s.glossaryDir),
+    );
     final lang = GlossaryService.langFor(mode);
 
     return PopScope(
@@ -47,6 +50,39 @@ class GlossarySyncScreen extends ConsumerWidget {
             automaticallyImplyLeading: !isStandaloneWindow,
             title: Text('Đồng bộ Glossary ↔ VietPhrase ($lang)'),
             actions: [
+              Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: IconButton(
+                  icon: const Icon(Icons.refresh),
+                  tooltip: 'Làm mới dữ liệu Glossary & VietPhrase',
+                  onPressed: () async {
+                    await refreshGlossarySyncData(ref);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context)
+                        ..hideCurrentSnackBar()
+                        ..showSnackBar(
+                          const SnackBar(
+                            content: Text('Đã làm mới dữ liệu.'),
+                            duration: Duration(seconds: 1),
+                          ),
+                        );
+                    }
+                  },
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(right: 10),
+                child: Tooltip(
+                  message: 'Mở thư mục chứa Global Glossary.json ($lang)',
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.folder_open_outlined, size: 18),
+                    label: const Text('Mở thư mục Glossary'),
+                    onPressed: glossaryDir.trim().isEmpty
+                        ? null
+                        : () => GlossaryService(glossaryDir).openFolder(mode),
+                  ),
+                ),
+              ),
               Padding(
                 padding: const EdgeInsets.only(right: 16),
                 child: SegmentedButton<TranslationMode>(

@@ -1214,6 +1214,16 @@ class _GlossaryDirSetting extends ConsumerWidget {
             ),
           ),
           const SizedBox(width: 10),
+          if (dir.trim().isNotEmpty) ...[
+            IconButton.filledTonal(
+              icon: const Icon(Icons.open_in_new, size: 18),
+              tooltip: 'Mở thư mục chứa file Glossary',
+              onPressed: () => service.openFolder(
+                ref.read(translationControllerProvider).mode,
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
           FilledButton.tonalIcon(
             icon: const Icon(Icons.folder_open, size: 18),
             label: const Text('Chọn thư mục'),

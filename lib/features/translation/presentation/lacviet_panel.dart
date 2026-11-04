@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -13,6 +15,7 @@ import '../../dictionary_sync/application/dictionary_sync_controller.dart';
 import '../../dictionary_sync/domain/shared_dictionary_entry.dart';
 import '../../settings/settings_provider.dart';
 import '../application/lookup_controller.dart';
+import '../application/online_lookup_controller.dart';
 import '../application/token_selection.dart';
 import '../application/translation_controller.dart';
 import '../domain/lookup_dictionary_type.dart';
@@ -281,6 +284,11 @@ class _MeaningSections extends ConsumerWidget {
     final style = ref.watch(
       settingsProvider.select((s) => s.paneTextStyleFor(PaneId.meaning)),
     );
+    final hasAiKey = ref.watch(
+      aiSettingsControllerProvider.select(
+        (s) => s.valueOrNull?.hasConfiguredKey ?? false,
+      ),
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -308,6 +316,12 @@ class _MeaningSections extends ConsumerWidget {
               data: aiBodyToMarkdown(sections[i].word, sections[i].body),
               style: style,
             ),
+          ] else if (sections[i].label == 'Weblio 日中') ...[
+            _WeblioSectionView(
+              section: sections[i],
+              style: style,
+              hasAiKey: hasAiKey,
+            ),
           ] else
             SelectableText.rich(
               TextSpan(
@@ -331,6 +345,166 @@ class _MeaningSections extends ConsumerWidget {
             ),
         ],
       ],
+    );
+  }
+}
+
+class _WeblioSectionView extends ConsumerStatefulWidget {
+  const _WeblioSectionView({
+    required this.section,
+    required this.style,
+    required this.hasAiKey,
+  });
+
+  final LookupSection section;
+  final TextStyle style;
+  final bool hasAiKey;
+
+  @override
+  ConsumerState<_WeblioSectionView> createState() => _WeblioSectionViewState();
+}
+
+class _WeblioSectionViewState extends ConsumerState<_WeblioSectionView> {
+  (String, String)? _lastAutoGoogle;
+
+  @override
+  void initState() {
+    super.initState();
+    _maybeAutoTranslateWithGoogle();
+  }
+
+  @override
+  void didUpdateWidget(covariant _WeblioSectionView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _maybeAutoTranslateWithGoogle();
+  }
+
+  void _maybeAutoTranslateWithGoogle() {
+    final section = widget.section;
+    final key = (section.word, section.body);
+    if (!isRawWeblioBody(section.body) || _lastAutoGoogle == key) return;
+    _lastAutoGoogle = key;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(
+        translateWeblioSectionWithGoogle(
+          ref,
+          word: section.word,
+          body: section.body,
+        ),
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final section = widget.section;
+    final style = widget.style;
+    if (!widget.hasAiKey) {
+      return SelectableText.rich(
+        TextSpan(
+          style: style,
+          children: [
+            TextSpan(text: '${section.word} '),
+            TextSpan(
+              text: '<<${section.label}>>',
+              style: TextStyle(
+                color: meaningLabelColor(section.label, scheme),
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            TextSpan(
+              text: section.body.contains('\n')
+                  ? '\n${section.body}'
+                  : ' ${section.body}',
+            ),
+          ],
+        ),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 8,
+          children: [
+            SelectableText.rich(
+              TextSpan(
+                style: style,
+                children: [
+                  TextSpan(text: '${section.word} '),
+                  TextSpan(
+                    text: '<<${section.label}>>',
+                    style: TextStyle(
+                      color: meaningLabelColor(section.label, scheme),
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            _WeblioAiTranslateButton(section: section),
+          ],
+        ),
+        SelectableText(section.body, style: style),
+      ],
+    );
+  }
+}
+
+class _WeblioAiTranslateButton extends ConsumerStatefulWidget {
+  const _WeblioAiTranslateButton({required this.section});
+
+  final LookupSection section;
+
+  @override
+  ConsumerState<_WeblioAiTranslateButton> createState() =>
+      _WeblioAiTranslateButtonState();
+}
+
+class _WeblioAiTranslateButtonState
+    extends ConsumerState<_WeblioAiTranslateButton> {
+  bool _loading = false;
+
+  Future<void> _translate() async {
+    if (_loading) return;
+    setState(() => _loading = true);
+    final error = await translateWeblioSectionWithAi(
+      ref,
+      word: widget.section.word,
+      body: widget.section.body,
+    );
+    if (!mounted) return;
+    setState(() => _loading = false);
+    if (error != null) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(error)));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 26,
+      child: TextButton.icon(
+        style: TextButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          visualDensity: VisualDensity.compact,
+          textStyle: const TextStyle(fontSize: 12),
+        ),
+        icon: _loading
+            ? const SizedBox(
+                width: 12,
+                height: 12,
+                child: CircularProgressIndicator(strokeWidth: 1.8),
+              )
+            : const Icon(Icons.auto_awesome, size: 14),
+        label: Text(_loading ? 'Đang dịch…' : 'Dịch AI'),
+        onPressed: _loading ? null : _translate,
+      ),
     );
   }
 }

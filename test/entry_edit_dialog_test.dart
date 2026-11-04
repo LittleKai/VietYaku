@@ -2569,6 +2569,75 @@ void main() {
     },
   );
 
+  testWidgets(
+    'Dialog VietPhrase: từ chưa có trong VietPhrase tự động điền tạm âm Hán Việt',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({
+        'dictionarySync.admin.username': 'admin',
+        'dictionarySync.admin.token': '<JWT>',
+      });
+      final prefs = await SharedPreferences.getInstance();
+      final mockData = _createMock(
+        vietPhraseEntries: const {},
+        chinesePhienAmEntries: {'再': 'tái', '入': 'nhập', '荷': 'hà'},
+      );
+      final mockSyncController = MockDictionarySyncController();
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          dictionariesProvider.overrideWith(
+            () => MockDictionariesNotifier(mockData),
+          ),
+          dictionarySyncProvider.overrideWith(() => mockSyncController),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.read(currentModeProvider.notifier).state =
+          TranslationMode.japanese;
+      await container.read(dictionariesProvider.future);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: Scaffold(
+              body: Builder(
+                builder: (context) => ElevatedButton(
+                  onPressed: () => showSharedEntryEditDialog(
+                    context,
+                    WidgetRefContext(context, container),
+                    word: '再入荷',
+                    kind: SharedDictionaryKind.vietPhrase,
+                  ),
+                  child: const Text('Open Dialog'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Open Dialog'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Thêm vào VietPhrase'), findsOneWidget);
+      final meaningField = tester.widget<TextField>(
+        find.byKey(const ValueKey('vietphrase-meaning-0')),
+      );
+      expect(meaningField.controller!.text, 'tái nhập hà');
+
+      final addBtn = find.text('Thêm từ');
+      expect(addBtn, findsOneWidget);
+      await tester.tap(addBtn);
+      await tester.pumpAndSettle();
+
+      expect(mockSyncController.lastStagedEntry, isNotNull);
+      expect(mockSyncController.lastStagedEntry!.source, '再入荷');
+      expect(mockSyncController.lastStagedEntry!.target, 'tái nhập hà');
+      await tester.pump(const Duration(milliseconds: 600));
+    },
+  );
+
   for (final (shared, exists, empty) in [
     (true, false, false),
     (true, true, false),
