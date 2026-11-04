@@ -45,19 +45,23 @@ class GlossaryService {
   /// Mở thư mục chứa `Global Glossary.json` trong File Explorer (Windows).
   Future<bool> openFolder([TranslationMode? mode]) async {
     if (rootDir.trim().isEmpty || !Platform.isWindows) return false;
-    if (mode != null) {
-      final langDir = fileFor(mode).parent;
-      if (langDir.existsSync()) {
-        final winPath = p.normalize(langDir.absolute.path).replaceAll('/', r'\');
+    try {
+      if (mode != null) {
+        final langDir = fileFor(mode).parent;
+        if (langDir.existsSync()) {
+          final winPath = p.normalize(langDir.absolute.path).replaceAll('/', r'\');
+          await Process.run('explorer.exe', [winPath]);
+          return true;
+        }
+      }
+      final root = Directory(rootDir);
+      if (root.existsSync()) {
+        final winPath = p.normalize(root.absolute.path).replaceAll('/', r'\');
         await Process.run('explorer.exe', [winPath]);
         return true;
       }
-    }
-    final root = Directory(rootDir);
-    if (root.existsSync()) {
-      final winPath = p.normalize(root.absolute.path).replaceAll('/', r'\');
-      await Process.run('explorer.exe', [winPath]);
-      return true;
+    } catch (_) {
+      return false;
     }
     return false;
   }

@@ -228,6 +228,21 @@ final _pinyinThenCjk = RegExp(
 /// chuẩn từ bản gốc thay vì dịch chồng lên bản Google Dịch.
 final _rawWeblioCache = <String, String>{};
 final _aiTranslatedWeblioWords = <String>{};
+final _inFlightGoogleWeblioWords = <String>{};
+
+void _cacheRawWeblio(String word, String body) {
+  if (_rawWeblioCache.length >= 100) {
+    _rawWeblioCache.remove(_rawWeblioCache.keys.first);
+  }
+  _rawWeblioCache[word] = body;
+}
+
+void _recordAiTranslatedWeblio(String word) {
+  if (_aiTranslatedWeblioWords.length >= 200) {
+    _aiTranslatedWeblioWords.remove(_aiTranslatedWeblioWords.first);
+  }
+  _aiTranslatedWeblioWords.add(word);
+}
 
 /// Nội dung mục `Weblio 日中` còn nguyên nhãn tiếng Nhật/Trung chưa qua dịch.
 bool isRawWeblioBody(String body) => _rawWeblioLabels.hasMatch(body);
@@ -241,7 +256,7 @@ Future<String?> lookupWeblioWithGoogle(
   _aiTranslatedWeblioWords.remove(word);
   final raw = await weblio.lookup(word);
   if (raw == null || raw.trim().isEmpty) return null;
-  _rawWeblioCache[word] = raw;
+  _cacheRawWeblio(word, raw);
   return await translateWeblioWithGoogle(google, raw) ?? raw;
 }
 
@@ -300,36 +315,42 @@ Future<String?> translateWeblioWithGoogle(
     }
   }
 
-  final results = await Future.wait([
-    zhTexts.isEmpty
-        ? Future<String?>.value('')
-        : google.translate(zhTexts.join('\n'), sourceLang: 'zh-CN'),
-    jaTexts.isEmpty
-        ? Future<String?>.value('')
-        : google.translate(jaTexts.join('\n'), sourceLang: 'ja'),
-  ]);
-  final zhTranslated = results[0];
-  final jaTranslated = results[1];
-  if ((zhTexts.isNotEmpty && zhTranslated == null) ||
-      (jaTexts.isNotEmpty && jaTranslated == null)) {
+  final zhResults = zhTexts.length <= 1
+      ? (zhTexts.isEmpty
+          ? const <String?>['']
+          : <String?>[
+              await google.translate(zhTexts.first, sourceLang: 'zh-CN'),
+            ])
+      : await Future.wait(
+          zhTexts.map((t) => google.translate(t, sourceLang: 'zh-CN')),
+        );
+  final jaResults = jaTexts.length <= 1
+      ? (jaTexts.isEmpty
+          ? const <String?>['']
+          : <String?>[
+              await google.translate(jaTexts.first, sourceLang: 'ja'),
+            ])
+      : await Future.wait(
+          jaTexts.map((t) => google.translate(t, sourceLang: 'ja')),
+        );
+  if ((zhTexts.isNotEmpty && zhResults.any((r) => r == null)) ||
+      (jaTexts.isNotEmpty && jaResults.any((r) => r == null))) {
     return null;
   }
 
-  if (zhTexts.isNotEmpty && zhTranslated != null) {
-    final parts = zhTranslated.split('\n');
-    for (var k = 0; k < zhItems.length; k++) {
-      final (idx, prefix) = zhItems[k];
-      final text = k < parts.length ? parts[k].trim() : zhTexts[k];
-      out[idx] = '$prefix$text';
-    }
+  for (var k = 0; k < zhItems.length; k++) {
+    final (idx, prefix) = zhItems[k];
+    final text = (zhResults[k]?.trim().isNotEmpty == true)
+        ? zhResults[k]!.trim()
+        : zhTexts[k];
+    out[idx] = '$prefix$text';
   }
-  if (jaTexts.isNotEmpty && jaTranslated != null) {
-    final parts = jaTranslated.split('\n');
-    for (var k = 0; k < jaItems.length; k++) {
-      final (idx, prefix) = jaItems[k];
-      final text = k < parts.length ? parts[k].trim() : jaTexts[k];
-      out[idx] = '$prefix$text';
-    }
+  for (var k = 0; k < jaItems.length; k++) {
+    final (idx, prefix) = jaItems[k];
+    final text = (jaResults[k]?.trim().isNotEmpty == true)
+        ? jaResults[k]!.trim()
+        : jaTexts[k];
+    out[idx] = '$prefix$text';
   }
   final joined = out.whereType<String>().join('\n').trim();
   return joined.isEmpty ? null : joined;
@@ -350,37 +371,43 @@ Future<void> translateWeblioSectionWithGoogle(
       ? (ref.read(trad2SimpTableProvider).valueOrNull ?? Trad2SimpTable.empty)
             .convert(word)
       : word;
-  _rawWeblioCache[normWord] = body;
-  final google = ref.read(googleTranslateProvider);
-  final lookup = ref.read(lookupControllerProvider.notifier);
-  final dictionaries = ref.read(dictionariesProvider.notifier);
-  final appPathsFuture = ref.read(appPathsProvider.future);
-  final targetDir = ref.read(dictionarySyncProvider).isAdmin
-      ? generatedDictDir(mode)
-      : null;
-  final dicts = ref.read(dictionariesProvider).valueOrNull;
-  final existingRaw =
-      dicts?.onlineDict.entries[normWord] ?? dicts?.onlineDict.entries[word];
-  final currentSections =
-      ref.read(lookupControllerProvider)?.sections ?? const [];
+  if (_inFlightGoogleWeblioWords.contains(normWord)) return;
+  _inFlightGoogleWeblioWords.add(normWord);
+  try {
+    _cacheRawWeblio(normWord, body);
+    final google = ref.read(googleTranslateProvider);
+    final lookup = ref.read(lookupControllerProvider.notifier);
+    final dictionaries = ref.read(dictionariesProvider.notifier);
+    final appPathsFuture = ref.read(appPathsProvider.future);
+    final targetDir = ref.read(dictionarySyncProvider).isAdmin
+        ? generatedDictDir(mode)
+        : null;
+    final dicts = ref.read(dictionariesProvider).valueOrNull;
+    final existingRaw =
+        dicts?.onlineDict.entries[normWord] ?? dicts?.onlineDict.entries[word];
+    final currentSections =
+        ref.read(lookupControllerProvider)?.sections ?? const [];
 
-  final translated = await translateWeblioWithGoogle(google, body);
-  if (translated == null ||
-      translated.trim().isEmpty ||
-      _aiTranslatedWeblioWords.contains(normWord)) {
-    return;
+    final translated = await translateWeblioWithGoogle(google, body);
+    if (translated == null ||
+        translated.trim().isEmpty ||
+        _aiTranslatedWeblioWords.contains(normWord)) {
+      return;
+    }
+    await _replaceWeblioSection(
+      normWord: normWord,
+      translatedBody: translated.trim(),
+      mode: mode,
+      lookup: lookup,
+      dictionaries: dictionaries,
+      appPathsFuture: appPathsFuture,
+      targetDir: targetDir,
+      existingRaw: existingRaw,
+      currentSections: currentSections,
+    );
+  } finally {
+    _inFlightGoogleWeblioWords.remove(normWord);
   }
-  await _replaceWeblioSection(
-    normWord: normWord,
-    translatedBody: translated.trim(),
-    mode: mode,
-    lookup: lookup,
-    dictionaries: dictionaries,
-    appPathsFuture: appPathsFuture,
-    targetDir: targetDir,
-    existingRaw: existingRaw,
-    currentSections: currentSections,
-  );
 }
 
 String buildWeblioAiTranslatePrompt(String word, String body) =>
@@ -404,7 +431,7 @@ Future<String?> translateWeblioSectionWithAi(
             .convert(word)
       : word;
   if (isRawWeblioBody(body)) {
-    _rawWeblioCache[normWord] = body;
+    _cacheRawWeblio(normWord, body);
   }
   final weblio = ref.read(weblioApiProvider);
   final lookup = ref.read(lookupControllerProvider.notifier);
@@ -435,7 +462,7 @@ Future<String?> translateWeblioSectionWithAi(
   if (!response.isSuccess) {
     return response.error ?? 'Lỗi không xác định khi gọi AI.';
   }
-  _aiTranslatedWeblioWords.add(normWord);
+  _recordAiTranslatedWeblio(normWord);
   await _replaceWeblioSection(
     normWord: normWord,
     translatedBody: response.text!.trim(),
@@ -461,9 +488,27 @@ Future<void> _replaceWeblioSection({
   required String? existingRaw,
   required List<LookupSection> currentSections,
 }) async {
+  final service = UserDictService(await appPathsFuture);
+  // Đọc fresh từ đĩa hoặc dictionaries.state để tránh stale-read khi có tác vụ
+  // tra online khác (Mazii, Jisho...) hoàn thành trong lúc chờ mạng.
+  String? freshExistingRaw;
+  final file = service.onlineDictFile(mode);
+  if (file.existsSync()) {
+    try {
+      final lines = await file.readAsLines();
+      for (final line in lines) {
+        if (line.startsWith('$normWord=')) {
+          freshExistingRaw = line.substring(normWord.length + 1);
+          break;
+        }
+      }
+    } catch (_) {}
+  }
+  freshExistingRaw ??= existingRaw;
+
   final updatedSection = LookupSection(normWord, 'Weblio 日中', translatedBody);
-  final existingSections = existingRaw != null
-      ? decodeOnlineSections(normWord, existingRaw)
+  final existingSections = freshExistingRaw != null
+      ? decodeOnlineSections(normWord, freshExistingRaw)
       : [
           for (final s in currentSections)
             if (s.word == normWord &&
@@ -490,7 +535,6 @@ Future<void> _replaceWeblioSection({
   if (!replaced) updatedList.add(updatedSection);
 
   final encoded = encodeOnlineSections(updatedList);
-  final service = UserDictService(await appPathsFuture);
   final isWord = isWordLikeEntry(normWord);
   await service.upsertOnlineDict(
     mode,
