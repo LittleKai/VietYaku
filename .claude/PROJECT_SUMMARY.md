@@ -1,6 +1,6 @@
 # Project Summary — VietYaku
 ---
-**Last updated:** 2026-11-05 · **Setup baseline:** 2026-11-03
+**Last updated:** 2026-11-07 · **Setup baseline:** 2026-11-03
 
 > File này phản ánh **trạng thái hiện tại** của dự án. **Không** dùng làm changelog,
 > recent changes, hay bug-fix log — git history là nguồn lịch sử. Lỗi quan trọng,
@@ -209,7 +209,7 @@ Menu bar trên cùng (chọn Nhật/Trung + Dán & Dịch). Trái (flex 2): tabs
 | Curated Chinese grammar rules | ✅ Done | data/cn/LuatNhan.txt, translation_rule_test.dart | Thêm fixture nhỏ cho 的/把/被/了/着, giữ giới hạn key từ điển |
 | Chọn kiểu caret + tô nổi đỏ đồng bộ 3 pane | ✅ Done | token_selection, source_pane, token_text_view | Nháy chuột chọn cụm, highlight 2 chiều; active từ ở ô VietPhrase / Hán Việt thì ô Nguồn tự cuộn tới cụm khi cụm đang ngoài khung nhìn |
 | Nhận diện cụm từ điển phụ | ✅ Done | secondary_phrase, secondary_phrases_provider, token_text_view | Mode Nhật: click chọn tra Lạc Việt > Nhật Việt > Mazii > Online > AI; **đánh dấu trong ô VietPhrase chỉ theo Lạc Việt** |
-| Ô Nghĩa đa từ điển + popup tra nhanh | ✅ Done | lookup_controller, lacviet_panel, source_pane, vietphrase_value | VietPhrase → Lạc Việt → Mazii → Nhật Việt → …; mục VietPhrase định dạng `/` thành `; ` phân tách nghĩa sạch; popup neo ở ô Nguồn, hiện cho từ được active ở bất kỳ ô nào (Nguồn / VietPhrase / Hán Việt) |
+| Ô Nghĩa đa từ điển + popup tra nhanh | ✅ Done | lookup_controller, lacviet_panel, source_pane, vietphrase_value | VietPhrase → Lạc Việt → AI Dịch → Mazii → Nhật Việt → …; mục VietPhrase định dạng `/` thành `; ` phân tách nghĩa sạch; popup neo ở ô Nguồn, hiện cho từ được active ở bất kỳ ô nào (Nguồn / VietPhrase / Hán Việt) |
 | Từ điển Mazii offline (Nhật→Việt) | ✅ Done | dict_type, dictionary_repository, lookup_controller | 171.299 entry từ MaziiDict.db |
 | Sửa từ điển từ toolbar chuột phải | ✅ Done | source_pane, token_text_view, icon_context_menu, entry_edit_dialog, user_dict_service | Đổi ô Từ nguồn nạp lại preview theo key mới; nút Xóa hiện đúng dict mục tiêu; xóa Names hỗ trợ cả base; Glossary không áp dụng cho Names |
 | Chuyển đổi EPUB | ✅ Done | epub_converter/*, app.dart | Nhúng ảnh thật DOCX, xuất CSV/XLSX (id,raw)/MD/DOCX/TXT; lọc CSS/attr rò rỉ, SVG cover, xuất thư mục ảnh khớp (img) |

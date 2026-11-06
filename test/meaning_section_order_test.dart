@@ -9,10 +9,10 @@ import 'package:vietyaku/features/translation/presentation/lacviet_panel.dart';
 final _sections = [
   const LookupSection('x', 'VietPhrase', 'vp'),
   const LookupSection('x', 'Lạc Việt', 'lv'),
+  const LookupSection('x', 'AI Dịch', 'ai'),
   const LookupSection('x', 'Mazii', 'mz'),
   const LookupSection('x', 'Mazii Online', 'online-1'),
   const LookupSection('x', 'Jisho', 'online-2'),
-  const LookupSection('x', 'AI Dịch', 'ai'),
   const LookupSection('x', 'AI tách từ', 'ai-entry'),
   const LookupSection('x', 'Phiên Âm English', 'pa'),
 ];
@@ -27,6 +27,15 @@ void main() {
       _labels(orderMeaningSections(_sections, base, const [])),
       equals(_labels(_sections)),
     );
+  });
+
+  test('AI Dịch xuất hiện ngay dưới Lạc Việt trong thứ tự mặc định', () {
+    final out = _labels(orderMeaningSections(_sections, base, const []));
+    final lvIndex = out.indexOf('Lạc Việt');
+    final aiIndex = out.indexOf('AI Dịch');
+
+    expect(lvIndex, greaterThanOrEqualTo(0));
+    expect(aiIndex, equals(lvIndex + 1));
   });
 
   test('tắt một loại thì mọi section của loại đó biến mất', () {

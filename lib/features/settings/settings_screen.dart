@@ -561,6 +561,12 @@ class _MeaningPanelSetting extends ConsumerWidget {
                 ),
                 onPressed: () => _showPicker(context, ref, mode),
               ),
+              ActionChip(
+                avatar: const Icon(Icons.restart_alt, size: 16),
+                label: const Text('Mặc định'),
+                tooltip: 'Khôi phục thứ tự và hiển thị mặc định',
+                onPressed: () => notifier.resetMeaningPanelLayout(mode),
+              ),
             ],
           ),
         ),
@@ -659,6 +665,12 @@ void _showPicker(BuildContext context, WidgetRef ref, TranslationMode mode) {
     accentColor: const Color(0xFF3949AB),
     content: _MeaningPanelPicker(mode: mode),
     actionsBuilder: (dialogContext) => [
+      TextButton(
+        onPressed: () {
+          ref.read(settingsProvider.notifier).resetMeaningPanelLayout(mode);
+        },
+        child: const Text('Mặc định'),
+      ),
       TextButton(
         onPressed: () => Navigator.of(dialogContext).pop(),
         child: const Text('Xong'),

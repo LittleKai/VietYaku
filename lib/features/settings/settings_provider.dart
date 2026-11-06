@@ -513,6 +513,20 @@ class SettingsNotifier extends Notifier<AppSettings> {
     final legacyTtsRate = prefs.getDouble(_ttsSpeechRateKey);
     final legacyPopupDicts = prefs.getStringList(_popupDictionaryTypesKey);
 
+    final rawMeaningJa = prefs.getString(_meaningPanelJaKey);
+    final meaningPanelJa =
+        MeaningPanelLayout.decode(rawMeaningJa, TranslationMode.japanese);
+    if (rawMeaningJa != null && meaningPanelJa.encode() != rawMeaningJa) {
+      prefs.setString(_meaningPanelJaKey, meaningPanelJa.encode());
+    }
+
+    final rawMeaningZh = prefs.getString(_meaningPanelZhKey);
+    final meaningPanelZh =
+        MeaningPanelLayout.decode(rawMeaningZh, TranslationMode.chinese);
+    if (rawMeaningZh != null && meaningPanelZh.encode() != rawMeaningZh) {
+      prefs.setString(_meaningPanelZhKey, meaningPanelZh.encode());
+    }
+
     return AppSettings(
       dictPaths: {
         for (final modeEntry in defaults.dictPaths.entries)
@@ -592,14 +606,8 @@ class SettingsNotifier extends Notifier<AppSettings> {
           prefs.getDouble(_ttsSpeechRateJaKey) ?? legacyTtsRate ?? 0.5,
       ttsSpeechRateZh:
           prefs.getDouble(_ttsSpeechRateZhKey) ?? legacyTtsRate ?? 0.5,
-      meaningPanelJa: MeaningPanelLayout.decode(
-        prefs.getString(_meaningPanelJaKey),
-        TranslationMode.japanese,
-      ),
-      meaningPanelZh: MeaningPanelLayout.decode(
-        prefs.getString(_meaningPanelZhKey),
-        TranslationMode.chinese,
-      ),
+      meaningPanelJa: meaningPanelJa,
+      meaningPanelZh: meaningPanelZh,
       popupDictionaryTypesJa: () {
         final saved =
             prefs.getStringList(_popupDictionaryTypesJaKey) ?? legacyPopupDicts;
@@ -726,6 +734,10 @@ class SettingsNotifier extends Notifier<AppSettings> {
         ? state.copyWith(meaningPanelJa: layout)
         : state.copyWith(meaningPanelZh: layout);
   }
+
+  /// Khôi phục bố cục ô Nghĩa về mặc định cho [mode].
+  Future<void> resetMeaningPanelLayout(TranslationMode mode) =>
+      setMeaningPanelLayout(mode, MeaningPanelLayout.defaultsFor(mode));
 
   /// Bật/tắt từng nguồn tra online; giữ đúng thứ tự khai báo của enum.
   Future<void> setOnlineLookupSources(

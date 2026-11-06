@@ -187,8 +187,8 @@ class LookupController extends Notifier<LookupResult?> {
     final jaVi = dicts.jaVi.entries[word] ?? dicts.jaVi.entries[firstChar];
     final jaViKey = dicts.jaVi.entries.containsKey(word) ? word : firstChar;
 
-    // Thứ tự hiển thị: VietPhrase → Lạc Việt → (Nhật) Nhật Việt →
-    // Cedict/Babylon → Thiều Chửu → Trung Việt/(Trung) Nhật Việt → Phiên Âm.
+    // Thứ tự hiển thị: VietPhrase → Lạc Việt → AI Dịch → (Nhật) Mazii/Nhật Việt →
+    // Cedict/Babylon → Thiều Chửu → Trung Việt/(Trung) Nhật Việt → Online → AI tách từ → Phiên Âm.
 
     // 0. VietPhrase (UserDict/Names/VietPhrase) — lên trước Lạc Việt.
     final seenPhraseWords = <String>{};
@@ -276,7 +276,33 @@ class LookupController extends Notifier<LookupResult?> {
       }
     }
 
-    // 1a. Mazii (offline) — ngay sau Lạc Việt: exact trước, miss thì chữ đầu.
+    // 1-bis. AI Dịch đã lưu (AiDict_<mode>.txt) — ngay sau Lạc Việt: chỉ khớp đúng cụm.
+    final ai = dicts.aiDict.entries[word];
+    if (ai != null) {
+      sections.addAll(decodeOnlineSections(word, ai));
+    }
+
+    // Nếu cả câu/đoạn bao quanh đã từng được AI dịch (và khác với từ đang tra),
+    // hiển thị bản dịch cả câu để người dùng tham khảo lại ngữ cảnh câu.
+    if (enclosing.isNotEmpty && enclosing != word) {
+      final sentCandidate = enclosing.trim();
+      final stripped = _stripSentenceEnders(sentCandidate);
+      final unquoted = _stripQuotes(sentCandidate);
+      final aiSent = dicts.aiDict.entries[sentCandidate] ??
+          (stripped.isNotEmpty ? dicts.aiDict.entries[stripped] : null) ??
+          (unquoted.isNotEmpty ? dicts.aiDict.entries[unquoted] : null);
+      if (aiSent != null) {
+        final key = dicts.aiDict.entries.containsKey(sentCandidate)
+            ? sentCandidate
+            : (dicts.aiDict.entries.containsKey(stripped) ? stripped : unquoted);
+        final decoded = decodeOnlineSections(key, aiSent);
+        for (final s in decoded) {
+          sections.add(LookupSection(s.word, 'AI Dịch (Cả câu)', s.body));
+        }
+      }
+    }
+
+    // 1a. Mazii (offline) — ngay sau Lạc Việt/AI: exact trước, miss thì chữ đầu.
     final mazii = dicts.mazii.entries[word] ?? dicts.mazii.entries[firstChar];
     if (mazii != null) {
       final key = dicts.mazii.entries.containsKey(word) ? word : firstChar;
@@ -328,32 +354,6 @@ class LookupController extends Notifier<LookupResult?> {
     final online = dicts.onlineDict.entries[word];
     if (online != null) {
       sections.addAll(decodeOnlineSections(word, online));
-    }
-
-    // 5b. Kết quả tra AI đã lưu (AiDict_<mode>.txt) — chỉ khớp đúng cụm.
-    final ai = dicts.aiDict.entries[word];
-    if (ai != null) {
-      sections.addAll(decodeOnlineSections(word, ai));
-    }
-
-    // 5b-bis. Nếu cả câu/đoạn bao quanh đã từng được AI dịch (và khác với từ đang tra),
-    // hiển thị bản dịch cả câu để người dùng tham khảo lại ngữ cảnh câu.
-    if (enclosing.isNotEmpty && enclosing != word) {
-      final sentCandidate = enclosing.trim();
-      final stripped = _stripSentenceEnders(sentCandidate);
-      final unquoted = _stripQuotes(sentCandidate);
-      final aiSent = dicts.aiDict.entries[sentCandidate] ??
-          (stripped.isNotEmpty ? dicts.aiDict.entries[stripped] : null) ??
-          (unquoted.isNotEmpty ? dicts.aiDict.entries[unquoted] : null);
-      if (aiSent != null) {
-        final key = dicts.aiDict.entries.containsKey(sentCandidate)
-            ? sentCandidate
-            : (dicts.aiDict.entries.containsKey(stripped) ? stripped : unquoted);
-        final decoded = decodeOnlineSections(key, aiSent);
-        for (final s in decoded) {
-          sections.add(LookupSection(s.word, 'AI Dịch (Cả câu)', s.body));
-        }
-      }
     }
 
     // 5c. Từ/cụm con AI đã tách (AiEntries_<mode>.txt): tra được như một mục

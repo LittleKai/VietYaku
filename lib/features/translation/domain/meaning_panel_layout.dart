@@ -112,6 +112,22 @@ class MeaningPanelLayout {
     for (final type in available) {
       if (!order.contains(type)) order.add(type);
     }
+
+    // Migration: bố cục cũ lưu `ai` sau `online` (vị trí mặc định cũ trước khi
+    // AI Dịch được đưa lên ưu tiên cao ngay dưới Lạc Việt). Nếu `ai` đang đứng
+    // sau `online` và dưới `lacViet + 1`, tự động chuyển `ai` về ngay sau `lacViet`.
+    final lacVietIdx = order.indexOf(LookupDictionaryType.lacViet);
+    final aiIdx = order.indexOf(LookupDictionaryType.ai);
+    final onlineIdx = order.indexOf(LookupDictionaryType.online);
+    if (lacVietIdx >= 0 &&
+        aiIdx >= 0 &&
+        onlineIdx >= 0 &&
+        aiIdx > onlineIdx &&
+        aiIdx > lacVietIdx + 1) {
+      order.removeAt(aiIdx);
+      order.insert(lacVietIdx + 1, LookupDictionaryType.ai);
+    }
+
     return MeaningPanelLayout(order: order, hidden: hidden);
   }
 }

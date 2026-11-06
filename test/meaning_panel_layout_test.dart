@@ -34,6 +34,15 @@ void main() {
         ja.indexOf(LookupDictionaryType.lacViet),
         lessThan(ja.indexOf(LookupDictionaryType.online)),
       );
+      expect(
+        ja.indexOf(LookupDictionaryType.ai),
+        equals(ja.indexOf(LookupDictionaryType.lacViet) + 1),
+      );
+      final zh = availableMeaningPanelTypes(TranslationMode.chinese);
+      expect(
+        zh.indexOf(LookupDictionaryType.ai),
+        equals(zh.indexOf(LookupDictionaryType.lacViet) + 1),
+      );
     });
   });
 
@@ -190,6 +199,34 @@ void main() {
       expect(decoded.order, isNot(contains(LookupDictionaryType.zhVi)));
       // Lần đọc thứ hai của lacViet bị bỏ nên trạng thái vẫn là BẬT.
       expect(decoded.hidden, isEmpty);
+    });
+
+    test('migration: bố cục cũ lưu ai sau online tự chuyển ai về ngay sau lacViet', () {
+      const oldRawJa =
+          'userDict:1,names:1,vietPhrase:1,lacViet:1,mazii:1,jaVi:1,cedictBabylon:1,thieuChuu:1,online:1,ai:1,aiEntries:1,phonetic:1';
+      final decodedJa = MeaningPanelLayout.decode(oldRawJa, TranslationMode.japanese);
+
+      final lvIdxJa = decodedJa.order.indexOf(LookupDictionaryType.lacViet);
+      final aiIdxJa = decodedJa.order.indexOf(LookupDictionaryType.ai);
+      final onlineIdxJa = decodedJa.order.indexOf(LookupDictionaryType.online);
+
+      expect(lvIdxJa, greaterThanOrEqualTo(0));
+      expect(aiIdxJa, equals(lvIdxJa + 1));
+      expect(aiIdxJa, lessThan(onlineIdxJa));
+      expect(decodedJa.isVisible(LookupDictionaryType.ai), isTrue);
+
+      const oldRawZh =
+          'userDict:1,names:1,vietPhrase:1,lacViet:1,cedictBabylon:1,thieuChuu:1,zhVi:1,online:1,ai:1,aiEntries:1,phonetic:1';
+      final decodedZh = MeaningPanelLayout.decode(oldRawZh, TranslationMode.chinese);
+
+      final lvIdxZh = decodedZh.order.indexOf(LookupDictionaryType.lacViet);
+      final aiIdxZh = decodedZh.order.indexOf(LookupDictionaryType.ai);
+      final onlineIdxZh = decodedZh.order.indexOf(LookupDictionaryType.online);
+
+      expect(lvIdxZh, greaterThanOrEqualTo(0));
+      expect(aiIdxZh, equals(lvIdxZh + 1));
+      expect(aiIdxZh, lessThan(onlineIdxZh));
+      expect(decodedZh.isVisible(LookupDictionaryType.ai), isTrue);
     });
   });
 }
