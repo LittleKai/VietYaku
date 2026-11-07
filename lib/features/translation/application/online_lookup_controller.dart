@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/app_paths.dart';
 import '../../../core/google_translate.dart';
 import '../../ai_translation/application/ai_settings_controller.dart';
+import '../../clipboard/application/clipboard_reader_controller.dart';
 import '../../dictionary/application/dictionaries_provider.dart';
 import '../../dictionary/data/user_dict_service.dart';
 import '../../dictionary_sync/application/dictionary_sync_controller.dart';
@@ -109,6 +110,7 @@ List<OnlineLookupTask> startOnlineLookup(WidgetRef ref, String rawWord) {
   final lookup = ref.read(lookupControllerProvider.notifier);
   final dictionaries = ref.read(dictionariesProvider.notifier);
   final translation = ref.read(translationControllerProvider.notifier);
+  final clipboardBridge = ref.read(windowsClipboardBridgeProvider);
   final appPaths = ref.read(appPathsProvider.future);
   // Admin ghi vào bộ dict dùng chung của ngôn ngữ để đóng gói theo bản phát
   // hành; người dùng thường ghi vào userdata cá nhân.
@@ -133,6 +135,10 @@ List<OnlineLookupTask> startOnlineLookup(WidgetRef ref, String rawWord) {
       targetDir,
       knownToVietPhrase,
       knownToLacViet,
+      () => clipboardBridge.notifyGlossaryWindow({
+        'type': 'vietPhraseChanged',
+        'mode': mode.name,
+      }),
     ),
   );
   return tasks;
@@ -149,69 +155,94 @@ Future<void> _persist(
   String? targetDir,
   bool knownToVietPhrase,
   bool knownToLacViet,
+  void Function() onVietPhraseChanged,
 ) async {
-  try {
-    final bodies = await Future.wait(tasks.map((task) => task.body));
-    final sections = <LookupSection>[];
-    final toSave = <LookupSection>[];
-    for (var i = 0; i < tasks.length; i++) {
-      final body = bodies[i]?.trim();
-      if (body == null || body.isEmpty) continue;
-      final section = LookupSection(word, tasks[i].label, body);
-      sections.add(section);
-      if (tasks[i].saved) toSave.add(section);
-    }
-    if (sections.isEmpty) return;
-    lookup.addOnlineSections(word, sections);
-    // Máy dịch trả nghĩa theo ngữ cảnh, lưu lại dễ sai → chỉ lưu từ điển thật.
-    if (toSave.isEmpty) return;
-    final service = UserDictService(await appPaths);
-    final isWord = isWordLikeEntry(word);
-    final encoded = encodeOnlineSections(toSave);
-    await service.upsertOnlineDict(
-      mode,
-      word,
-      encoded,
-      inDir: isWord ? targetDir : null,
-    );
-    if (targetDir != null && isWord) {
-      await service.upsertOnlineDict(mode, word, encoded);
-    }
+  final completedSaved = List<LookupSection?>.filled(tasks.length, null);
+  var promotedToVietPhrase = false;
+  Future<void> chain = Future.value();
 
-    // Từ tra online thường KHÔNG có trong VietPhrase (không có mới phải tra) →
-    // engine cắt nó thành từng chữ và click lại không bao giờ khớp nguyên cụm,
-    // nên mục vừa lưu sẽ không hiện ra được. Thêm vào overlay VietPhrase để
-    // engine tách đúng cụm; chỉ nhận từ/cụm từ, không nhận cả câu.
-    // Nguồn online tra mờ: gõ 再入荷 có thể trả mục của 再入 — đọc thì người
-    // dùng tự nhận ra lệch, nhưng đưa vào VietPhrase là nhét bản dịch SAI vào
-    // từ điển dịch. Chỉ promote khi headword nguồn trả về đúng bằng từ đã tra.
-    if (!knownToVietPhrase && !knownToLacViet && isWord) {
-      final exact = toSave
-          .where(
-            (s) =>
-                vietnameseLookupLabels.contains(s.label) &&
-                meaningMatchesWord(word, s.body),
-          )
-          .toList();
-      final short = exact.isEmpty ? '' : shortMeaningOf(exact.first.body);
-      if (short.isNotEmpty) {
-        await service.upsertVietPhraseOverlay(mode, {
-          word: short,
-        }, inDir: targetDir);
-        if (targetDir != null) {
-          await service.upsertVietPhraseOverlay(mode, {word: short});
+  Future<void> handleTaskDone(int index, String? rawBody) async {
+    try {
+      final body = rawBody?.trim();
+      if (body == null || body.isEmpty) return;
+      final task = tasks[index];
+      final section = LookupSection(word, task.label, body);
+      lookup.addOnlineSections(word, [section]);
+      // Máy dịch trả nghĩa theo ngữ cảnh, lưu lại dễ sai → chỉ lưu từ điển thật.
+      if (!task.saved) return;
+
+      completedSaved[index] = section;
+      final toSave = completedSaved.whereType<LookupSection>().toList();
+      if (toSave.isEmpty) return;
+
+      final service = UserDictService(await appPaths);
+      final isWord = isWordLikeEntry(word);
+      final encoded = encodeOnlineSections(toSave);
+      await service.upsertOnlineDict(
+        mode,
+        word,
+        encoded,
+        inDir: isWord ? targetDir : null,
+      );
+      if (targetDir != null && isWord) {
+        await service.upsertOnlineDict(mode, word, encoded);
+      }
+
+      // Từ tra online thường KHÔNG có trong VietPhrase (không có mới phải tra) →
+      // engine cắt nó thành từng chữ và click lại không bao giờ khớp nguyên cụm,
+      // nên mục vừa lưu sẽ không hiện ra được. Thêm vào overlay VietPhrase để
+      // engine tách đúng cụm; chỉ nhận từ/cụm từ, không nhận cả câu.
+      // Nguồn online tra mờ: gõ 再入荷 có thể trả mục của 再入 — đọc thì người
+      // dùng tự nhận ra lệch, nhưng đưa vào VietPhrase là nhét bản dịch SAI vào
+      // từ điển dịch. Chỉ promote khi headword nguồn trả về đúng bằng từ đã tra.
+      if (!promotedToVietPhrase &&
+          !knownToVietPhrase &&
+          !knownToLacViet &&
+          isWord) {
+        final exact = toSave
+            .where(
+              (s) =>
+                  vietnameseLookupLabels.contains(s.label) &&
+                  meaningMatchesWord(word, s.body),
+            )
+            .toList();
+        final short = exact.isEmpty ? '' : shortMeaningOf(exact.first.body);
+        if (short.isNotEmpty) {
+          promotedToVietPhrase = true;
+          await service.upsertVietPhraseOverlay(mode, {
+            word: short,
+          }, inDir: targetDir);
+          if (targetDir != null) {
+            await service.upsertVietPhraseOverlay(mode, {word: short});
+          }
+          onVietPhraseChanged();
         }
       }
-    }
 
-    await dictionaries.reload();
-    translation.retranslate();
-    // Từ điển vừa có thêm mục online → tra lại ngay để ô Nghĩa hiện chúng,
-    // thay vì bắt người dùng bấm lại đúng từ đó.
-    lookup.refreshCurrent();
-  } catch (_) {
-    // Mất mạng / lỗi ghi file: kết quả đã hiện trên dialog là đủ.
+      await dictionaries.reload();
+      translation.retranslate();
+      // Từ điển vừa có thêm mục online → tra lại ngay để ô Nghĩa hiện chúng,
+      // thay vì bắt người dùng bấm lại đúng từ đó.
+      lookup.refreshCurrent();
+    } catch (_) {
+      // Mất mạng / lỗi ghi file: kết quả đã hiện trên dialog là đủ.
+    }
   }
+
+  for (var i = 0; i < tasks.length; i++) {
+    final index = i;
+    unawaited(
+      tasks[index].body
+          .then((rawBody) {
+            chain = chain.then((_) => handleTaskDone(index, rawBody));
+          })
+          .catchError((_) {}),
+    );
+  }
+  await Future.wait(
+    tasks.map((t) => t.body.then<void>((_) {}).catchError((_) {})),
+  );
+  await chain;
 }
 
 final _rawWeblioLabels = RegExp(
@@ -378,6 +409,7 @@ Future<void> translateWeblioSectionWithGoogle(
     final google = ref.read(googleTranslateProvider);
     final lookup = ref.read(lookupControllerProvider.notifier);
     final dictionaries = ref.read(dictionariesProvider.notifier);
+    final translation = ref.read(translationControllerProvider.notifier);
     final appPathsFuture = ref.read(appPathsProvider.future);
     final targetDir = ref.read(dictionarySyncProvider).isAdmin
         ? generatedDictDir(mode)
@@ -400,6 +432,7 @@ Future<void> translateWeblioSectionWithGoogle(
       mode: mode,
       lookup: lookup,
       dictionaries: dictionaries,
+      translation: translation,
       appPathsFuture: appPathsFuture,
       targetDir: targetDir,
       existingRaw: existingRaw,
@@ -436,6 +469,7 @@ Future<String?> translateWeblioSectionWithAi(
   final weblio = ref.read(weblioApiProvider);
   final lookup = ref.read(lookupControllerProvider.notifier);
   final dictionaries = ref.read(dictionariesProvider.notifier);
+  final translation = ref.read(translationControllerProvider.notifier);
   final appPathsFuture = ref.read(appPathsProvider.future);
   final targetDir = ref.read(dictionarySyncProvider).isAdmin
       ? generatedDictDir(mode)
@@ -469,6 +503,7 @@ Future<String?> translateWeblioSectionWithAi(
     mode: mode,
     lookup: lookup,
     dictionaries: dictionaries,
+    translation: translation,
     appPathsFuture: appPathsFuture,
     targetDir: targetDir,
     existingRaw: existingRaw,
@@ -483,6 +518,7 @@ Future<void> _replaceWeblioSection({
   required TranslationMode mode,
   required LookupController lookup,
   required DictionariesNotifier dictionaries,
+  required TranslationController translation,
   required Future<AppPaths> appPathsFuture,
   required String? targetDir,
   required String? existingRaw,
@@ -547,6 +583,7 @@ Future<void> _replaceWeblioSection({
   }
 
   await dictionaries.reload();
+  translation.retranslate();
   lookup.refreshCurrent();
   lookup.addOnlineSections(normWord, [updatedSection]);
 }

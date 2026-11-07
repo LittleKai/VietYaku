@@ -42,12 +42,31 @@ void main() {
   });
 
   group('shortMeaningOf', () {
-    test('lấy dòng nghĩa đầu tiên của thân Mazii', () {
+    test('lấy dòng nghĩa đầu tiên của thân Mazii và cắt bỏ nhãn từ loại', () {
       const body =
           '再入 「さいにゅう」 (Hán: TÁI NHẬP)\n'
           '- (n, n-pref) sự vào lại\n'
           '- (n) nghĩa thứ hai';
-      expect(shortMeaningOf(body), equals('(n, n-pref) sự vào lại'));
+      expect(shortMeaningOf(body), equals('sự vào lại'));
+    });
+
+    test('cắt bỏ nhãn từ loại ở đầu câu nghĩa nhưng giữ ngoặc giải thích trong câu', () {
+      expect(
+        shortMeaningOf('取り消し「とりけし」\n- (danh từ) hủy bỏ'),
+        equals('hủy bỏ'),
+      );
+      expect(
+        shortMeaningOf('立入禁止\n- (exp) cấm dẫm chân lên (vạch, bãi cỏ...)'),
+        equals('cấm dẫm chân lên (vạch, bãi cỏ...)'),
+      );
+      expect(
+        shortMeaningOf('経理\n- （名・スル） công việc kế toán (sổ sách)'),
+        equals('công việc kế toán (sổ sách)'),
+      );
+      expect(
+        shortMeaningOf('テスト\n- (xem thêm)'),
+        equals('(xem thêm)'),
+      );
     });
 
     test('không có dòng gạch đầu dòng thì lấy dòng đầu không rỗng', () {

@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import '../../translation/domain/dict_entry_filter.dart';
+
 /// Một từ/cụm con tách ra từ cụm đã tra, đủ ngắn để thành mục từ điển riêng.
 ///
 /// Ví dụ tra `この人こんなにチャラかった` thì `チャラかった` cho ra thân từ
@@ -174,7 +176,7 @@ String _singleLineMeaning(String? raw) {
   if (raw == null) return '';
   return raw
       .split(RegExp(r'\r?\n'))
-      .map((line) => line.trim())
+      .map(stripLeadingPosTag)
       .where((line) => line.isNotEmpty)
       .join('/');
 }

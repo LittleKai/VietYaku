@@ -934,7 +934,19 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
         onPressed: () {
           editableTextState.hideToolbar();
           // Tra key CJK của vùng chọn, không phải nghĩa tiếng Việt hiển thị.
-          ref.read(lookupControllerProvider.notifier).lookup(word);
+          if (selectedTokens.isNotEmpty) {
+            ref
+                .read(tokenSelectionProvider.notifier)
+                .selectRange(
+                  selectedTokens.first.sourceStart,
+                  selectedTokens.last.sourceStart +
+                      selectedTokens.last.source.length,
+                  word,
+                  origin: TokenSelectionOrigin.result,
+                );
+          } else {
+            ref.read(lookupControllerProvider.notifier).lookup(word);
+          }
           if (dicts?.onlineDict.entries.containsKey(savedKey) != true) {
             showOnlineLookupDialog(context, ref, word: word);
           }
@@ -950,7 +962,19 @@ class _TokenTextViewState extends ConsumerState<TokenTextView> {
           label: hasAi ? 'Xem kết quả AI' : 'Tra AI',
           onPressed: () {
             editableTextState.hideToolbar();
-            ref.read(lookupControllerProvider.notifier).lookup(word);
+            if (selectedTokens.isNotEmpty) {
+              ref
+                  .read(tokenSelectionProvider.notifier)
+                  .selectRange(
+                    selectedTokens.first.sourceStart,
+                    selectedTokens.last.sourceStart +
+                        selectedTokens.last.source.length,
+                    word,
+                    origin: TokenSelectionOrigin.result,
+                  );
+            } else {
+              ref.read(lookupControllerProvider.notifier).lookup(word);
+            }
             if (!hasAi) {
               showAiLookupDialog(context, ref, word: word);
             }

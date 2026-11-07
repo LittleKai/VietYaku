@@ -109,7 +109,11 @@ class TtsService {
     return _voiceByPrefix[prefix];
   }
 
-  Future<void> stop() => _tts.stop();
+  Future<void> stop() async {
+    try {
+      await _tts.stop();
+    } catch (_) {}
+  }
 }
 
 final ttsServiceProvider = FutureProvider<TtsService>((ref) async {

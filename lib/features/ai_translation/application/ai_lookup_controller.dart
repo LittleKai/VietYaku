@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../clipboard/application/clipboard_reader_controller.dart';
 import '../../dictionary/application/dictionaries_provider.dart';
 import '../../dictionary/data/user_dict_service.dart';
 import '../../dictionary_sync/application/dictionary_sync_controller.dart';
@@ -70,6 +71,7 @@ Future<AiApiResponse> executeAiLookup(WidgetRef ref, String rawWord) async {
   final lookup = ref.read(lookupControllerProvider.notifier);
   final dictionaries = ref.read(dictionariesProvider.notifier);
   final translation = ref.read(translationControllerProvider.notifier);
+  final clipboardBridge = ref.read(windowsClipboardBridgeProvider);
   final appPaths = ref.read(appPathsProvider.future);
   final dicts = ref.read(dictionariesProvider).valueOrNull;
   final vietPhrase = dicts?.vietPhrase;
@@ -170,6 +172,10 @@ Future<AiApiResponse> executeAiLookup(WidgetRef ref, String rawWord) async {
         if (targetDir != null) {
           await service.upsertVietPhraseOverlay(mode, missing);
         }
+        clipboardBridge.notifyGlossaryWindow({
+          'type': 'vietPhraseChanged',
+          'mode': mode.name,
+        });
       }
     }
 

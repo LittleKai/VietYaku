@@ -48,11 +48,23 @@ const maxShortMeaningChars = 120;
 bool _isSourceLabel(String line) =>
     line.startsWith('<<') && line.endsWith('>>');
 
+final _leadingPosPattern = RegExp(r'^(?:(?:\([^()\n]+\)|（[^（）\n]+）)\s*)+');
+
+/// Cắt bỏ nhãn từ loại ở đầu câu nghĩa (VD `(danh từ) hủy bỏ`, `(n, vs) sự phục chế`).
+/// Nếu sau khi cắt mà chuỗi rỗng (cả câu chỉ nằm trong ngoặc) thì giữ nguyên.
+String stripLeadingPosTag(String meaning) {
+  final trimmed = meaning.trim();
+  if (trimmed.isEmpty) return '';
+  final stripped = trimmed.replaceFirst(_leadingPosPattern, '').trim();
+  return stripped.isEmpty ? trimmed : stripped;
+}
+
 /// Rút một nghĩa NGẮN kiểu từ điển từ thân kết quả tra online.
 ///
 /// Thân Mazii/Jisho có dạng nhiều dòng: dòng đầu là headword + cách đọc + âm
 /// Hán, các dòng nghĩa bắt đầu bằng `-`. Value VietPhrase phải ngắn vì nó được
-/// chèn thẳng vào bản dịch, nên chỉ lấy dòng nghĩa đầu tiên.
+/// chèn thẳng vào bản dịch, nên chỉ lấy dòng nghĩa đầu tiên và cắt bỏ nhãn từ
+/// loại ở đầu câu nghĩa.
 ///
 /// Trả chuỗi rỗng khi không rút được gì dùng được — khi đó không ghi gì cả.
 String shortMeaningOf(String body) {
@@ -62,11 +74,11 @@ String shortMeaningOf(String body) {
     if (line.isEmpty || _isSourceLabel(line)) continue;
     firstNonEmpty ??= line;
     if (line.startsWith('-')) {
-      final meaning = line.substring(1).trim();
+      final meaning = stripLeadingPosTag(line.substring(1));
       if (meaning.isNotEmpty) return _cap(meaning);
     }
   }
-  return firstNonEmpty == null ? '' : _cap(firstNonEmpty);
+  return firstNonEmpty == null ? '' : _cap(stripLeadingPosTag(firstNonEmpty));
 }
 
 String _cap(String value) => value.length <= maxShortMeaningChars

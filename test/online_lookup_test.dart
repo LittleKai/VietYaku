@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -22,7 +23,9 @@ import 'package:vietyaku/features/dictionary/domain/phrase_dictionary.dart';
 import 'package:vietyaku/features/settings/settings_provider.dart';
 import 'package:vietyaku/features/translation/application/lookup_controller.dart';
 import 'package:vietyaku/features/translation/application/online_lookup_controller.dart';
+import 'package:vietyaku/features/translation/application/translation_controller.dart';
 import 'package:vietyaku/features/translation/data/jisho_api.dart';
+import 'package:vietyaku/features/translation/data/mazii_api.dart';
 import 'package:vietyaku/features/translation/data/weblio_api.dart';
 import 'package:vietyaku/features/translation/data/youdao_api.dart';
 import 'package:vietyaku/features/translation/domain/online_lookup_source.dart';
@@ -30,14 +33,20 @@ import 'package:vietyaku/features/translation/domain/translation_engine.dart';
 import 'package:vietyaku/features/translation/presentation/lacviet_panel.dart';
 
 class _TestDictionariesNotifier extends DictionariesNotifier {
-  _TestDictionariesNotifier(this.loaded);
+  _TestDictionariesNotifier(this.loaded, {this.onReload});
   LoadedDictionaries loaded;
+  final Future<LoadedDictionaries> Function()? onReload;
 
   @override
   Future<LoadedDictionaries> build() async => loaded;
 
   @override
-  Future<void> reload() async {}
+  Future<void> reload() async {
+    if (onReload != null) {
+      loaded = await onReload!();
+    }
+    state = AsyncData(loaded);
+  }
 }
 
 class _TestAiSettingsNotifier extends AiSettingsController {
@@ -447,6 +456,175 @@ void main() {
       expect(savedRaw, contains('<<Weblio 日中>>'));
       expect(savedRaw, isNot(contains('Nghĩa: hủy bỏ (Google)')));
       expect(savedRaw, contains('Nghĩa: hủy bỏ, bãi bỏ (AI)'));
+    },
+  );
+
+  testWidgets(
+    'startOnlineLookup lưu VietPhrase không kèm từ loại, reload từ điển, dịch lại và cập nhật panel Nghĩa ngay khi Mazii xong dù nguồn khác còn đang chạy',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final tempDir = Directory.systemTemp.createTempSync('online_lookup_inc_');
+      addTearDown(() {
+        try {
+          if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
+        } catch (_) {}
+      });
+      final paths = AppPaths(tempDir);
+      final service = UserDictService(paths);
+      const word = '枠組み';
+      final prefs = await SharedPreferences.getInstance();
+
+      PhraseDictionary d(DictType t, [Map<String, String> e = const {}]) =>
+          PhraseDictionary(t, e);
+      Map<String, String> parseEntries(File f) {
+        if (!f.existsSync()) return {};
+        final out = <String, String>{};
+        for (final line in f.readAsLinesSync()) {
+          final eq = line.indexOf('=');
+          if (eq > 0) {
+            out[line.substring(0, eq)] = line.substring(eq + 1);
+          }
+        }
+        return out;
+      }
+
+      LoadedDictionaries buildDicts() => LoadedDictionaries(
+        userDict: d(DictType.userDict),
+        names: d(DictType.names),
+        vietPhrase: d(
+          DictType.vietPhrase,
+          parseEntries(service.vietPhraseOverlayFile(TranslationMode.japanese)),
+        ),
+        lacViet: d(DictType.lacViet),
+        chinesePhienAm: d(DictType.chinesePhienAm),
+        pronouns: d(DictType.pronouns),
+        babylon: d(DictType.babylon),
+        thieuChuu: d(DictType.thieuChuu),
+        cedict: d(DictType.cedict),
+        chinesePhienAmEnglish: d(DictType.chinesePhienAmEnglish),
+        jaVi: d(DictType.jaVi),
+        zhVi: d(DictType.zhVi),
+        onlineDict: d(
+          DictType.onlineDict,
+          parseEntries(service.onlineDictFile(TranslationMode.japanese)),
+        ),
+        stats: const {},
+      );
+
+      final maziiClient = MockClient((request) async {
+        return http.Response.bytes(
+          utf8.encode(
+            jsonEncode({
+              'status': 200,
+              'data': [
+                {
+                  'word': word,
+                  'phonetic': 'わくぐみ',
+                  'means': [
+                    {
+                      'kind': 'n',
+                      'mean': 'khung, khung lắp ráp',
+                    },
+                  ],
+                },
+              ],
+            }),
+          ),
+          200,
+        );
+      });
+
+      final jishoCompleter = Completer<http.Response>();
+      final jishoClient = MockClient((_) => jishoCompleter.future);
+
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          appPathsProvider.overrideWith((_) async => paths),
+          dictionariesProvider.overrideWith(
+            () => _TestDictionariesNotifier(
+              buildDicts(),
+              onReload: () async => buildDicts(),
+            ),
+          ),
+          maziiApiProvider.overrideWithValue(MaziiApi(client: maziiClient)),
+          jishoApiProvider.overrideWithValue(JishoApi(client: jishoClient)),
+        ],
+      );
+      addTearDown(container.dispose);
+      await container.read(appPathsProvider.future);
+      await container.read(dictionariesProvider.future);
+      await container.read(settingsProvider.notifier).setOnlineLookupSources(
+        const [OnlineLookupSource.mazii, OnlineLookupSource.english],
+      );
+
+      container.read(translationControllerProvider.notifier).translate(word);
+      container.read(lookupControllerProvider.notifier).lookup(word);
+
+      late WidgetRef capturedRef;
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: Consumer(
+              builder: (context, ref, _) {
+                capturedRef = ref;
+                return const Scaffold(body: SizedBox.shrink());
+              },
+            ),
+          ),
+        ),
+      );
+
+      final tasks = startOnlineLookup(capturedRef, word);
+      // Chỉ chờ Mazii xong, trong khi Jisho vẫn đang treo trên Completer.
+      await tester.runAsync(() => tasks.first.body);
+      for (var i = 0; i < 40; i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 20)),
+        );
+        await tester.pump(const Duration(milliseconds: 20));
+        if (container
+            .read(lookupControllerProvider)!
+            .sections
+            .any((s) => s.label == 'VietPhrase')) {
+          break;
+        }
+      }
+
+      // 1. Lưu vào VietPhrase_japanese.txt KHÔNG có nhãn từ loại "(n)" ở đầu.
+      final vpOverlay = await tester.runAsync(
+        () => service
+            .vietPhraseOverlayFile(TranslationMode.japanese)
+            .readAsString(),
+      );
+      expect(vpOverlay!.trim(), equals('枠組み=khung, khung lắp ráp'));
+
+      // 2. Từ điển đã được reload và văn bản nguồn đã tự động dịch lại ngay.
+      final translatedTokens = container
+          .read(translationControllerProvider)
+          .tokens;
+      expect(
+        translatedTokens.map((t) => t.meaning).join(),
+        equals('khung, khung lắp ráp'),
+      );
+
+      // 3. Panel Nghĩa đã cập nhật cả mục VietPhrase lẫn Mazii Online dù Jisho chưa trả về.
+      final lookupSections = container.read(lookupControllerProvider)!.sections;
+      expect(
+        lookupSections.map((s) => s.label),
+        containsAll(['VietPhrase', 'Mazii Online']),
+      );
+      expect(
+        lookupSections.firstWhere((s) => s.label == 'VietPhrase').body,
+        equals('khung, khung lắp ráp'),
+      );
+
+      // Giải phóng Jisho để đóng test sạch sẽ.
+      jishoCompleter.complete(http.Response('{"data":[]}', 200));
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)),
+      );
     },
   );
 }

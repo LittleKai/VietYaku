@@ -304,7 +304,10 @@ class _SourcePaneState extends ConsumerState<SourcePane> {
   /// Nháy chuột trong văn bản đã dịch → chọn cụm chứa caret (kiểu QT).
   void _onCaretMaybeChanged() {
     final selection = _controller.selection;
-    if (!selection.isValid || !selection.isCollapsed) return;
+    if (!selection.isValid || !selection.isCollapsed) {
+      _lastCaret = -1;
+      return;
+    }
     if (_controller.text !=
         ref.read(translationControllerProvider).sourceText) {
       return; // text đang gõ dở, chưa dịch — không tra
@@ -389,8 +392,15 @@ class _SourcePaneState extends ConsumerState<SourcePane> {
       ),
       contextMenuBuilder: (context, editableTextState) {
         final value = editableTextState.textEditingValue;
-        final selection = value.selection.textInside(value.text).trim();
+        final rawSelection = value.selection.textInside(value.text);
+        final selection = rawSelection.trim();
         if (selection.isEmpty) return const SizedBox.shrink();
+        final leadTrim = rawSelection.indexOf(selection);
+        final selStart = value.selection.start + (leadTrim < 0 ? 0 : leadTrim);
+        final selEnd = selStart + selection.length;
+        void selectAndLookup() => ref
+            .read(tokenSelectionProvider.notifier)
+            .selectRange(selStart, selEnd, selection);
 
         final dicts = ref.read(dictionariesProvider).valueOrNull;
         // Key thật sự dùng để lưu OnlineDict/AiDict (mode Trung đã quy giản
@@ -491,7 +501,7 @@ class _SourcePaneState extends ConsumerState<SourcePane> {
                 : 'Tra online',
             onPressed: () {
               hide();
-              ref.read(lookupControllerProvider.notifier).lookup(selection);
+              selectAndLookup();
               if (dicts?.onlineDict.entries.containsKey(savedKey) != true) {
                 showOnlineLookupDialog(this.context, ref, word: selection);
               }
@@ -506,7 +516,7 @@ class _SourcePaneState extends ConsumerState<SourcePane> {
                   : 'Tra AI',
               onPressed: () {
                 hide();
-                ref.read(lookupControllerProvider.notifier).lookup(selection);
+                selectAndLookup();
                 if (dicts?.aiDict.entries.containsKey(savedKey) != true) {
                   showAiLookupDialog(this.context, ref, word: selection);
                 }

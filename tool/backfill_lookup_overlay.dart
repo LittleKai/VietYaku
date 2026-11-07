@@ -53,6 +53,12 @@ void _backfillMode(String dir, String mode, {required bool apply}) {
   final existing = _readDict(overlayFile.path);
 
   final additions = <String, String>{};
+  for (final e in existing.entries) {
+    final cleaned = stripLeadingPosTag(e.value);
+    if (cleaned.isNotEmpty && cleaned != e.value) {
+      additions[e.key] = cleaned;
+    }
+  }
   var skippedNotWord = 0;
   var skippedNoMeaning = 0;
   var skippedMismatch = 0;
