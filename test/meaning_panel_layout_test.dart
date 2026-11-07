@@ -1,4 +1,7 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:vietyaku/features/settings/settings_provider.dart';
 import 'package:vietyaku/features/translation/domain/lookup_dictionary_type.dart';
 import 'package:vietyaku/features/translation/domain/meaning_panel_layout.dart';
 import 'package:vietyaku/features/translation/domain/translation_engine.dart';
@@ -148,10 +151,16 @@ void main() {
   });
 
   group('lưu/đọc lại', () {
-    test('round-trip giữ cả thứ tự lẫn trạng thái tắt', () {
+    test('round-trip giữ cả thứ tự lẫn trạng thái tắt (kể cả khi kéo ai xuống sau online)', () {
       final layout = MeaningPanelLayout.defaultsFor(TranslationMode.japanese)
           .reordered(0, 3)
+          .movedOnto(LookupDictionaryType.ai, LookupDictionaryType.phonetic)
           .withVisibility(LookupDictionaryType.thieuChuu, false);
+
+      expect(
+        layout.order.indexOf(LookupDictionaryType.ai),
+        greaterThan(layout.order.indexOf(LookupDictionaryType.online)),
+      );
 
       final decoded = MeaningPanelLayout.decode(
         layout.encode(),
@@ -159,6 +168,43 @@ void main() {
       );
       expect(decoded.order, equals(layout.order));
       expect(decoded.hidden, equals(layout.hidden));
+    });
+
+    test('SettingsNotifier chỉ migrate thứ tự ai một lần duy nhất, giữ nguyên tuỳ chỉnh sau đó', () async {
+      const oldRawJa =
+          'userDict:1,names:1,vietPhrase:1,lacViet:1,mazii:1,jaVi:1,cedictBabylon:1,thieuChuu:1,online:1,ai:1,aiEntries:1,phonetic:1';
+      SharedPreferences.setMockInitialValues({
+        'lookup.meaningPanel.ja': oldRawJa,
+      });
+      final prefs = await SharedPreferences.getInstance();
+
+      // Lần khởi tạo đầu tiên: tự động nâng AI Dịch lên ngay dưới Lạc Việt.
+      final container1 = ProviderContainer(
+        overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+      );
+      addTearDown(container1.dispose);
+      final initialJa = container1.read(settingsProvider).meaningPanelJa;
+      expect(
+        initialJa.order.indexOf(LookupDictionaryType.ai),
+        equals(initialJa.order.indexOf(LookupDictionaryType.lacViet) + 1),
+      );
+
+      // Người dùng chủ động kéo AI Dịch xuống cuối (sau Online).
+      final customJa = initialJa.movedOnto(
+        LookupDictionaryType.ai,
+        LookupDictionaryType.phonetic,
+      );
+      await container1
+          .read(settingsProvider.notifier)
+          .setMeaningPanelLayout(TranslationMode.japanese, customJa);
+
+      // Mở lại app (ProviderContainer mới trên cùng SharedPreferences): phải giữ nguyên.
+      final container2 = ProviderContainer(
+        overrides: [sharedPreferencesProvider.overrideWithValue(prefs)],
+      );
+      addTearDown(container2.dispose);
+      final reloadedJa = container2.read(settingsProvider).meaningPanelJa;
+      expect(reloadedJa.order, equals(customJa.order));
     });
 
     test('chuỗi rỗng / null → mặc định', () {
@@ -201,10 +247,14 @@ void main() {
       expect(decoded.hidden, isEmpty);
     });
 
-    test('migration: bố cục cũ lưu ai sau online tự chuyển ai về ngay sau lacViet', () {
+    test('migration: bố cục cũ lưu ai sau online tự chuyển ai về ngay sau lacViet khi bật cờ migrate', () {
       const oldRawJa =
           'userDict:1,names:1,vietPhrase:1,lacViet:1,mazii:1,jaVi:1,cedictBabylon:1,thieuChuu:1,online:1,ai:1,aiEntries:1,phonetic:1';
-      final decodedJa = MeaningPanelLayout.decode(oldRawJa, TranslationMode.japanese);
+      final decodedJa = MeaningPanelLayout.decode(
+        oldRawJa,
+        TranslationMode.japanese,
+        migrateLegacyAiOrder: true,
+      );
 
       final lvIdxJa = decodedJa.order.indexOf(LookupDictionaryType.lacViet);
       final aiIdxJa = decodedJa.order.indexOf(LookupDictionaryType.ai);
@@ -217,7 +267,11 @@ void main() {
 
       const oldRawZh =
           'userDict:1,names:1,vietPhrase:1,lacViet:1,cedictBabylon:1,thieuChuu:1,zhVi:1,online:1,ai:1,aiEntries:1,phonetic:1';
-      final decodedZh = MeaningPanelLayout.decode(oldRawZh, TranslationMode.chinese);
+      final decodedZh = MeaningPanelLayout.decode(
+        oldRawZh,
+        TranslationMode.chinese,
+        migrateLegacyAiOrder: true,
+      );
 
       final lvIdxZh = decodedZh.order.indexOf(LookupDictionaryType.lacViet);
       final aiIdxZh = decodedZh.order.indexOf(LookupDictionaryType.ai);

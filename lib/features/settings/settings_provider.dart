@@ -490,6 +490,8 @@ class SettingsNotifier extends Notifier<AppSettings> {
   static const _popupDictionaryTypesZhKey = 'lookup.popupDictionaries.zh';
   static const _meaningPanelJaKey = 'lookup.meaningPanel.ja';
   static const _meaningPanelZhKey = 'lookup.meaningPanel.zh';
+  static const _meaningPanelAiOrderMigratedKey =
+      'lookup.meaningPanel.aiOrderMigrated';
   static const _onlineLookupSourcesKey = 'lookup.onlineSources';
   static const _autoCheckUpdatesKey = 'update.autoCheckUpdates';
   static const _autoSyncDictionaryKey = 'dictionarySync.autoSync';
@@ -513,18 +515,31 @@ class SettingsNotifier extends Notifier<AppSettings> {
     final legacyTtsRate = prefs.getDouble(_ttsSpeechRateKey);
     final legacyPopupDicts = prefs.getStringList(_popupDictionaryTypesKey);
 
+    final migrateMeaningAiOrder =
+        !(prefs.getBool(_meaningPanelAiOrderMigratedKey) ?? false);
+
     final rawMeaningJa = prefs.getString(_meaningPanelJaKey);
-    final meaningPanelJa =
-        MeaningPanelLayout.decode(rawMeaningJa, TranslationMode.japanese);
+    final meaningPanelJa = MeaningPanelLayout.decode(
+      rawMeaningJa,
+      TranslationMode.japanese,
+      migrateLegacyAiOrder: migrateMeaningAiOrder,
+    );
     if (rawMeaningJa != null && meaningPanelJa.encode() != rawMeaningJa) {
       prefs.setString(_meaningPanelJaKey, meaningPanelJa.encode());
     }
 
     final rawMeaningZh = prefs.getString(_meaningPanelZhKey);
-    final meaningPanelZh =
-        MeaningPanelLayout.decode(rawMeaningZh, TranslationMode.chinese);
+    final meaningPanelZh = MeaningPanelLayout.decode(
+      rawMeaningZh,
+      TranslationMode.chinese,
+      migrateLegacyAiOrder: migrateMeaningAiOrder,
+    );
     if (rawMeaningZh != null && meaningPanelZh.encode() != rawMeaningZh) {
       prefs.setString(_meaningPanelZhKey, meaningPanelZh.encode());
+    }
+
+    if (migrateMeaningAiOrder) {
+      prefs.setBool(_meaningPanelAiOrderMigratedKey, true);
     }
 
     return AppSettings(
