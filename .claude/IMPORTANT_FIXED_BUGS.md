@@ -1,6 +1,6 @@
 # Important Fixed Bugs — VietYaku
 
-**Last Updated:** 2026-10-23
+**Last Updated:** 2026-11-18
 
 ## Mục đích
 
@@ -200,10 +200,10 @@ lặp lại là một luật: sửa câu cũ, không nối `CẬP NHẬT: thực
   3. `GlossaryService` cache payload theo timestamp `mtime`. Trên Windows, filesystem mtime có độ phân giải 1 giây, nếu cập nhật liên tục trong cùng 1 giây thì cache trả lại dữ liệu cũ trừ khi kiểm tra thêm `lengthSync()`.
   4. Đôi khi `showGlossaryUpdateDialog` bị huỷ ghi đĩa nếu kiểm tra `!context.mounted` quá sớm khi Navigator đang pop.
 - **Fix:**
-  1. `showGlossaryUpdateDialog` và `showGlossaryEditDialog` trả về trực tiếp `Future<GlossaryTerm?>` vừa lưu, không huỷ ghi đĩa khi user đã bấm xác nhận.
-  2. Dialog cha nhận trực tiếp `GlossaryTerm?` và gọi `_updateGlossaryTermDirectly(term)` để cập nhật đồng bộ 0ms ngay lập tức lên `ValueNotifier` và UI card, đồng thời gắn `_glossaryCheckSeq` để vô hiệu hoá mọi query đọc đĩa cũ đến trễ.
-  3. `GlossaryService` theo dõi cả `mtime` và `lengthSync()`, thêm cơ chế `forceReload` và `GlossaryService.clearCache()` khi đổi thư mục glossary trong Settings.
-- **Do Not Repeat:** Khi một dialog con thực hiện mutate dữ liệu và dialog cha cần hiển thị ngay kết quả đó, luôn trả về thực thể đã cập nhật từ dialog con để dialog cha áp dụng đồng bộ ngay lập tức (0ms optimistic/direct update), thay vì chỉ trả về `bool` rồi bắt dialog cha query lại bất đồng bộ từ file/storage.
+  1. `showGlossaryUpdateDialog` và `showGlossaryEditDialog` trả về trực tiếp `Future<GlossaryTerm?>` vừa lưu (kèm `onSaved` báo rõ User hay Global Glossary), không huỷ ghi đĩa khi user đã bấm xác nhận; `notifyGlossaryChanged` bắt `StateError` nếu widget gọi đã unmount.
+  2. Dialog cha nhận trực tiếp `GlossaryTerm?` và gọi `_updateGlossaryTermDirectly(term, isUserGlossary: ...)` để cập nhật đồng bộ 0ms lên **cả** `_userGlossaryTerm` / `_globalGlossaryTerm` và `_glossaryTerm` (vì `_GlossaryStatusCard` ưu tiên `userTerm`/`globalTerm` trước `term`), đồng thời gắn `_glossaryCheckSeq` vô hiệu hoá query cũ đến trễ và dùng `forceReload: true` cho cả hai file khi làm mới/tự động cập nhật lúc lưu.
+  3. `GlossaryService` & `UserGlossaryService` đọc `forceReload: true` trước mọi thao tác ghi (`upsertAll`/`removeAll`), strip BOM `\uFEFF`, dùng file `.tmp` duy nhất theo `pid` + timestamp và retry `renameWithRetry` khi Windows khoá file tạm thời; `entry_edit_dialog` báo lỗi cụ thể nếu tự động cập nhật thất bại thay vì nuốt lỗi im lặng.
+- **Do Not Repeat:** Khi một dialog con thực hiện mutate dữ liệu và dialog cha cần hiển thị ngay kết quả đó, luôn trả về thực thể đã cập nhật (kèm phân loại nguồn nếu card hiển thị tách nhiều field state như `_userGlossaryTerm`/`_globalGlossaryTerm`) để áp dụng đồng bộ 0ms. Mọi thao tác ghi hoặc auto-update đọc file JSON có thể bị tool ngoài sửa (như Glossary) bắt buộc `forceReload: true` trước khi đọc/ghi.
 - **Related Files:** `lib/shared/widgets/entry_edit_dialog.dart`, `lib/features/glossary/presentation/glossary_update_dialog.dart`, `lib/features/glossary/data/glossary_service.dart`, `test/entry_edit_dialog_test.dart`
 
 ### 2026-10-23 - Hai file từ điển trùng tên ở hai thư mục cha đè chung một cache `.vydc`

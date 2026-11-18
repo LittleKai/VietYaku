@@ -102,7 +102,13 @@ class GlossaryService {
     Map<String, String> targetBySource,
   ) async {
     if (targetBySource.isEmpty) return;
-    final payload = await _readPayload(mode);
+    // Luôn đọc mới nhất từ đĩa trước khi ghi để không ghi đè thay đổi ngoài
+    // (AI_Translation_Bridge hoặc cửa sổ khác).
+    final payload = await _readPayload(
+      mode,
+      forceReload: true,
+      throwOnError: true,
+    );
     if (payload == null) {
       throw const FileSystemException('Không đọc được file Global Glossary.');
     }
@@ -190,7 +196,11 @@ class GlossaryService {
         if (s.trim().isNotEmpty) s.trim(),
     ];
     if (trimmedSources.isEmpty) return;
-    final payload = await _readPayload(mode);
+    final payload = await _readPayload(
+      mode,
+      forceReload: true,
+      throwOnError: true,
+    );
     if (payload == null) return;
     final keysToRemove = {for (final s in trimmedSources) s.toLowerCase()};
     final terms = _termsOf(payload);
@@ -234,9 +244,19 @@ class GlossaryService {
         .convert(payload)
         .replaceAll('\r\n', '\n')
         .replaceAll('\n', '\r\n');
-    final tmpFile = File('${file.path}.tmp');
-    await tmpFile.writeAsString(text, encoding: utf8, flush: true);
-    await tmpFile.rename(file.path);
+    final tmpFile = File(
+      '${file.path}.$pid.${DateTime.now().microsecondsSinceEpoch}.tmp',
+    );
+    try {
+      await tmpFile.writeAsString(text, encoding: utf8, flush: true);
+      await renameWithRetry(tmpFile, file.path);
+    } finally {
+      if (tmpFile.existsSync()) {
+        try {
+          await tmpFile.delete();
+        } catch (_) {}
+      }
+    }
     final normPath = p.normalize(file.path);
     final mtime = file.existsSync() ? file.lastModifiedSync() : DateTime.now();
     final length = file.existsSync() ? file.lengthSync() : 0;
@@ -245,6 +265,20 @@ class GlossaryService {
       length: length,
       payload: payload,
     );
+  }
+
+  /// Đổi tên file tạm sang file đích kèm retry ngắn khi Windows vừa khóa đọc.
+  static Future<void> renameWithRetry(File tmpFile, String targetPath) async {
+    const delaysMs = [30, 60, 120];
+    for (var attempt = 0; ; attempt++) {
+      try {
+        await tmpFile.rename(targetPath);
+        return;
+      } on FileSystemException {
+        if (attempt >= delaysMs.length) rethrow;
+        await Future<void>.delayed(Duration(milliseconds: delaysMs[attempt]));
+      }
+    }
   }
 
   static String todayStamp() {
@@ -262,6 +296,7 @@ class GlossaryService {
   Future<Map<String, dynamic>?> _readPayload(
     TranslationMode mode, {
     bool forceReload = false,
+    bool throwOnError = false,
   }) async {
     final file = fileFor(mode);
     final normPath = p.normalize(file.path);
@@ -280,18 +315,47 @@ class GlossaryService {
       return cached.payload;
     }
 
-    try {
-      final decoded = jsonDecode(await file.readAsString(encoding: utf8));
-      if (decoded is Map<String, dynamic>) {
-        _payloadCache[normPath] = _GlossaryCacheEntry(
-          mtime: mtime,
-          length: length,
-          payload: decoded,
-        );
-        return decoded;
+    const delaysMs = [30, 60, 120];
+    for (var attempt = 0; ; attempt++) {
+      try {
+        var text = await file.readAsString(encoding: utf8);
+        if (text.isNotEmpty && text.codeUnitAt(0) == 0xFEFF) {
+          text = text.substring(1);
+        }
+        final decoded = jsonDecode(text);
+        if (decoded is Map<String, dynamic>) {
+          final currentMtime =
+              file.existsSync() ? file.lastModifiedSync() : mtime;
+          final currentLength = file.existsSync() ? file.lengthSync() : length;
+          _payloadCache[normPath] = _GlossaryCacheEntry(
+            mtime: currentMtime,
+            length: currentLength,
+            payload: decoded,
+          );
+          return decoded;
+        }
+        if (throwOnError) {
+          throw FileSystemException(
+            'Không đọc được định dạng Global Glossary: ${file.path}',
+          );
+        }
+        return cached?.payload;
+      } on FileSystemException {
+        if (attempt < delaysMs.length) {
+          await Future<void>.delayed(Duration(milliseconds: delaysMs[attempt]));
+          continue;
+        }
+        if (throwOnError) rethrow;
+        return cached?.payload;
+      } catch (e) {
+        if (throwOnError) {
+          throw FileSystemException(
+            'Không đọc được định dạng Global Glossary: ${file.path}',
+          );
+        }
+        return cached?.payload;
       }
-    } catch (_) {}
-    return cached?.payload;
+    }
   }
 
   static List<Map<String, dynamic>> _termsOf(Map<String, dynamic> payload) {

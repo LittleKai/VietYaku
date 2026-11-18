@@ -38,6 +38,7 @@ Future<GlossaryTerm?> showGlossaryUpdateDialog(
   required String source,
   required String meaning,
   TranslationMode? mode,
+  void Function(GlossaryTerm term, {required bool isUserGlossary})? onSaved,
 }) async {
   final TranslationMode activeMode = mode ?? ref.read(currentModeProvider);
   final service = ref.read(glossaryServiceProvider);
@@ -123,6 +124,7 @@ Future<GlossaryTerm?> showGlossaryUpdateDialog(
           'Nghĩa User Glossary $lang đã trùng khớp: $source → $target',
         );
       }
+      onSaved?.call(userTerm, isUserGlossary: true);
       return userTerm;
     }
     final newTerm = (userTerm != null)
@@ -146,6 +148,7 @@ Future<GlossaryTerm?> showGlossaryUpdateDialog(
         'Đã lưu vào User Glossary $lang: $source → $target',
       );
     }
+    onSaved?.call(newTerm, isUserGlossary: true);
     return newTerm;
   }
 
@@ -157,6 +160,7 @@ Future<GlossaryTerm?> showGlossaryUpdateDialog(
         'Nghĩa Global Glossary $lang đã trùng khớp: $source → $target',
       );
     }
+    onSaved?.call(globalTerm, isUserGlossary: false);
     return globalTerm;
   }
 
@@ -184,6 +188,7 @@ Future<GlossaryTerm?> showGlossaryUpdateDialog(
       'Đã cập nhật Global Glossary $lang: $source → $target',
     );
   }
+  onSaved?.call(newTerm, isUserGlossary: false);
   return newTerm;
 }
 

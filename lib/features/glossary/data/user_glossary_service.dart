@@ -87,7 +87,8 @@ class UserGlossaryService {
     if (src.isEmpty || tgt.isEmpty) return;
 
     final lang = GlossaryService.langFor(mode);
-    final payload = await _readPayload(mode) ??
+    final payload =
+        await _readPayload(mode, forceReload: true) ??
         <String, dynamic>{
           'name': 'User Glossary',
           'lang': lang,
@@ -123,8 +124,8 @@ class UserGlossaryService {
       );
     }
 
-    payload['terms'] = terms;
-    await _writePayload(mode, payload);
+    final nextPayload = <String, dynamic>{...payload, 'terms': terms};
+    await _writePayload(mode, nextPayload);
   }
 
   Future<void> remove(TranslationMode mode, String source) =>
@@ -137,20 +138,20 @@ class UserGlossaryService {
         .where((s) => s.isNotEmpty)
         .toSet();
     if (keys.isEmpty) return;
-    final payload = await _readPayload(mode);
+    final payload = await _readPayload(mode, forceReload: true);
     if (payload == null) return;
     final rawTerms = payload['terms'];
     if (rawTerms is! List) return;
-    final beforeCount = rawTerms.length;
-    rawTerms.removeWhere((item) {
+    final nextTerms = rawTerms.where((item) {
       if (item is Map) {
         final src = (item['source'] ?? '').toString().trim().toLowerCase();
-        return keys.contains(src);
+        return !keys.contains(src);
       }
-      return false;
-    });
-    if (rawTerms.length != beforeCount) {
-      await _writePayload(mode, payload);
+      return true;
+    }).toList();
+    if (nextTerms.length != rawTerms.length) {
+      final nextPayload = <String, dynamic>{...payload, 'terms': nextTerms};
+      await _writePayload(mode, nextPayload);
     }
   }
 
@@ -176,27 +177,39 @@ class UserGlossaryService {
       return cached.payload;
     }
 
-    try {
-      var text = await file.readAsString(encoding: utf8);
-      if (text.isNotEmpty && text.codeUnitAt(0) == 0xFEFF) {
-        text = text.substring(1);
-      }
-      final decoded = jsonDecode(text);
-      if (decoded is! Map<String, dynamic>) {
+    const delaysMs = [30, 60, 120];
+    for (var attempt = 0; ; attempt++) {
+      try {
+        var text = await file.readAsString(encoding: utf8);
+        if (text.isNotEmpty && text.codeUnitAt(0) == 0xFEFF) {
+          text = text.substring(1);
+        }
+        final decoded = jsonDecode(text);
+        if (decoded is! Map<String, dynamic>) {
+          throw FileSystemException(
+            'Không đọc được định dạng User Glossary: ${file.path}',
+          );
+        }
+        final currentMtime =
+            file.existsSync() ? file.lastModifiedSync() : mtime;
+        final currentLength = file.existsSync() ? file.lengthSync() : length;
+        _payloadCache[normPath] = _UserGlossaryCacheEntry(
+          mtime: currentMtime,
+          length: currentLength,
+          payload: decoded,
+        );
+        return decoded;
+      } on FileSystemException {
+        if (attempt < delaysMs.length) {
+          await Future<void>.delayed(Duration(milliseconds: delaysMs[attempt]));
+          continue;
+        }
+        rethrow;
+      } catch (_) {
         throw FileSystemException(
           'Không đọc được định dạng User Glossary: ${file.path}',
         );
       }
-      _payloadCache[normPath] = _UserGlossaryCacheEntry(
-        mtime: mtime,
-        length: length,
-        payload: decoded,
-      );
-      return decoded;
-    } catch (_) {
-      throw FileSystemException(
-        'Không đọc được định dạng User Glossary: ${file.path}',
-      );
     }
   }
 
@@ -209,9 +222,19 @@ class UserGlossaryService {
     final text = const JsonEncoder.withIndent(
       '  ',
     ).convert(payload).replaceAll('\r\n', '\n').replaceAll('\n', '\r\n');
-    final tmpFile = File('${file.path}.tmp');
-    await tmpFile.writeAsString(text, encoding: utf8, flush: true);
-    await tmpFile.rename(file.path);
+    final tmpFile = File(
+      '${file.path}.$pid.${DateTime.now().microsecondsSinceEpoch}.tmp',
+    );
+    try {
+      await tmpFile.writeAsString(text, encoding: utf8, flush: true);
+      await GlossaryService.renameWithRetry(tmpFile, file.path);
+    } finally {
+      if (tmpFile.existsSync()) {
+        try {
+          await tmpFile.delete();
+        } catch (_) {}
+      }
+    }
 
     final normPath = p.normalize(file.path);
     final mtime = file.existsSync() ? file.lastModifiedSync() : DateTime.now();

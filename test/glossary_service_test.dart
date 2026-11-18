@@ -216,4 +216,38 @@ void main() {
     const normal = GlossaryTerm(source: 'x', target: 'y', dateAdded: '2026-10-12');
     expect(address.isAddressForm, isTrue);
     expect(normal.isAddressForm, isFalse);
-  });}
+  });
+
+  test('đọc được Global Glossary có BOM và upsertAll không ghi đè mất mục ngoài cùng giây', () async {
+    final service = GlossaryService(root.path);
+    await service.readAll(TranslationMode.japanese);
+
+    final file = service.fileFor(TranslationMode.japanese);
+    final originalMtime = file.lastModifiedSync();
+    await file.writeAsString(
+      '\uFEFF${_jpGlossary.replaceFirst('Nabata Kotori', 'Kotori Edited')}',
+      encoding: utf8,
+      flush: true,
+    );
+    file.setLastModifiedSync(originalMtime);
+
+    await service.upsert(
+      TranslationMode.japanese,
+      source: '新語',
+      target: 'Từ mới',
+    );
+
+    final kept = await service.find(
+      TranslationMode.japanese,
+      '菜畑小鳥',
+      forceReload: true,
+    );
+    final added = await service.find(
+      TranslationMode.japanese,
+      '新語',
+      forceReload: true,
+    );
+    expect(kept?.target, 'Kotori Edited');
+    expect(added?.target, 'Từ mới');
+  });
+}

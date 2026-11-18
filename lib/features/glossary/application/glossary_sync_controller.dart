@@ -365,19 +365,23 @@ Future<void> refreshGlossarySyncData(WidgetRef ref) async {
 /// Báo cho bảng đồng bộ (trong cùng cửa sổ và cửa sổ tách rời nếu đang mở)
 /// biết dữ liệu Glossary đã thay đổi từ hộp thoại bên ngoài.
 void notifyGlossaryChanged(WidgetRef ref, TranslationMode mode) {
-  ref.invalidate(
-    glossarySyncRowsProvider(GlossarySyncDirection.glossaryToVietPhrase),
-  );
-  ref.invalidate(
-    glossarySyncRowsProvider(GlossarySyncDirection.vietPhraseToGlossary),
-  );
-  unawaited(
-    ref.read(windowsClipboardBridgeProvider).notifyGlossaryWindow({
-      'type': 'glossaryChanged',
-      'mode': mode.name,
-      'glossaryChanged': true,
-    }),
-  );
+  try {
+    ref.invalidate(
+      glossarySyncRowsProvider(GlossarySyncDirection.glossaryToVietPhrase),
+    );
+    ref.invalidate(
+      glossarySyncRowsProvider(GlossarySyncDirection.vietPhraseToGlossary),
+    );
+    unawaited(
+      ref.read(windowsClipboardBridgeProvider).notifyGlossaryWindow({
+        'type': 'glossaryChanged',
+        'mode': mode.name,
+        'glossaryChanged': true,
+      }),
+    );
+  } catch (_) {
+    // Widget gọi dialog có thể đã unmount trong lúc thao tác async chạy.
+  }
 }
 
 _VietPhraseSyncIndex _getOrCreateSyncIndex(

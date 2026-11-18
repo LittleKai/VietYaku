@@ -110,6 +110,10 @@ Future<void> showEntryEditDialog(
   holder.notifyOnGlossaryUpdateNotifier.value =
       settings.notifyOnGlossaryAutoUpdate;
 
+  final glossaryCallbacks = canUpdateGlossary
+      ? _buildGlossaryActionCallbacks(ref: ref, holder: holder, mode: mode)
+      : null;
+
   final resolvedTitle =
       title ?? (toNames ? 'Thêm vào Names' : 'Sửa nghĩa trong UserDict');
 
@@ -152,66 +156,10 @@ Future<void> showEntryEditDialog(
       onNotifyOnUpdateChanged: (val) => ref
           .read(settingsProvider.notifier)
           .setNotifyOnGlossaryAutoUpdate(val),
-      onAddToGlossary: canUpdateGlossary
-          ? (fieldContext) async {
-              final meaning = holder.meaningText.trim();
-              final source = holder.keyText.trim();
-              final updatedTerm = await showGlossaryUpdateDialog(
-                fieldContext,
-                ref,
-                source: source,
-                meaning: meaning,
-                mode: mode,
-              );
-              if (updatedTerm != null) {
-                holder.updateGlossaryTerm?.call(updatedTerm);
-              }
-            }
-          : null,
-      onUpdateFromVietPhrase: canUpdateGlossary
-          ? (fieldContext) async {
-              final meaning = holder.meaningText.trim();
-              final source = holder.keyText.trim();
-              final updatedTerm = await showGlossaryUpdateDialog(
-                fieldContext,
-                ref,
-                source: source,
-                meaning: meaning,
-                mode: mode,
-              );
-              if (updatedTerm != null) {
-                holder.updateGlossaryTerm?.call(updatedTerm);
-              }
-            }
-          : null,
-      onEditGlossary: canUpdateGlossary
-          ? (fieldContext, term) async {
-              final updatedTerm = await showGlossaryEditDialog(
-                fieldContext,
-                ref,
-                term: term,
-                mode: mode,
-                isUserGlossary: false,
-              );
-              if (updatedTerm != null) {
-                holder.updateGlossaryTerm?.call(updatedTerm);
-              }
-            }
-          : null,
-      onEditUserGlossary: canUpdateGlossary
-          ? (fieldContext, term) async {
-              final updatedTerm = await showGlossaryEditDialog(
-                fieldContext,
-                ref,
-                term: term,
-                mode: mode,
-                isUserGlossary: true,
-              );
-              if (updatedTerm != null) {
-                holder.updateGlossaryTerm?.call(updatedTerm);
-              }
-            }
-          : null,
+      onAddToGlossary: glossaryCallbacks?.onAddToGlossary,
+      onUpdateFromVietPhrase: glossaryCallbacks?.onUpdateFromVietPhrase,
+      onEditGlossary: glossaryCallbacks?.onEditGlossary,
+      onEditUserGlossary: glossaryCallbacks?.onEditUserGlossary,
     ),
     actionsBuilder: (dialogContext) => [
       // Từ nguồn và trạng thái Glossary đổi khi người dùng gõ →
@@ -280,10 +228,12 @@ Future<void> showEntryEditDialog(
         : word;
     final hasGlobalGlossary = !toNames &&
         canUpdateGlossary &&
-        (await glossaryService.find(mode, targetKey)) != null;
+        (await glossaryService.find(mode, targetKey, forceReload: true)) !=
+            null;
     final hasUserGlossary = !toNames &&
         canUpdateGlossary &&
-        (await userGlossaryService.find(mode, targetKey)) != null;
+        (await userGlossaryService.find(mode, targetKey, forceReload: true)) !=
+            null;
     final inGlossary = hasGlobalGlossary || hasUserGlossary;
     final inDict = toNames
         ? targetDictHasEntry(targetKey)
@@ -391,36 +341,17 @@ Future<void> showEntryEditDialog(
     await service.upsertUserDict(key, meaning);
   }
 
-  var glossaryAutoUpdated = false;
-  String? glossaryNewTarget;
-  if (canUpdateGlossary &&
-      autoUpdateGlossary &&
-      (glossarySavedAtMeaning == null ||
-          (glossarySavedAtMeaning.isNotEmpty &&
-              glossarySavedAtMeaning != meaning))) {
-    final term = await glossaryService.find(mode, key);
-    final userTerm = await userGlossaryService.find(mode, key);
-    final target = glossaryTargetOf(meaning);
-    if (userTerm != null && userTerm.target.trim() != target.trim()) {
-      try {
-        await userGlossaryService.upsert(mode, source: key, target: target);
-        glossaryAutoUpdated = true;
-        glossaryNewTarget = target;
-      } catch (_) {}
-    }
-    if (term != null && term.target.trim() != target.trim()) {
-      try {
-        await glossaryService.upsert(
-          mode,
-          source: key,
-          target: target,
-        );
-        notifyGlossaryChanged(ref, mode);
-        glossaryAutoUpdated = true;
-        glossaryNewTarget = target;
-      } catch (_) {}
-    }
-  }
+  final glossaryResult = await _autoUpdateGlossaryOnSave(
+    ref: ref,
+    mode: mode,
+    key: key,
+    meaning: meaning,
+    canUpdateGlossary: canUpdateGlossary,
+    autoUpdateGlossary: autoUpdateGlossary,
+    glossarySavedAtMeaning: glossarySavedAtMeaning,
+    glossaryService: glossaryService,
+    userGlossaryService: userGlossaryService,
+  );
 
   await ref.read(dictionariesProvider.notifier).reload();
   final latestTranslation = ref.read(translationControllerProvider);
@@ -435,14 +366,17 @@ Future<void> showEntryEditDialog(
     final dictLabel = toNames ? 'Names' : 'UserDict';
     final actionWord = isAdd ? 'thêm' : 'lưu';
     final baseMsg = 'Đã $actionWord vào $dictLabel.';
-    final glossaryPart = glossaryAutoUpdated && notifyOnGlossaryUpdate
-        ? '\nĐã tự động cập nhật Global Glossary $glossaryLang: $key → $glossaryNewTarget'
+    final glossaryPart = glossaryResult.updated && notifyOnGlossaryUpdate
+        ? '\nĐã tự động cập nhật Global Glossary $glossaryLang: $key → ${glossaryResult.target}'
         : '';
+    final errorPart = glossaryResult.errors.isEmpty
+        ? ''
+        : '\n${glossaryResult.errors.join('\n')}';
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
-          content: Text('$baseMsg$glossaryPart'),
+          content: Text('$baseMsg$glossaryPart$errorPart'),
         ),
       );
   }
@@ -520,6 +454,10 @@ Future<void> showSharedEntryEditDialog(
   holder.notifyOnGlossaryUpdateNotifier.value =
       settings.notifyOnGlossaryAutoUpdate;
 
+  final glossaryCallbacks = canUpdateGlossary
+      ? _buildGlossaryActionCallbacks(ref: ref, holder: holder, mode: mode)
+      : null;
+
   final isInitialAdd = !dictHasEntry(word);
   final resolvedTitle = title ??
       (isInitialAdd
@@ -584,68 +522,10 @@ Future<void> showSharedEntryEditDialog(
       onNotifyOnUpdateChanged: (val) => ref
           .read(settingsProvider.notifier)
           .setNotifyOnGlossaryAutoUpdate(val),
-      // Tắt tự động cập nhật → glossary được phép lệch nghĩa VietPhrase, nên
-      // phải sửa riêng được. Ghi xong đọc lại để thẻ trạng thái đổi theo.
-      onAddToGlossary: canUpdateGlossary
-          ? (fieldContext) async {
-              final meaning = holder.meaningText.trim();
-              final source = holder.keyText.trim();
-              final updatedTerm = await showGlossaryUpdateDialog(
-                fieldContext,
-                ref,
-                source: source,
-                meaning: meaning,
-                mode: mode,
-              );
-              if (updatedTerm != null) {
-                holder.updateGlossaryTerm?.call(updatedTerm);
-              }
-            }
-          : null,
-      onUpdateFromVietPhrase: canUpdateGlossary
-          ? (fieldContext) async {
-              final meaning = holder.meaningText.trim();
-              final source = holder.keyText.trim();
-              final updatedTerm = await showGlossaryUpdateDialog(
-                fieldContext,
-                ref,
-                source: source,
-                meaning: meaning,
-                mode: mode,
-              );
-              if (updatedTerm != null) {
-                holder.updateGlossaryTerm?.call(updatedTerm);
-              }
-            }
-          : null,
-      onEditGlossary: canUpdateGlossary
-          ? (fieldContext, term) async {
-              final updatedTerm = await showGlossaryEditDialog(
-                fieldContext,
-                ref,
-                term: term,
-                mode: mode,
-                isUserGlossary: false,
-              );
-              if (updatedTerm != null) {
-                holder.updateGlossaryTerm?.call(updatedTerm);
-              }
-            }
-          : null,
-      onEditUserGlossary: canUpdateGlossary
-          ? (fieldContext, term) async {
-              final updatedTerm = await showGlossaryEditDialog(
-                fieldContext,
-                ref,
-                term: term,
-                mode: mode,
-                isUserGlossary: true,
-              );
-              if (updatedTerm != null) {
-                holder.updateGlossaryTerm?.call(updatedTerm);
-              }
-            }
-          : null,
+      onAddToGlossary: glossaryCallbacks?.onAddToGlossary,
+      onUpdateFromVietPhrase: glossaryCallbacks?.onUpdateFromVietPhrase,
+      onEditGlossary: glossaryCallbacks?.onEditGlossary,
+      onEditUserGlossary: glossaryCallbacks?.onEditUserGlossary,
     ),
     actionsBuilder: (dialogContext) => [
       // Từ nguồn và trạng thái Glossary đổi khi người dùng gõ →
@@ -714,10 +594,12 @@ Future<void> showSharedEntryEditDialog(
         : word;
     final hasGlobalGlossary =
         canUpdateGlossary &&
-        (await glossaryService.find(mode, targetKey)) != null;
+        (await glossaryService.find(mode, targetKey, forceReload: true)) !=
+            null;
     final hasUserGlossary =
         canUpdateGlossary &&
-        (await userGlossaryService.find(mode, targetKey)) != null;
+        (await userGlossaryService.find(mode, targetKey, forceReload: true)) !=
+            null;
     final inGlossary = hasGlobalGlossary || hasUserGlossary;
     final inSharedDict = dictHasEntry(targetKey);
 
@@ -807,49 +689,150 @@ Future<void> showSharedEntryEditDialog(
     return;
   }
 
-  var glossaryAutoUpdated = false;
-  String? glossaryNewTarget;
-  if (canUpdateGlossary &&
-      autoUpdateGlossary &&
-      (glossarySavedAtMeaning == null ||
-          (glossarySavedAtMeaning.isNotEmpty &&
-              glossarySavedAtMeaning != meaning))) {
-    final term = await glossaryService.find(mode, key);
-    final userTerm = await userGlossaryService.find(mode, key);
-    final target = glossaryTargetOf(meaning);
-    if (userTerm != null && userTerm.target.trim() != target.trim()) {
-      try {
-        await userGlossaryService.upsert(mode, source: key, target: target);
-        glossaryAutoUpdated = true;
-        glossaryNewTarget = target;
-      } catch (_) {}
-    }
-    if (term != null && term.target.trim() != target.trim()) {
-      try {
-        await glossaryService.upsert(mode, source: key, target: target);
-        notifyGlossaryChanged(ref, mode);
-        glossaryAutoUpdated = true;
-        glossaryNewTarget = target;
-      } catch (_) {}
-    }
-  }
+  final glossaryResult = await _autoUpdateGlossaryOnSave(
+    ref: ref,
+    mode: mode,
+    key: key,
+    meaning: meaning,
+    canUpdateGlossary: canUpdateGlossary,
+    autoUpdateGlossary: autoUpdateGlossary,
+    glossarySavedAtMeaning: glossarySavedAtMeaning,
+    glossaryService: glossaryService,
+    userGlossaryService: userGlossaryService,
+  );
 
   if (!context.mounted) return;
   final actionWord = isAdd ? 'thêm' : 'lưu';
   final baseMsg =
       'Đã $actionWord vào $dictionaryName. Bấm Update trong Cài đặt để gửi lên server.';
   final lang = GlossaryService.langFor(mode);
-  final glossaryPart = glossaryAutoUpdated && notifyOnGlossaryUpdate
-      ? '\nĐã tự động cập nhật Global Glossary $lang: $key → $glossaryNewTarget'
+  final glossaryPart = glossaryResult.updated && notifyOnGlossaryUpdate
+      ? '\nĐã tự động cập nhật Global Glossary $lang: $key → ${glossaryResult.target}'
       : '';
+  final errorPart = glossaryResult.errors.isEmpty
+      ? ''
+      : '\n${glossaryResult.errors.join('\n')}';
 
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
     ..showSnackBar(
       SnackBar(
-        content: Text('$baseMsg$glossaryPart'),
+        content: Text('$baseMsg$glossaryPart$errorPart'),
       ),
     );
+}
+
+({
+  void Function(BuildContext context) onAddToGlossary,
+  void Function(BuildContext context) onUpdateFromVietPhrase,
+  void Function(BuildContext context, GlossaryTerm term) onEditGlossary,
+  void Function(BuildContext context, GlossaryTerm term) onEditUserGlossary,
+}) _buildGlossaryActionCallbacks({
+  required WidgetRef ref,
+  required _EntryFieldControllers holder,
+  required TranslationMode mode,
+}) {
+  Future<void> openUpdateDialog(BuildContext fieldContext) async {
+    final meaning = holder.meaningText.trim();
+    final source = holder.keyText.trim();
+    bool? savedToUser;
+    final updatedTerm = await showGlossaryUpdateDialog(
+      fieldContext,
+      ref,
+      source: source,
+      meaning: meaning,
+      mode: mode,
+      onSaved: (_, {required isUserGlossary}) => savedToUser = isUserGlossary,
+    );
+    if (updatedTerm != null) {
+      holder.updateGlossaryTerm?.call(updatedTerm, isUserGlossary: savedToUser);
+    }
+  }
+
+  Future<void> openEditDialog(
+    BuildContext fieldContext,
+    GlossaryTerm term, {
+    required bool isUserGlossary,
+  }) async {
+    final updatedTerm = await showGlossaryEditDialog(
+      fieldContext,
+      ref,
+      term: term,
+      mode: mode,
+      isUserGlossary: isUserGlossary,
+    );
+    if (updatedTerm != null) {
+      holder.updateGlossaryTerm?.call(
+        updatedTerm,
+        isUserGlossary: isUserGlossary,
+      );
+    }
+  }
+
+  return (
+    onAddToGlossary: openUpdateDialog,
+    onUpdateFromVietPhrase: openUpdateDialog,
+    onEditGlossary: (ctx, term) =>
+        openEditDialog(ctx, term, isUserGlossary: false),
+    onEditUserGlossary: (ctx, term) =>
+        openEditDialog(ctx, term, isUserGlossary: true),
+  );
+}
+
+Future<({bool updated, String? target, List<String> errors})>
+_autoUpdateGlossaryOnSave({
+  required WidgetRef ref,
+  required TranslationMode mode,
+  required String key,
+  required String meaning,
+  required bool canUpdateGlossary,
+  required bool autoUpdateGlossary,
+  required String? glossarySavedAtMeaning,
+  required GlossaryService glossaryService,
+  required UserGlossaryService userGlossaryService,
+}) async {
+  if (!canUpdateGlossary ||
+      !autoUpdateGlossary ||
+      (glossarySavedAtMeaning != null &&
+          (glossarySavedAtMeaning.isEmpty ||
+              glossarySavedAtMeaning == meaning))) {
+    return (updated: false, target: null, errors: const <String>[]);
+  }
+
+  final lang = GlossaryService.langFor(mode);
+  final target = glossaryTargetOf(meaning);
+  var updated = false;
+  String? newTarget;
+  final errors = <String>[];
+
+  try {
+    final userTerm = await userGlossaryService.find(
+      mode,
+      key,
+      forceReload: true,
+    );
+    if (userTerm != null && userTerm.target.trim() != target.trim()) {
+      await userGlossaryService.upsert(mode, source: key, target: target);
+      updated = true;
+      newTarget = target;
+    }
+  } catch (_) {
+    errors.add('Không tự động cập nhật được User Glossary $lang.');
+  }
+
+  try {
+    final globalTerm = await glossaryService.find(mode, key, forceReload: true);
+    if (globalTerm != null && globalTerm.target.trim() != target.trim()) {
+      await glossaryService.upsert(mode, source: key, target: target);
+      updated = true;
+      newTarget = target;
+      notifyGlossaryChanged(ref, mode);
+    }
+  } catch (_) {
+    errors.add('Không tự động cập nhật được Global Glossary $lang.');
+  }
+
+  return (updated: updated, target: newTarget, errors: errors);
 }
 
 enum DeleteScope { vietPhraseOnly, glossaryOnly, both }
@@ -993,7 +976,7 @@ class _EntryFieldControllers {
   );
 
   /// Cập nhật trực tiếp mục glossary trong `_EntryFields` ngay lập tức (0ms).
-  void Function(GlossaryTerm? term)? updateGlossaryTerm;
+  void Function(GlossaryTerm? term, {bool? isUserGlossary})? updateGlossaryTerm;
 
   void disposeAfterRouteAnimation() {
     // showDialog hoàn tất Future trước khi reverse animation unmount toàn bộ
@@ -1280,17 +1263,40 @@ class _EntryFieldsState extends State<_EntryFields> {
     _sync();
   }
 
-  void _updateGlossaryTermDirectly(GlossaryTerm? term) {
+  void _updateGlossaryTermDirectly(
+    GlossaryTerm? term, {
+    bool? isUserGlossary,
+  }) {
     _glossaryCheckSeq++;
     _lastGlossaryKey = _keyController.text.trim();
     if (mounted) {
       setState(() {
-        _glossaryTerm = term;
+        if (term == null) {
+          if (isUserGlossary == true) {
+            _userGlossaryTerm = null;
+          } else if (isUserGlossary == false) {
+            _globalGlossaryTerm = null;
+          } else {
+            _userGlossaryTerm = null;
+            _globalGlossaryTerm = null;
+          }
+        } else if (isUserGlossary == true) {
+          _userGlossaryTerm = term;
+        } else if (isUserGlossary == false) {
+          _globalGlossaryTerm = term;
+        } else if (_userGlossaryTerm != null && _globalGlossaryTerm == null) {
+          _userGlossaryTerm = term;
+        } else {
+          _globalGlossaryTerm = term;
+        }
+        _glossaryTerm = _userGlossaryTerm ?? _globalGlossaryTerm ?? term;
         _isCheckingGlossary = false;
       });
       _refreshGlossaryTermsAfterDirectUpdate();
+    } else {
+      _glossaryTerm = term;
     }
-    widget.holder.glossaryTermNotifier.value = term;
+    widget.holder.glossaryTermNotifier.value = _glossaryTerm;
     widget.holder.glossarySavedAtMeaning =
         term == null ? null : widget.holder.meaningText.trim();
   }
@@ -1305,7 +1311,7 @@ class _EntryFieldsState extends State<_EntryFields> {
     try {
       final results = await Future.wait([
         service.find(widget.mode, key, forceReload: true),
-        userService.find(widget.mode, key),
+        userService.find(widget.mode, key, forceReload: true),
       ]);
       if (!mounted || seq != _glossaryCheckSeq || _keyController.text.trim() != key) return;
       setState(() {
