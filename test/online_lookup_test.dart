@@ -579,7 +579,7 @@ void main() {
       final tasks = startOnlineLookup(capturedRef, word);
       // Chỉ chờ Mazii xong, trong khi Jisho vẫn đang treo trên Completer.
       await tester.runAsync(() => tasks.first.body);
-      for (var i = 0; i < 40; i++) {
+      for (var i = 0; i < 150; i++) {
         await tester.runAsync(
           () => Future<void>.delayed(const Duration(milliseconds: 20)),
         );
