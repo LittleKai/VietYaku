@@ -43,11 +43,17 @@ class TranslationState {
   );
 }
 
+/// Mode khởi đầu ghi đè cho entrypoint phụ (cửa sổ Đồng bộ Glossary tách rời)
+/// để tránh nạp thừa bộ từ điển của `defaultMode` ở frame đầu.
+final initialModeOverrideProvider = Provider<TranslationMode?>((ref) => null);
+
 /// Mode đang dịch — provider riêng để dictionariesProvider watch được
 /// mà không tạo vòng phụ thuộc với TranslationController.
 class CurrentModeNotifier extends Notifier<TranslationMode> {
   @override
-  TranslationMode build() => ref.read(settingsProvider).defaultMode;
+  TranslationMode build() =>
+      ref.read(initialModeOverrideProvider) ??
+      ref.read(settingsProvider).defaultMode;
 
   void set(TranslationMode mode) => state = mode;
 }
@@ -62,7 +68,11 @@ class TranslationController extends Notifier<TranslationState> {
   TranslationState build() {
     // Nạp sẵn bảng phồn→giản: `translate()` chạy đồng bộ nên không await được.
     ref.read(trad2SimpTableProvider);
-    return TranslationState(mode: ref.read(settingsProvider).defaultMode);
+    return TranslationState(
+      mode:
+          ref.read(initialModeOverrideProvider) ??
+          ref.read(settingsProvider).defaultMode,
+    );
   }
 
   Future<void> setMode(TranslationMode mode) async {

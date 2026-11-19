@@ -10,6 +10,7 @@ import 'app.dart';
 import 'core/app_paths.dart';
 import 'features/dictionary/application/dictionaries_provider.dart';
 import 'features/settings/settings_provider.dart';
+import 'features/translation/application/translation_controller.dart';
 import 'features/translation/domain/translation_engine.dart';
 
 Future<void> _initDefaultDataDir({required bool isDesktop}) async {
@@ -91,6 +92,7 @@ Future<void> glossarySyncMain(List<String> args) async {
       overrides: [
         sharedPreferencesProvider.overrideWithValue(prefs),
         vietPhraseOnlyModeProvider.overrideWithValue(true),
+        initialModeOverrideProvider.overrideWithValue(initialMode),
       ],
       child: GlossarySyncWindowApp(initialMode: initialMode),
     ),

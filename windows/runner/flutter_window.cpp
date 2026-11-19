@@ -1,24 +1,59 @@
 #include "flutter_window.h"
 
+#include <cctype>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <variant>
 #include <vector>
 
+#include <flutter/standard_message_codec.h>
 #include <flutter/standard_method_codec.h>
 
 #include "flutter/generated_plugin_registrant.h"
 
 namespace {
 constexpr int kClipboardHotkeyId = 0x5659;
+constexpr ULONG_PTR kIpcRegisterChildHwnd = 0x56590001;
+constexpr ULONG_PTR kIpcSyncWindowActivated = 0x56590002;
+constexpr ULONG_PTR kIpcMainWindowChanged = 0x56590003;
+constexpr ULONG_PTR kIpcGlossaryWindowChanged = 0x56590004;
+constexpr UINT kIpcTimeoutMs = 2000;
+
+std::wstring GetCurrentExecutablePath() {
+  std::wstring buffer(MAX_PATH, L'\0');
+  for (;;) {
+    const DWORD len = GetModuleFileNameW(nullptr, buffer.data(),
+                                         static_cast<DWORD>(buffer.size()));
+    if (len == 0) {
+      return {};
+    }
+    if (len < buffer.size()) {
+      buffer.resize(len);
+      return buffer;
+    }
+    buffer.resize(buffer.size() * 2);
+  }
+}
+
+std::wstring SanitizeAsciiToken(const std::string& raw) {
+  std::wstring out;
+  out.reserve(raw.size());
+  for (unsigned char ch : raw) {
+    if (std::isalnum(ch) || ch == '_' || ch == '-') {
+      out.push_back(static_cast<wchar_t>(ch));
+    }
+  }
+  return out;
+}
 }  // namespace
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project,
                              bool is_secondary,
-                             FlutterWindow* parent_window)
+                             HWND parent_hwnd)
     : project_(project),
       is_secondary_(is_secondary),
-      parent_window_(parent_window) {}
+      parent_hwnd_(parent_hwnd) {}
 
 FlutterWindow::~FlutterWindow() {}
 
@@ -67,35 +102,22 @@ bool FlutterWindow::OnCreate() {
           return;
         }
         if (method == "notifyGlossaryWindow") {
-          if (glossary_sync_window_ &&
-              glossary_sync_window_->windows_bridge_channel_) {
-            const auto* args = call.arguments();
-            glossary_sync_window_->windows_bridge_channel_->InvokeMethod(
-                "mainWindowChanged",
-                args != nullptr
-                    ? std::make_unique<flutter::EncodableValue>(*args)
-                    : std::make_unique<flutter::EncodableValue>());
+          if (glossary_sync_hwnd_ != nullptr && IsWindow(glossary_sync_hwnd_)) {
+            SendIpcMessage(glossary_sync_hwnd_, kIpcMainWindowChanged,
+                           call.arguments());
           }
           result->Success(flutter::EncodableValue(true));
           return;
         }
         if (method == "closeGlossarySyncWindow") {
-          if (glossary_sync_window_ &&
-              glossary_sync_window_->GetHandle() != nullptr) {
-            ShowWindow(glossary_sync_window_->GetHandle(), SW_HIDE);
-          }
+          CloseGlossarySyncChild();
           result->Success(flutter::EncodableValue(true));
           return;
         }
         if (method == "notifyMainWindow") {
-          if (parent_window_ != nullptr &&
-              parent_window_->windows_bridge_channel_) {
-            const auto* args = call.arguments();
-            parent_window_->windows_bridge_channel_->InvokeMethod(
-                "glossaryWindowChanged",
-                args != nullptr
-                    ? std::make_unique<flutter::EncodableValue>(*args)
-                    : std::make_unique<flutter::EncodableValue>());
+          if (parent_hwnd_ != nullptr && IsWindow(parent_hwnd_)) {
+            SendIpcMessage(parent_hwnd_, kIpcGlossaryWindowChanged,
+                           call.arguments());
           }
           result->Success(flutter::EncodableValue(true));
           return;
@@ -103,6 +125,10 @@ bool FlutterWindow::OnCreate() {
         result->NotImplemented();
       });
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
+
+  if (is_secondary_ && parent_hwnd_ != nullptr && IsWindow(parent_hwnd_)) {
+    SendIpcMessage(parent_hwnd_, kIpcRegisterChildHwnd, nullptr);
+  }
 
   flutter_controller_->engine()->SetNextFrameCallback([this]() {
     this->Show();
@@ -119,6 +145,79 @@ bool FlutterWindow::OnCreate() {
   return true;
 }
 
+bool FlutterWindow::SendIpcMessage(
+    HWND target, ULONG_PTR message_type,
+    const flutter::EncodableValue* payload) {
+  if (target == nullptr || !IsWindow(target)) {
+    return false;
+  }
+  std::unique_ptr<std::vector<uint8_t>> encoded;
+  COPYDATASTRUCT cds{};
+  cds.dwData = message_type;
+  if (payload != nullptr) {
+    encoded = flutter::StandardMessageCodec::GetInstance().EncodeMessage(
+        *payload);
+    if (encoded && !encoded->empty()) {
+      cds.cbData = static_cast<DWORD>(encoded->size());
+      cds.lpData = encoded->data();
+    }
+  }
+  DWORD_PTR unused = 0;
+  return SendMessageTimeoutW(
+             target, WM_COPYDATA, reinterpret_cast<WPARAM>(GetHandle()),
+             reinterpret_cast<LPARAM>(&cds), SMTO_ABORTIFHUNG, kIpcTimeoutMs,
+             &unused) != 0;
+}
+
+void FlutterWindow::HandleCopyData(HWND sender, const COPYDATASTRUCT* cds) {
+  if (cds == nullptr || sender == nullptr || !IsWindow(sender)) {
+    return;
+  }
+  auto decode_payload = [cds]() -> std::unique_ptr<flutter::EncodableValue> {
+    if (cds->cbData > 0 && cds->lpData != nullptr) {
+      auto decoded = flutter::StandardMessageCodec::GetInstance().DecodeMessage(
+          reinterpret_cast<const uint8_t*>(cds->lpData), cds->cbData);
+      if (decoded) {
+        return decoded;
+      }
+    }
+    return std::make_unique<flutter::EncodableValue>();
+  };
+
+  if (!is_secondary_) {
+    if (cds->dwData == kIpcRegisterChildHwnd) {
+      if (!glossary_sync_registered_ && glossary_sync_hwnd_ == nullptr &&
+          glossary_sync_process_ != nullptr &&
+          WaitForSingleObject(glossary_sync_process_, 0) == WAIT_TIMEOUT) {
+        DWORD sender_pid = 0;
+        GetWindowThreadProcessId(sender, &sender_pid);
+        if (glossary_sync_pid_ != 0 && sender_pid == glossary_sync_pid_) {
+          glossary_sync_hwnd_ = sender;
+          glossary_sync_registered_ = true;
+        }
+      }
+      return;
+    }
+    if (cds->dwData == kIpcGlossaryWindowChanged &&
+        sender == glossary_sync_hwnd_ && windows_bridge_channel_) {
+      windows_bridge_channel_->InvokeMethod("glossaryWindowChanged",
+                                            decode_payload());
+    }
+    return;
+  }
+
+  if (sender != parent_hwnd_ || !windows_bridge_channel_) {
+    return;
+  }
+  if (cds->dwData == kIpcSyncWindowActivated) {
+    windows_bridge_channel_->InvokeMethod("syncWindowActivated",
+                                          decode_payload());
+  } else if (cds->dwData == kIpcMainWindowChanged) {
+    windows_bridge_channel_->InvokeMethod("mainWindowChanged",
+                                          decode_payload());
+  }
+}
+
 bool FlutterWindow::OpenOrActivateGlossarySyncWindow(
     const flutter::EncodableValue* args) {
   std::string mode_arg;
@@ -133,49 +232,86 @@ bool FlutterWindow::OpenOrActivateGlossarySyncWindow(
     }
   }
 
-  if (glossary_sync_window_ &&
-      glossary_sync_window_->GetHandle() != nullptr) {
-    HWND child_hwnd = glossary_sync_window_->GetHandle();
-    if (IsIconic(child_hwnd)) {
-      ShowWindow(child_hwnd, SW_RESTORE);
+  if (glossary_sync_hwnd_ != nullptr && !IsWindow(glossary_sync_hwnd_)) {
+    glossary_sync_hwnd_ = nullptr;
+    glossary_sync_pid_ = 0;
+  }
+
+  if (glossary_sync_hwnd_ != nullptr) {
+    if (IsIconic(glossary_sync_hwnd_)) {
+      ShowWindow(glossary_sync_hwnd_, SW_RESTORE);
     } else {
-      ShowWindow(child_hwnd, SW_SHOW);
+      ShowWindow(glossary_sync_hwnd_, SW_SHOW);
     }
-    SetForegroundWindow(child_hwnd);
-    if (glossary_sync_window_->windows_bridge_channel_) {
-      glossary_sync_window_->windows_bridge_channel_->InvokeMethod(
-          "syncWindowActivated",
-          args != nullptr
-              ? std::make_unique<flutter::EncodableValue>(*args)
-              : std::make_unique<flutter::EncodableValue>());
-    }
+    SetForegroundWindow(glossary_sync_hwnd_);
+    SendIpcMessage(glossary_sync_hwnd_, kIpcSyncWindowActivated, args);
     return true;
   }
 
-  flutter::DartProject child_project(L"data");
-  child_project.set_dart_entrypoint("glossarySyncMain");
-  if (!mode_arg.empty()) {
-    child_project.set_dart_entrypoint_arguments({mode_arg});
+  if (glossary_sync_process_ != nullptr) {
+    if (!glossary_sync_registered_ &&
+        WaitForSingleObject(glossary_sync_process_, 0) == WAIT_TIMEOUT) {
+      // Child process is still starting up and will register its HWND shortly.
+      return true;
+    }
+    CloseHandle(glossary_sync_process_);
+    glossary_sync_process_ = nullptr;
+    glossary_sync_pid_ = 0;
+    glossary_sync_registered_ = false;
   }
 
-  auto window = std::make_unique<FlutterWindow>(child_project, true, this);
-  window->SetQuitOnClose(false);
-  Win32Window::Point origin(120, 80);
-  Win32Window::Size size(1180, 760);
-  if (!window->Create(
-          L"\x0110\x1ED3ng b\x1ED9 Glossary \x2194 VietPhrase \x2014 VietYaku",
-          origin, size)) {
+  const std::wstring exe_path = GetCurrentExecutablePath();
+  if (exe_path.empty()) {
     return false;
   }
-  glossary_sync_window_ = std::move(window);
+
+  std::wstring cmd_line = L"\"" + exe_path + L"\" --glossary-sync";
+  const std::wstring safe_mode = SanitizeAsciiToken(mode_arg);
+  if (!safe_mode.empty()) {
+    cmd_line += L" " + safe_mode;
+  }
+  const auto parent_id = reinterpret_cast<uintptr_t>(GetHandle());
+  cmd_line += L" --parent-hwnd " + std::to_wstring(parent_id);
+
+  std::vector<wchar_t> mutable_cmd(cmd_line.begin(), cmd_line.end());
+  mutable_cmd.push_back(L'\0');
+
+  STARTUPINFOW si{};
+  si.cb = sizeof(si);
+  PROCESS_INFORMATION pi{};
+  // Inherit parent working directory (nullptr) so debug runs keep finding
+  // `<repo>/data` while release runs resolve `<exe>/data/flutter_assets/data`.
+  if (!CreateProcessW(exe_path.c_str(), mutable_cmd.data(), nullptr, nullptr,
+                      FALSE, 0, nullptr, nullptr, &si, &pi)) {
+    return false;
+  }
+
+  CloseHandle(pi.hThread);
+  glossary_sync_process_ = pi.hProcess;
+  glossary_sync_pid_ = pi.dwProcessId;
+  glossary_sync_registered_ = false;
+  AllowSetForegroundWindow(pi.dwProcessId);
   return true;
 }
 
-void FlutterWindow::OnDestroy() {
-  if (glossary_sync_window_) {
-    glossary_sync_window_->Destroy();
-    glossary_sync_window_.reset();
+void FlutterWindow::CloseGlossarySyncChild() {
+  if (glossary_sync_hwnd_ != nullptr && IsWindow(glossary_sync_hwnd_)) {
+    PostMessageW(glossary_sync_hwnd_, WM_CLOSE, 0, 0);
+  } else if (glossary_sync_process_ != nullptr &&
+             WaitForSingleObject(glossary_sync_process_, 0) == WAIT_TIMEOUT) {
+    TerminateProcess(glossary_sync_process_, 0);
   }
+  glossary_sync_hwnd_ = nullptr;
+  glossary_sync_pid_ = 0;
+  glossary_sync_registered_ = false;
+  if (glossary_sync_process_ != nullptr) {
+    CloseHandle(glossary_sync_process_);
+    glossary_sync_process_ = nullptr;
+  }
+}
+
+void FlutterWindow::OnDestroy() {
+  CloseGlossarySyncChild();
   SetClipboardBridgeEnabled(false);
   windows_bridge_channel_.reset();
   if (flutter_controller_) {
@@ -226,10 +362,11 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
   }
 
   switch (message) {
-    case WM_CLOSE:
-      if (is_secondary_) {
-        ShowWindow(hwnd, SW_HIDE);
-        return 0;
+    case WM_COPYDATA:
+      if (lparam != 0) {
+        HandleCopyData(reinterpret_cast<HWND>(wparam),
+                       reinterpret_cast<const COPYDATASTRUCT*>(lparam));
+        return TRUE;
       }
       break;
     case WM_GETMINMAXINFO:
@@ -258,7 +395,9 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
       }
       break;
     case WM_FONTCHANGE:
-      flutter_controller_->engine()->ReloadSystemFonts();
+      if (flutter_controller_ && flutter_controller_->engine()) {
+        flutter_controller_->engine()->ReloadSystemFonts();
+      }
       break;
   }
 

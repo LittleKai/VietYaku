@@ -195,3 +195,13 @@
 - **Nguyên nhân:** Các callback thêm/cập nhật từng gọi `holder.setMeaning` bằng target phẳng của Glossary; và khi bỏ `setMeaning`, nhánh `autoUpdateGlossary` lúc bấm "Lưu từ" không biết người dùng vừa lưu Glossary thủ công cho chính nghĩa cha đó trong cùng phiên dialog.
 - **Sửa:** Bỏ đường ghi ngược `setMeaning`; `_updateGlossaryTermDirectly` ghi nhận `glossarySavedAtMeaning` để bấm "Lưu từ" ngay sau đó không tự ghi đè lại Glossary nếu nghĩa cha không đổi thêm.
 - **Related Files:** `lib/shared/widgets/entry_edit_dialog.dart`, `test/entry_edit_dialog_test.dart`
+
+### 2026-11-19 - Mở cửa sổ Đồng bộ Glossary bằng FlutterViewController thứ hai trong cùng tiến trình gây crash ANGLE D3D11 (bug_33)
+
+*Đã có rào chắn: `flutter_window.cpp::OpenOrActivateGlossarySyncWindow` + `flutter_window.cpp::HandleCopyData` + `windows_runner_test.dart::bug_33`. Giữ lại đây để biết vì sao hàm đó tồn tại — không làm theo hướng dẫn thủ công bên dưới nữa.*
+
+- **Triệu chứng:** Khi mở cửa sổ "Đồng bộ Glossary ↔ VietPhrase" trên Windows (Flutter 3.50.0), console in `[IMPORTANT:flutter/shell/platform/embedder/embedder_surface_gl_impeller.cc(127)] Using the Impeller rendering backend (OpenGLESSDF).` rồi văng ngay (`Lost connection to device.`), Event Viewer ghi `0xC0000005` trong `flutter_windows.dll`.
+- **Nguyên nhân:** Tạo `FlutterViewController` / `FlutterEngine` thứ hai trong **cùng tiến trình** khiến hai raster thread dùng chung một `EGLDisplay` / `rx::Renderer11` / `rx::StateManager11` của ANGLE D3D11 (upstream flutter/flutter #152299). Symbolize bằng `flutter_windows.dll.pdb` xác nhận crash xảy ra dưới **cả hai** renderer: Impeller (`rx::StateManager11::syncProgram`, `StateManager11.cpp:2617`) lẫn Skia khi tắt Impeller (`rx::Renderer11::drawArrays`, `Renderer11.cpp:1850`; `rx::StateManager11::updateState`, `StateManager11.cpp:1948`).
+- **Sửa:** Tách cửa sổ Đồng bộ Glossary sang tiến trình OS riêng (`CreateProcessW` chạy cùng `vietyaku.exe --glossary-sync <mode> --parent-hwnd <hwnd>`) để mỗi Flutter engine có ANGLE/D3D11 display hoàn toàn độc lập; đồng bộ hai chiều giữa hai cửa sổ qua `WM_COPYDATA` với `StandardMessageCodec` (xác thực `sender_pid` / `parent_hwnd`).
+- **Do Not Repeat:** Không bao giờ tạo `FlutterViewController` / `FlutterEngine` thứ hai trong cùng tiến trình Windows; cửa sổ tách rời phải chạy tiến trình riêng và giao tiếp qua IPC.
+- **Related Files:** `windows/runner/main.cpp`, `windows/runner/flutter_window.h`, `windows/runner/flutter_window.cpp`, `test/windows_runner_test.dart`

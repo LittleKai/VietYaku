@@ -1,6 +1,6 @@
 # Project Conventions — VietYaku
 
-**Last Updated:** 2026-09-14
+**Last Updated:** 2026-11-19
 
 > Chỉ ghi quy ước có ví dụ thật trong repo. Quy ước nào linter/formatter/type-check
 > đã cưỡng chế được thì cấu hình công cụ và XOÁ dòng ở đây — xem bảng cuối file.
@@ -128,6 +128,7 @@ group('repairFile (test case bắt buộc, nguyên văn dữ liệu thật)', ()
 ```
 - Integration test dữ liệu thật: hardcode `sourceDir`, `skip: available ? false : 'lý do'` (testWidgets chỉ nhận bool: `skip: !available`).
 - Temp files: `Directory.systemTemp.createTempSync('prefix')` + tearDown delete.
+- I/O file trong `testWidgets`: dùng API `*Sync` (vd `writeAsStringSync`) hoặc bọc trong `tester.runAsync(() async { ... })`, không `await` trực tiếp `File.*` bất đồng bộ trong FakeAsync zone vì làm treo `flutter_tester` (`test/glossary_sync_test.dart:672`, `test/entry_edit_dialog_test.dart:280`, `test/entry_edit_dialog_test.dart:795`).
 - Widget test cần provider: `ProviderScope(overrides: [sharedPreferencesProvider.overrideWithValue(prefs), appPathsProvider.overrideWith(...)])` + `SharedPreferences.setMockInitialValues({})`.
 - Benchmark trong test: `Stopwatch` + `// ignore: avoid_print` khi cần print số liệu.
 

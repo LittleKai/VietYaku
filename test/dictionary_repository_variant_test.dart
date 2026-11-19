@@ -200,4 +200,57 @@ void main() {
       expect(reused.userDict.entries['あつかいきれ'], 'xử lý nổi');
     });
   });
+
+  test(
+    'vietPhraseOnly bỏ qua Sudachi + index nhưng vẫn merge overlay, tombstone và tái dùng base',
+    () async {
+      File(
+        p.join(dataDir.path, 'VietPhrase.txt'),
+      ).writeAsStringSync('扱い=xử lý\r\n削除対象=bị xóa\r\n');
+      File(
+        p.join(dataDir.path, 'SudachiVariants.txt'),
+      ).writeAsStringSync('変体=biến thể\r\n');
+      File(
+        p.join(paths.dictionariesDir.path, 'VietPhrase_japanese.txt'),
+      ).writeAsStringSync('追加=bổ sung\r\n');
+      File(
+        p.join(paths.dictionariesDir.path, 'SharedVietPhrase_japanese.txt'),
+      ).writeAsStringSync('吞み込ま=nuốt chửng\r\n削除対象=\x7F__DELETE__\r\n');
+
+      final repo = DictionaryRepository(paths);
+      final first = await repo.loadAll(
+        dictPaths,
+        mode: TranslationMode.japanese,
+        useSudachiVariants: true,
+        vietPhraseOnly: true,
+      );
+
+      expect(first.vietPhrase.entries['扱い'], 'xử lý');
+      expect(first.vietPhrase.entries['追加'], 'bổ sung');
+      expect(first.vietPhrase.entries['吞み込ま'], 'nuốt chửng');
+      expect(first.vietPhrase.entries.containsKey('削除対象'), isFalse);
+      expect(first.vietPhrase.entries.containsKey('変体'), isFalse);
+      expect(first.vietPhrase.entries.containsKey('のみこま'), isFalse);
+      expect(first.vietPhrase.maxLenByFirstUnit, isEmpty);
+
+      // Xóa thử file nền để đảm bảo lần tái dùng base không đọc lại đĩa, chỉ đọc overlay mới.
+      File(p.join(dataDir.path, 'VietPhrase.txt')).deleteSync();
+      File(
+        p.join(paths.dictionariesDir.path, 'SharedVietPhrase_japanese.txt'),
+      ).writeAsStringSync('新規=mới\r\n扱い=\x7F__DELETE__\r\n');
+
+      final reused = await repo.loadAll(
+        dictPaths,
+        mode: TranslationMode.japanese,
+        useSudachiVariants: true,
+        base: first.base,
+        vietPhraseOnly: true,
+      );
+
+      expect(reused.vietPhrase.entries['新規'], 'mới');
+      expect(reused.vietPhrase.entries['追加'], 'bổ sung');
+      expect(reused.vietPhrase.entries.containsKey('扱い'), isFalse);
+      expect(reused.vietPhrase.maxLenByFirstUnit, isEmpty);
+    },
+  );
 }

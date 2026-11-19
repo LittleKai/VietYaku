@@ -18,6 +18,7 @@ import 'package:vietyaku/features/glossary/application/glossary_sync_controller.
 import 'package:vietyaku/features/glossary/data/glossary_service.dart';
 import 'package:vietyaku/features/glossary/presentation/glossary_sync_screen.dart';
 import 'package:vietyaku/features/settings/settings_provider.dart';
+import 'package:vietyaku/features/translation/application/translation_controller.dart';
 import 'package:vietyaku/features/translation/domain/translation_engine.dart';
 import 'package:vietyaku/features/translation/domain/vietphrase_value.dart';
 
@@ -59,11 +60,13 @@ GlossarySyncRow _row(
   String target, {
   String? otherTarget,
   String createdBy = '',
+  String dateAdded = '',
 }) => GlossarySyncRow(
   source: source,
   target: target,
   otherTarget: otherTarget,
   createdBy: createdBy,
+  dateAdded: dateAdded,
 );
 
 const _glossary =
@@ -177,6 +180,209 @@ void main() {
     });
   });
 
+  group('parseGlossaryDateMillis', () {
+    test('parse chuẩn YYYY-MM-DD và ISO datetime (T và space)', () {
+      expect(
+        parseGlossaryDateMillis('2026-04-29'),
+        DateTime(2026, 4, 29).millisecondsSinceEpoch,
+      );
+      expect(
+        parseGlossaryDateMillis('2026-04-29T13:45:00'),
+        DateTime(2026, 4, 29, 13, 45).millisecondsSinceEpoch,
+      );
+      expect(
+        parseGlossaryDateMillis('2026-04-29 08:30:15'),
+        DateTime(2026, 4, 29, 8, 30, 15).millisecondsSinceEpoch,
+      );
+    });
+
+    test('parse fallback YYYY/M/D và DD/MM/YYYY', () {
+      final expected = DateTime(2026, 5, 7).millisecondsSinceEpoch;
+      expect(parseGlossaryDateMillis('2026/5/7'), expected);
+      expect(parseGlossaryDateMillis('2026/05/07'), expected);
+      expect(parseGlossaryDateMillis('07/05/2026'), expected);
+      expect(parseGlossaryDateMillis('7-5-2026'), expected);
+    });
+
+    test('chuỗi rỗng hoặc ngày không hợp lệ trả null', () {
+      expect(parseGlossaryDateMillis(''), isNull);
+      expect(parseGlossaryDateMillis('   '), isNull);
+      expect(parseGlossaryDateMillis('invalid'), isNull);
+      expect(parseGlossaryDateMillis('2026-02-30'), isNull);
+      expect(parseGlossaryDateMillis('30/02/2026'), isNull);
+      expect(parseGlossaryDateMillis('1800/01/01'), isNull);
+    });
+  });
+
+  group('compareVietnameseText', () {
+    test('sắp xếp đúng thứ tự chữ cái tiếng Việt và thanh điệu', () {
+      final letters = ['z', 'y', 'ư', 'u', 'ơ', 'ô', 'o', 'ê', 'e', 'đ', 'd', 'b', 'â', 'ă', 'a'];
+      letters.sort(compareVietnameseText);
+      expect(letters, ['a', 'ă', 'â', 'b', 'd', 'đ', 'e', 'ê', 'o', 'ô', 'ơ', 'u', 'ư', 'y', 'z']);
+
+      final tones = ['ban', 'bạ', 'bá', 'bã', 'bả', 'bà', 'ba'];
+      tones.sort(compareVietnameseText);
+      expect(tones, ['ba', 'bà', 'bả', 'bã', 'bá', 'bạ', 'ban']);
+    });
+
+    test('không phân biệt hoa thường theo nhóm chữ cái và sắp CJK ổn định', () {
+      final mixed = ['Đức', 'dưa', 'Ăn', 'an', 'Zebra'];
+      mixed.sort(compareVietnameseText);
+      expect(mixed, ['an', 'Ăn', 'dưa', 'Đức', 'Zebra']);
+
+      final cjk = ['龍', '一', 'あ'];
+      cjk.sort(compareVietnameseText);
+      expect(cjk, ['あ', '一', '龍']);
+    });
+  });
+
+  group('sortGlossarySyncRows', () {
+    test('defaultOrder trả về nguyên tham chiếu gốc', () {
+      final rows = [_row('B', 'b'), _row('A', 'a')];
+      final sorted = sortGlossarySyncRows(
+        rows,
+        sortBy: GlossarySyncSortBy.defaultOrder,
+        ascending: true,
+      );
+      expect(identical(sorted, rows), isTrue);
+    });
+
+    test('dateAdded sắp theo mới→cũ, cũ→mới, phá hoà cùng ngày và đẩy rỗng xuống cuối', () {
+      final rows = [
+        _row('old', 'cũ', dateAdded: '2026-01-10'),
+        _row('empty1', 'trống 1', dateAdded: ''),
+        _row('same1', 'cùng ngày 1', dateAdded: '2026-03-15'),
+        _row('new', 'mới nhất', dateAdded: '2026-05-20'),
+        _row('same2', 'cùng ngày 2', dateAdded: '2026-03-15'),
+        _row('badDate', 'ngày lỗi', dateAdded: 'not-a-date'),
+      ];
+
+      final newestFirst = sortGlossarySyncRows(
+        rows,
+        sortBy: GlossarySyncSortBy.dateAdded,
+        ascending: false,
+      );
+      expect(newestFirst.map((r) => r.source), [
+        'new',
+        'same2',
+        'same1',
+        'old',
+        'badDate',
+        'empty1',
+      ]);
+
+      final oldestFirst = sortGlossarySyncRows(
+        rows,
+        sortBy: GlossarySyncSortBy.dateAdded,
+        ascending: true,
+      );
+      expect(oldestFirst.map((r) => r.source), [
+        'old',
+        'same1',
+        'same2',
+        'new',
+        'empty1',
+        'badDate',
+      ]);
+    });
+
+    test('source và target sắp theo bảng chữ cái tiếng Việt hai chiều', () {
+      final rows = [
+        _row('Dưa', 'Zebra'),
+        _row('Đức', 'Đức'),
+        _row('Ăn', 'Dưa'),
+        _row('an', 'Ăn'),
+        _row('菜', 'An'),
+      ];
+
+      final bySourceAsc = sortGlossarySyncRows(
+        rows,
+        sortBy: GlossarySyncSortBy.source,
+        ascending: true,
+      );
+      expect(bySourceAsc.map((r) => r.source), ['an', 'Ăn', 'Dưa', 'Đức', '菜']);
+
+      final bySourceDesc = sortGlossarySyncRows(
+        rows,
+        sortBy: GlossarySyncSortBy.source,
+        ascending: false,
+      );
+      expect(bySourceDesc.map((r) => r.source), ['菜', 'Đức', 'Dưa', 'Ăn', 'an']);
+
+      final byTargetAsc = sortGlossarySyncRows(
+        rows,
+        sortBy: GlossarySyncSortBy.target,
+        ascending: true,
+      );
+      expect(byTargetAsc.map((r) => r.target), ['An', 'Ăn', 'Dưa', 'Đức', 'Zebra']);
+
+      final byTargetDesc = sortGlossarySyncRows(
+        rows,
+        sortBy: GlossarySyncSortBy.target,
+        ascending: false,
+      );
+      expect(byTargetDesc.map((r) => r.target), ['Zebra', 'Đức', 'Dưa', 'Ăn', 'An']);
+    });
+
+    test('sourceLength sắp theo số rune (kể cả surrogate pair) và phá hoà A→Z', () {
+      final rows = [
+        _row('日本', 'Nhật Bản'),
+        _row('𠀀', 'một rune hai code unit'),
+        _row('b', 'b'),
+        _row('a', 'a'),
+        _row('abc', 'abc'),
+      ];
+
+      final shortFirst = sortGlossarySyncRows(
+        rows,
+        sortBy: GlossarySyncSortBy.sourceLength,
+        ascending: true,
+      );
+      expect(shortFirst.map((r) => r.source), ['a', 'b', '𠀀', '日本', 'abc']);
+
+      final longFirst = sortGlossarySyncRows(
+        rows,
+        sortBy: GlossarySyncSortBy.sourceLength,
+        ascending: false,
+      );
+      expect(longFirst.map((r) => r.source), ['abc', '日本', 'a', 'b', '𠀀']);
+    });
+
+    test('giữ tính ổn định (stable) với danh sách > 32 phần tử bằng nhau', () {
+      final rows = [
+        for (var i = 0; i < 50; i++)
+          _row('s$i', 't', dateAdded: '2026-04-01'),
+      ];
+
+      final asc = sortGlossarySyncRows(
+        rows,
+        sortBy: GlossarySyncSortBy.dateAdded,
+        ascending: true,
+      );
+      expect(asc.map((r) => r.source).toList(), [
+        for (var i = 0; i < 50; i++) 's$i',
+      ]);
+
+      final desc = sortGlossarySyncRows(
+        rows,
+        sortBy: GlossarySyncSortBy.dateAdded,
+        ascending: false,
+      );
+      expect(desc.map((r) => r.source).toList(), [
+        for (var i = 49; i >= 0; i--) 's$i',
+      ]);
+
+      final sameTarget = sortGlossarySyncRows(
+        rows,
+        sortBy: GlossarySyncSortBy.target,
+        ascending: true,
+      );
+      expect(sameTarget.map((r) => r.source).toList(), [
+        for (var i = 0; i < 50; i++) 's$i',
+      ]);
+    });
+  });
+
   group('GlossaryService.upsertAll', () {
     late Directory root;
     late GlossaryService service;
@@ -254,6 +460,33 @@ void main() {
         await service.readBlockedSources(TranslationMode.japanese),
         ['白鳥沙羅'],
       );
+    });
+
+    test('readAll giải mã file > 64KB có BOM trong isolate đúng toàn bộ mục', () async {
+      final largeTerms = [
+        for (var i = 0; i < 600; i++)
+          {
+            'source': '用語_$i',
+            'target': 'nghĩa tiếng Việt dài số $i để vượt ngưỡng 64KB khi serialize JSON',
+            'kind': 'proper_noun',
+            'notes': '',
+            'created_by': 'A.I',
+            'date_added': '2026-05-01',
+          },
+      ];
+      final payload = '\uFEFF${jsonEncode({'name': 'Global Glossary', 'lang': 'JP', 'terms': largeTerms})}';
+      expect(payload.length, greaterThan(64 * 1024));
+      await service.fileFor(TranslationMode.japanese).writeAsString(
+        payload,
+        encoding: utf8,
+        flush: true,
+      );
+
+      GlossaryService.clearCache();
+      final terms = await service.readAll(TranslationMode.japanese);
+      expect(terms.length, 600);
+      expect(terms.first.source, '用語_0');
+      expect(terms.last.source, '用語_599');
     });
   });
 
@@ -442,6 +675,155 @@ void main() {
         // sang Giống hệt nhờ chỉ mục VietPhrase cập nhật tại chỗ.
         expect(fakeNotifier.reloadCalls, 0);
         expect(find.text('菜畑小鳥'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'hỗ trợ sort theo thời gian thêm, nghĩa tiếng Việt, độ dài và đổi chiều',
+      (tester) async {
+        tester.view.physicalSize = const Size(1400, 900);
+        addTearDown(tester.view.resetPhysicalSize);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        const sortGlossary =
+            '{\r\n'
+            '  "name": "Global Glossary",\r\n'
+            '  "lang": "JP",\r\n'
+            '  "terms": [\r\n'
+            '    {"source": "甲乙丙", "target": "Dưa", "created_by": "A.I", "date_added": "2026-01-10"},\r\n'
+            '    {"source": "丁", "target": "Đức", "created_by": "A.I", "date_added": "2026-05-20"},\r\n'
+            '    {"source": "戊己", "target": "An", "created_by": "A.I", "date_added": "2026-03-15"},\r\n'
+            '    {"source": "庚辛壬癸", "target": "Ăn", "created_by": "A.I", "date_added": ""}\r\n'
+            '  ]\r\n'
+            '}';
+        File(
+          p.join(glossaryRoot.path, 'JP', GlossaryService.globalGlossaryFileName),
+        ).writeAsStringSync(sortGlossary, encoding: utf8, flush: true);
+
+        SharedPreferences.setMockInitialValues({
+          'glossary.dir': glossaryRoot.path,
+        });
+        final prefs = await SharedPreferences.getInstance();
+        final fakeNotifier = _FakeDictionariesNotifier(
+          _fakeLoadedDictionaries({'学校': 'trường học'}),
+        );
+
+        final container = ProviderContainer(
+          overrides: [
+            sharedPreferencesProvider.overrideWithValue(prefs),
+            appPathsProvider.overrideWith((ref) async => AppPaths(tempRoot)),
+            dictionariesProvider.overrideWith(() => fakeNotifier),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        await tester.runAsync(() async {
+          await GlossaryService(glossaryRoot.path).readAll(TranslationMode.japanese);
+        });
+
+        await tester.pumpWidget(
+          UncontrolledProviderScope(
+            container: container,
+            child: const MaterialApp(
+              home: GlossarySyncScreen(isStandaloneWindow: true),
+            ),
+          ),
+        );
+
+        await tester.runAsync(() async {
+          await container.read(
+            glossarySyncRowsProvider(GlossarySyncDirection.glossaryToVietPhrase).future,
+          );
+        });
+        await tester.pumpAndSettle();
+
+        List<String> orderOf(List<String> keys) {
+          final entries = [
+            for (final k in keys) (key: k, dy: tester.getTopLeft(find.text(k)).dy),
+          ]..sort((a, b) => a.dy.compareTo(b.dy));
+          return [for (final e in entries) e.key];
+        }
+
+        const keys = ['甲乙丙', '丁', '戊己', '庚辛壬癸'];
+        expect(find.text('2026-01-10'), findsOneWidget);
+        expect(find.text('2026-05-20'), findsOneWidget);
+        expect(find.text('2026-03-15'), findsOneWidget);
+        expect(orderOf(keys), ['甲乙丙', '丁', '戊己', '庚辛壬癸']);
+        expect(find.text('Mới → Cũ'), findsNothing);
+
+        // Sort theo Thời gian thêm (mặc định Mới → Cũ, mục rỗng ở cuối)
+        await tester.tap(
+          find.byType(DropdownButtonFormField<GlossarySyncSortBy>),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Thời gian thêm').last);
+        await tester.pumpAndSettle();
+        expect(find.text('Mới → Cũ'), findsOneWidget);
+        expect(orderOf(keys), ['丁', '戊己', '甲乙丙', '庚辛壬癸']);
+
+        // Đảo chiều sang Cũ → Mới (mục rỗng vẫn ở cuối)
+        await tester.tap(find.text('Mới → Cũ'));
+        await tester.pumpAndSettle();
+        expect(find.text('Cũ → Mới'), findsOneWidget);
+        expect(orderOf(keys), ['甲乙丙', '戊己', '丁', '庚辛壬癸']);
+
+        // Sort theo Nghĩa tiếng Việt (An → Ăn → Dưa → Đức)
+        await tester.tap(
+          find.byType(DropdownButtonFormField<GlossarySyncSortBy>),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Nghĩa tiếng Việt').last);
+        await tester.pumpAndSettle();
+        expect(find.text('A → Z'), findsOneWidget);
+        expect(orderOf(keys), ['戊己', '庚辛壬癸', '甲乙丙', '丁']);
+
+        // Sort theo Độ dài từ gốc (Ngắn → Dài)
+        await tester.tap(
+          find.byType(DropdownButtonFormField<GlossarySyncSortBy>),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Độ dài từ gốc').last);
+        await tester.pumpAndSettle();
+        expect(find.text('Ngắn → Dài'), findsOneWidget);
+        expect(orderOf(keys), ['丁', '戊己', '甲乙丙', '庚辛壬癸']);
+
+        // Quay lại Mặc định: ẩn nút đổi chiều, khôi phục thứ tự file
+        await tester.tap(
+          find.byType(DropdownButtonFormField<GlossarySyncSortBy>),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Mặc định').last);
+        await tester.pumpAndSettle();
+        expect(find.text('Ngắn → Dài'), findsNothing);
+        expect(orderOf(keys), ['甲乙丙', '丁', '戊己', '庚辛壬癸']);
+      },
+    );
+
+    test(
+      'initialModeOverrideProvider khởi tạo ngay currentModeProvider và translationControllerProvider ở mode chỉ định',
+      () async {
+        SharedPreferences.setMockInitialValues({});
+        final prefs = await SharedPreferences.getInstance();
+        final container = ProviderContainer(
+          overrides: [
+            sharedPreferencesProvider.overrideWithValue(prefs),
+            initialModeOverrideProvider.overrideWithValue(
+              TranslationMode.chinese,
+            ),
+          ],
+        );
+        addTearDown(container.dispose);
+
+        expect(
+          container.read(settingsProvider).defaultMode,
+          TranslationMode.japanese,
+        );
+        expect(container.read(currentModeProvider), TranslationMode.chinese);
+        expect(
+          container.read(translationControllerProvider).mode,
+          TranslationMode.chinese,
+        );
       },
     );
   });

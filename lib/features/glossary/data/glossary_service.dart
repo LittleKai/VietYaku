@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:path/path.dart' as p;
 
@@ -318,11 +319,10 @@ class GlossaryService {
     const delaysMs = [30, 60, 120];
     for (var attempt = 0; ; attempt++) {
       try {
-        var text = await file.readAsString(encoding: utf8);
-        if (text.isNotEmpty && text.codeUnitAt(0) == 0xFEFF) {
-          text = text.substring(1);
-        }
-        final decoded = jsonDecode(text);
+        final text = await file.readAsString(encoding: utf8);
+        final decoded = text.length > 64 * 1024
+            ? await Isolate.run(() => _decodeGlossaryJson(text))
+            : _decodeGlossaryJson(text);
         if (decoded is Map<String, dynamic>) {
           final currentMtime =
               file.existsSync() ? file.lastModifiedSync() : mtime;
@@ -389,4 +389,12 @@ class _GlossaryCacheEntry {
     required this.length,
     required this.payload,
   });
+}
+
+Object? _decodeGlossaryJson(String text) {
+  var body = text;
+  if (body.isNotEmpty && body.codeUnitAt(0) == 0xFEFF) {
+    body = body.substring(1);
+  }
+  return jsonDecode(body);
 }

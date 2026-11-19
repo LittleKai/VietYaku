@@ -15,7 +15,7 @@ class FlutterWindow : public Win32Window {
   // Creates a new FlutterWindow hosting a Flutter view running |project|.
   explicit FlutterWindow(const flutter::DartProject& project,
                          bool is_secondary = false,
-                         FlutterWindow* parent_window = nullptr);
+                         HWND parent_hwnd = nullptr);
   virtual ~FlutterWindow();
 
  protected:
@@ -28,17 +28,27 @@ class FlutterWindow : public Win32Window {
  private:
   void SetClipboardBridgeEnabled(bool enabled);
   bool OpenOrActivateGlossarySyncWindow(const flutter::EncodableValue* args);
+  bool SendIpcMessage(HWND target, ULONG_PTR message_type,
+                      const flutter::EncodableValue* payload);
+  void HandleCopyData(HWND sender, const COPYDATASTRUCT* cds);
+  void CloseGlossarySyncChild();
 
   // The project to run.
   flutter::DartProject project_;
   bool is_secondary_ = false;
-  FlutterWindow* parent_window_ = nullptr;
+  HWND parent_hwnd_ = nullptr;
 
   // The Flutter instance hosted by this window.
   std::unique_ptr<flutter::FlutterViewController> flutter_controller_;
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
       windows_bridge_channel_;
-  std::unique_ptr<FlutterWindow> glossary_sync_window_;
+
+  // Detached child process for "Đồng bộ Glossary ↔ VietPhrase".
+  HWND glossary_sync_hwnd_ = nullptr;
+  HANDLE glossary_sync_process_ = nullptr;
+  DWORD glossary_sync_pid_ = 0;
+  bool glossary_sync_registered_ = false;
+
   bool clipboard_listener_registered_ = false;
   bool hotkey_registered_ = false;
 };

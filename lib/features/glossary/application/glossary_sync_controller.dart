@@ -39,6 +39,185 @@ enum DuplicateFilter {
   final String label;
 }
 
+/// Tiêu chí sắp xếp danh sách ở màn đồng bộ Glossary ↔ VietPhrase.
+enum GlossarySyncSortBy {
+  defaultOrder('Mặc định', defaultAscending: true),
+  dateAdded('Thời gian thêm', defaultAscending: false),
+  source('Từ gốc', defaultAscending: true),
+  target('Nghĩa tiếng Việt', defaultAscending: true),
+  sourceLength('Độ dài từ gốc', defaultAscending: true);
+
+  const GlossarySyncSortBy(this.label, {required this.defaultAscending});
+
+  final String label;
+  final bool defaultAscending;
+
+  String directionLabel({required bool ascending}) => switch (this) {
+    GlossarySyncSortBy.defaultOrder => 'Theo file',
+    GlossarySyncSortBy.dateAdded => ascending ? 'Cũ → Mới' : 'Mới → Cũ',
+    GlossarySyncSortBy.source ||
+    GlossarySyncSortBy.target => ascending ? 'A → Z' : 'Z → A',
+    GlossarySyncSortBy.sourceLength => ascending ? 'Ngắn → Dài' : 'Dài → Ngắn',
+  };
+}
+
+final _isoDatePrefixRe = RegExp(r'^(\d{4})-(\d{2})-(\d{2})');
+final _dateSplitRe = RegExp(r'[-/]');
+
+/// Chuyển chuỗi `date_added` của glossary thành milliseconds để so sánh nhanh.
+/// Trả `null` nếu rỗng hoặc không hợp lệ.
+int? parseGlossaryDateMillis(String raw) {
+  final s = raw.trim();
+  if (s.isEmpty) return null;
+  final direct = DateTime.tryParse(s);
+  if (direct != null) {
+    // DateTime.tryParse tự cộng tràn ngày không hợp lệ (vd 2026-02-30 → 03-02).
+    final dateMatch = _isoDatePrefixRe.firstMatch(s);
+    if (dateMatch != null) {
+      final y = int.parse(dateMatch.group(1)!);
+      final m = int.parse(dateMatch.group(2)!);
+      final d = int.parse(dateMatch.group(3)!);
+      final check = DateTime(y, m, d);
+      if (y < 1900 || check.year != y || check.month != m || check.day != d) {
+        return null;
+      }
+    }
+    return direct.millisecondsSinceEpoch;
+  }
+
+  final parts = s.split(_dateSplitRe);
+  if (parts.length != 3) return null;
+  final p0 = int.tryParse(parts[0]);
+  final p1 = int.tryParse(parts[1]);
+  final p2 = int.tryParse(parts[2]);
+  if (p0 == null || p1 == null || p2 == null) return null;
+
+  final int year;
+  final int month;
+  final int day;
+  if (p0 >= 1900) {
+    year = p0;
+    month = p1;
+    day = p2;
+  } else if (p2 >= 1900) {
+    day = p0;
+    month = p1;
+    year = p2;
+  } else {
+    return null;
+  }
+
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  final dt = DateTime(year, month, day);
+  if (dt.year != year || dt.month != month || dt.day != day) return null;
+  return dt.millisecondsSinceEpoch;
+}
+
+const _vietnameseGroups = <String>[
+  'AaÀàẢảÃãÁáẠạ',
+  'ĂăẰằẲẳẴẵẮắẶặ',
+  'ÂâẦầẨẩẪẫẤấẬậ',
+  'Bb',
+  'Cc',
+  'Dd',
+  'Đđ',
+  'EeÈèẺẻẼẽÉéẸẹ',
+  'ÊêỀềỂểỄễẾếỆệ',
+  'Ff',
+  'Gg',
+  'Hh',
+  'IiÌìỈỉĨĩÍíỊị',
+  'Jj',
+  'Kk',
+  'Ll',
+  'Mm',
+  'Nn',
+  'OoÒòỎỏÕõÓóỌọ',
+  'ÔôỒồỔổỖỗỐốỘộ',
+  'ƠơỜờỞởỠỡỚớỢợ',
+  'Pp',
+  'Qq',
+  'Rr',
+  'Ss',
+  'Tt',
+  'UuÙùỦủŨũÚúỤụ',
+  'ƯưỪừỬửỮữỨứỰự',
+  'Vv',
+  'Ww',
+  'Xx',
+  'YyỲỳỶỷỸỹÝýỴỵ',
+  'Zz',
+];
+
+({List<int> asciiPrimary, Map<int, int> primary, Map<int, int> tone})?
+_vnRankTables;
+
+({List<int> asciiPrimary, Map<int, int> primary, Map<int, int> tone})
+_ensureVnRankTables() {
+  final existing = _vnRankTables;
+  if (existing != null) return existing;
+  final asciiPrimary = List<int>.generate(128, (i) => i, growable: false);
+  final primary = <int, int>{};
+  final tone = <int, int>{};
+  for (var groupIdx = 0; groupIdx < _vietnameseGroups.length; groupIdx++) {
+    final group = _vietnameseGroups[groupIdx];
+    final rank = 0x100 + groupIdx;
+    for (var charIdx = 0; charIdx < group.length; charIdx++) {
+      final cu = group.codeUnitAt(charIdx);
+      if (cu < 0x80) {
+        asciiPrimary[cu] = rank;
+      } else {
+        primary[cu] = rank;
+        final toneRank = charIdx ~/ 2;
+        if (toneRank > 0) {
+          tone[cu] = toneRank;
+        }
+      }
+    }
+  }
+  final built = (asciiPrimary: asciiPrimary, primary: primary, tone: tone);
+  _vnRankTables = built;
+  return built;
+}
+
+/// So sánh hai chuỗi theo bảng chữ cái và thanh điệu tiếng Việt, không cấp phát
+/// chuỗi mới để dùng trực tiếp khi sort hàng trăm nghìn dòng.
+int compareVietnameseText(String a, String b) {
+  final tables = _ensureVnRankTables();
+  final asciiPrimary = tables.asciiPrimary;
+  final vnPrimary = tables.primary;
+  final vnTone = tables.tone;
+
+  final lenA = a.length;
+  final lenB = b.length;
+  final minLen = lenA < lenB ? lenA : lenB;
+
+  for (var i = 0; i < minLen; i++) {
+    final cuA = a.codeUnitAt(i);
+    final cuB = b.codeUnitAt(i);
+    if (cuA == cuB) continue;
+    final rankA = cuA < 0x80
+        ? asciiPrimary[cuA]
+        : (vnPrimary[cuA] ?? (0x200 + cuA));
+    final rankB = cuB < 0x80
+        ? asciiPrimary[cuB]
+        : (vnPrimary[cuB] ?? (0x200 + cuB));
+    if (rankA != rankB) return rankA.compareTo(rankB);
+  }
+  if (lenA != lenB) return lenA.compareTo(lenB);
+
+  for (var i = 0; i < minLen; i++) {
+    final cuA = a.codeUnitAt(i);
+    final cuB = b.codeUnitAt(i);
+    if (cuA == cuB) continue;
+    final toneA = cuA < 0x80 ? 0 : (vnTone[cuA] ?? 0);
+    final toneB = cuB < 0x80 ? 0 : (vnTone[cuB] ?? 0);
+    if (toneA != toneB) return toneA.compareTo(toneB);
+  }
+
+  return a.compareTo(b);
+}
+
 bool _isAiCreatedBy(String createdBy) {
   if (createdBy.isEmpty) return false;
   final norm = _fastNormKey(createdBy);
@@ -59,6 +238,12 @@ class GlossarySyncRow {
   /// `created_by` của mục glossary; rỗng khi bên nguồn là VietPhrase.
   final String createdBy;
 
+  /// Ngày thêm trong glossary (`date_added`, thường dạng `YYYY-MM-DD`).
+  final String dateAdded;
+
+  /// Mốc thời gian thêm tính sẵn bằng milliseconds để sort nhanh.
+  final int? dateAddedMillis;
+
   /// Đã có bên đích và nghĩa chính y hệt — tính sẵn một lần để lọc hàng trăm
   /// nghìn dòng không phải parse lại VietPhrase.
   final bool isIdentical;
@@ -71,12 +256,14 @@ class GlossarySyncRow {
     required this.target,
     required this.otherTarget,
     this.createdBy = '',
+    this.dateAdded = '',
     bool? isIdentical,
   }) : isIdentical =
            isIdentical ??
            (otherTarget != null &&
                glossaryTargetOf(otherTarget) == glossaryTargetOf(target)),
-       isCreatedByAi = _isAiCreatedBy(createdBy);
+       isCreatedByAi = _isAiCreatedBy(createdBy),
+       dateAddedMillis = parseGlossaryDateMillis(dateAdded);
 
   bool get isDuplicate => otherTarget != null;
 }
@@ -223,20 +410,21 @@ class _VietPhraseSyncIndex {
   }
 
   List<GlossarySyncRow> buildVietPhraseToGlossaryRows(
-    Map<String, String> glossaryBySource,
-    Map<String, String> glossaryRawSourceByNorm,
+    Map<String, GlossaryTerm> glossaryByNormKey,
   ) {
     ensureBaseRowsBuilt();
     final rows = List<GlossarySyncRow>.of(_baseRows!);
     final indexMap = _indexByNormKey!;
-    for (final gEntry in glossaryBySource.entries) {
+    for (final gEntry in glossaryByNormKey.entries) {
       final idx = indexMap[gEntry.key];
       if (idx != null) {
         final base = rows[idx];
+        final term = gEntry.value;
         rows[idx] = GlossarySyncRow(
-          source: glossaryRawSourceByNorm[gEntry.key] ?? base.source,
+          source: term.source.trim(),
           target: base.target,
-          otherTarget: gEntry.value,
+          otherTarget: term.target.trim(),
+          dateAdded: term.dateAdded,
         );
       }
     }
@@ -428,9 +616,10 @@ final glossarySyncRowsProvider = FutureProvider.autoDispose
               )
           ? ref.watch(trad2SimpTableProvider.future)
           : null;
+      final rawGlossaryFuture = service.readAll(mode);
       final dicts = await ref.watch(dictionariesProvider.future);
       final trad2simp = await trad2simpFuture ?? Trad2SimpTable.empty;
-      final rawGlossaryTerms = await service.readAll(mode);
+      final rawGlossaryTerms = await rawGlossaryFuture;
 
       final syncIndex = _getOrCreateSyncIndex(
         mode,
@@ -439,19 +628,16 @@ final glossarySyncRowsProvider = FutureProvider.autoDispose
       );
 
       final glossaryTerms = <GlossaryTerm>[];
-      final glossaryBySource = <String, String>{};
-      final glossaryRawSourceByNorm = <String, String>{};
-      final seenGlossaryKeys = <String>{};
+      final glossaryByNormKey = <String, GlossaryTerm>{};
 
       for (final term in rawGlossaryTerms) {
         final source = term.source.trim();
         final target = term.target.trim();
         if (source.isEmpty || target.isEmpty) continue;
         final normKey = _fastNormKey(trad2simp.convert(source));
-        if (seenGlossaryKeys.add(normKey)) {
+        if (!glossaryByNormKey.containsKey(normKey)) {
+          glossaryByNormKey[normKey] = term;
           glossaryTerms.add(term);
-          glossaryBySource[normKey] = target;
-          glossaryRawSourceByNorm[normKey] = source;
         }
       }
 
@@ -465,14 +651,12 @@ final glossarySyncRowsProvider = FutureProvider.autoDispose
                 _fastNormKey(trad2simp.convert(term.source.trim())),
               ),
               createdBy: term.createdBy,
+              dateAdded: term.dateAdded,
             ),
         ];
       }
 
-      return syncIndex.buildVietPhraseToGlossaryRows(
-        glossaryBySource,
-        glossaryRawSourceByNorm,
-      );
+      return syncIndex.buildVietPhraseToGlossaryRows(glossaryByNormKey);
     });
 
 /// Lọc danh sách theo bộ lọc của màn đồng bộ. [createdByAiOnly] chỉ có nghĩa ở
@@ -512,6 +696,67 @@ List<GlossarySyncRow> filterGlossarySyncRows(
     result.add(row);
   }
   return result;
+}
+
+/// Sắp xếp danh sách đã lọc theo [sortBy] và chiều [ascending]. Giữ tính ổn
+/// định (stable) theo thứ tự gốc khi hai mục bằng nhau.
+List<GlossarySyncRow> sortGlossarySyncRows(
+  List<GlossarySyncRow> rows, {
+  required GlossarySyncSortBy sortBy,
+  required bool ascending,
+}) {
+  if (sortBy == GlossarySyncSortBy.defaultOrder || rows.length <= 1) {
+    return rows;
+  }
+
+  final indices = List<int>.generate(rows.length, (i) => i, growable: false);
+  final dir = ascending ? 1 : -1;
+
+  switch (sortBy) {
+    case GlossarySyncSortBy.defaultOrder:
+      return rows;
+    case GlossarySyncSortBy.dateAdded:
+      indices.sort((ia, ib) {
+        final da = rows[ia].dateAddedMillis;
+        final db = rows[ib].dateAddedMillis;
+        if (da != null && db != null) {
+          final cmp = da.compareTo(db);
+          if (cmp != 0) return cmp * dir;
+          // File glossary nối mục mới vào cuối nên cùng ngày mục sau mới hơn.
+          return ia.compareTo(ib) * dir;
+        }
+        if (da != null) return -1;
+        if (db != null) return 1;
+        return ia.compareTo(ib) * dir;
+      });
+    case GlossarySyncSortBy.source:
+      indices.sort((ia, ib) {
+        final cmp = compareVietnameseText(rows[ia].source, rows[ib].source);
+        if (cmp != 0) return cmp * dir;
+        return ia.compareTo(ib);
+      });
+    case GlossarySyncSortBy.target:
+      indices.sort((ia, ib) {
+        final cmp = compareVietnameseText(rows[ia].target, rows[ib].target);
+        if (cmp != 0) return cmp * dir;
+        return ia.compareTo(ib);
+      });
+    case GlossarySyncSortBy.sourceLength:
+      final lengths = List<int>.generate(
+        rows.length,
+        (i) => rows[i].source.runes.length,
+        growable: false,
+      );
+      indices.sort((ia, ib) {
+        final lenCmp = lengths[ia].compareTo(lengths[ib]);
+        if (lenCmp != 0) return lenCmp * dir;
+        final textCmp = compareVietnameseText(rows[ia].source, rows[ib].source);
+        if (textCmp != 0) return textCmp;
+        return ia.compareTo(ib);
+      });
+  }
+
+  return [for (final i in indices) rows[i]];
 }
 
 bool _pendingMainTranslationReload = false;

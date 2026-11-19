@@ -14,6 +14,7 @@ class BinaryCache {
   static const int magic = 0x43445956;
   static const int version = 1;
   static const int headerLength = 4 + 2 + 8 + 8 + 8 + 4;
+  static const _utf8Decoder = Utf8Decoder();
 
   static Uint8List encode(
     Map<String, String> entries, {
@@ -74,9 +75,9 @@ class BinaryCache {
         final valLen = data.getUint32(offset + 2, Endian.little);
         offset += 6;
         if (offset + keyLen + valLen > bytes.length) return null;
-        final key = utf8.decode(bytes.sublist(offset, offset + keyLen));
+        final key = _utf8Decoder.convert(bytes, offset, offset + keyLen);
         offset += keyLen;
-        final value = utf8.decode(bytes.sublist(offset, offset + valLen));
+        final value = _utf8Decoder.convert(bytes, offset, offset + valLen);
         offset += valLen;
         entries[key] = value;
       }

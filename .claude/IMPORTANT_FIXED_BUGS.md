@@ -1,6 +1,6 @@
 # Important Fixed Bugs — VietYaku
 
-**Last Updated:** 2026-11-18
+**Last Updated:** 2026-11-19
 
 ## Mục đích
 
@@ -105,6 +105,7 @@ lặp lại là một luật: sửa câu cũ, không nối `CẬP NHẬT: thực
 | 30 | Hai file từ điển trùng tên ở hai thư mục cha đè chung một cache `.vydc` (`userdata/dictionaries` vs `data/<lang>/generated`) | 🔶 một phần: `app_paths.dart::cacheFileFor` — nhúng hash FNV-1a của thư mục cha | dưới đây |
 | 31 | Lưu target Glossary ghi đè nghĩa nháp/tầng nghĩa của dialog VietPhrase hoặc UserDict (và ngược lại khi bấm Lưu từ ngay sau đó) | ✅ `entry_edit_dialog.dart::_updateGlossaryTermDirectly` + `entry_edit_dialog.dart::glossarySavedAtMeaning` + `entry_edit_dialog_test.dart::bug_31` | `archive/FIXED_BUGS_guarded.md` |
 | 32 | Scale theme trước khi có geometry ⇒ debug crash, release chỉ đổi bodySmall | ✅ `app_theme.dart::_build` + `app_theme_test.dart::bug_32` | `archive/FIXED_BUGS_guarded.md` |
+| 33 | Mở cửa sổ Đồng bộ Glossary bằng `FlutterViewController` thứ 2 trong cùng process ⇒ crash `0xC0000005` trong ANGLE D3D11 (cả Impeller lẫn Skia) | ✅ `flutter_window.cpp::OpenOrActivateGlossarySyncWindow` + `flutter_window.cpp::HandleCopyData` + `windows_runner_test.dart::bug_33` | `archive/FIXED_BUGS_guarded.md` |
 
 > Cột 1 phải là **số**, cột 3 phải bắt đầu bằng ✅/🔶/❌ và bọc tên hàm trong dấu
 > backtick — `guard_check.py` parse đúng định dạng này.

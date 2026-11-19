@@ -140,6 +140,8 @@ class _DirectionTabState extends ConsumerState<_DirectionTab>
 
   bool _createdByAiOnly = true;
   DuplicateFilter _duplicateFilter = DuplicateFilter.notDuplicated;
+  GlossarySyncSortBy _sortBy = GlossarySyncSortBy.defaultOrder;
+  bool _sortAscending = GlossarySyncSortBy.defaultOrder.defaultAscending;
   String _search = '';
   int _pageSize = 50;
   int _page = 0;
@@ -162,36 +164,65 @@ class _DirectionTabState extends ConsumerState<_DirectionTab>
     super.dispose();
   }
 
-  // Nhớ kết quả lọc gần nhất: chiều VietPhrase → Glossary có hơn 180k mục, lọc
-  // lại mỗi lần tick checkbox sẽ giật.
+  // Nhớ kết quả lọc + sắp xếp gần nhất: chiều VietPhrase → Glossary có hơn
+  // 180k mục, lọc/sort lại mỗi lần tick checkbox sẽ giật.
   List<GlossarySyncRow>? _cachedSource;
-  List<GlossarySyncRow>? _cachedResult;
+  List<GlossarySyncRow>? _cachedFiltered;
+  List<GlossarySyncRow>? _cachedSorted;
   DuplicateFilter? _cachedDuplicateFilter;
   bool? _cachedCreatedByAiOnly;
   String? _cachedSearch;
+  GlossarySyncSortBy? _cachedSortBy;
+  bool? _cachedSortAscending;
 
-  List<GlossarySyncRow> _filter(List<GlossarySyncRow> rows) {
+  void _clearFilterCache() {
+    _cachedSource = null;
+    _cachedFiltered = null;
+    _cachedSorted = null;
+  }
+
+  List<GlossarySyncRow> _filterAndSort(List<GlossarySyncRow> rows) {
     final createdByAiOnly = _hasCreatedByFilter && _createdByAiOnly;
-    final cached = _cachedResult;
-    if (cached != null &&
+    final filterMatches =
+        _cachedFiltered != null &&
         identical(rows, _cachedSource) &&
         _cachedDuplicateFilter == _duplicateFilter &&
         _cachedCreatedByAiOnly == createdByAiOnly &&
-        _cachedSearch == _search) {
-      return cached;
+        _cachedSearch == _search;
+
+    final List<GlossarySyncRow> filtered;
+    if (filterMatches) {
+      filtered = _cachedFiltered!;
+    } else {
+      filtered = filterGlossarySyncRows(
+        rows,
+        duplicateFilter: _duplicateFilter,
+        createdByAiOnly: createdByAiOnly,
+        search: _search,
+      );
+      _cachedSource = rows;
+      _cachedFiltered = filtered;
+      _cachedDuplicateFilter = _duplicateFilter;
+      _cachedCreatedByAiOnly = createdByAiOnly;
+      _cachedSearch = _search;
+      _cachedSorted = null;
     }
-    final result = filterGlossarySyncRows(
-      rows,
-      duplicateFilter: _duplicateFilter,
-      createdByAiOnly: createdByAiOnly,
-      search: _search,
+
+    if (_cachedSorted != null &&
+        _cachedSortBy == _sortBy &&
+        _cachedSortAscending == _sortAscending) {
+      return _cachedSorted!;
+    }
+
+    final sorted = sortGlossarySyncRows(
+      filtered,
+      sortBy: _sortBy,
+      ascending: _sortAscending,
     );
-    _cachedSource = rows;
-    _cachedResult = result;
-    _cachedDuplicateFilter = _duplicateFilter;
-    _cachedCreatedByAiOnly = createdByAiOnly;
-    _cachedSearch = _search;
-    return result;
+    _cachedSorted = sorted;
+    _cachedSortBy = _sortBy;
+    _cachedSortAscending = _sortAscending;
+    return sorted;
   }
 
   void _resetPaging() => setState(() => _page = 0);
@@ -233,8 +264,7 @@ class _DirectionTabState extends ConsumerState<_DirectionTab>
         for (final row in rows) {
           _selected.remove(row.source);
         }
-        _cachedSource = null;
-        _cachedResult = null;
+        _clearFilterCache();
       });
       _showMessage(
         rows.length == 1
@@ -306,8 +336,7 @@ class _DirectionTabState extends ConsumerState<_DirectionTab>
         for (final r in rows) {
           _selected.remove(r.source);
         }
-        _cachedSource = null;
-        _cachedResult = null;
+        _clearFilterCache();
       });
       _showMessage('Đã xóa ${rows.length} mục.');
     } catch (_) {
@@ -376,8 +405,7 @@ class _DirectionTabState extends ConsumerState<_DirectionTab>
       if (!mounted) return;
       setState(() {
         _selected.remove(row.source);
-        _cachedSource = null;
-        _cachedResult = null;
+        _clearFilterCache();
       });
       _showMessage(
         resultData!.updateGlossary && resultData!.updateVietPhrase
@@ -452,8 +480,7 @@ class _DirectionTabState extends ConsumerState<_DirectionTab>
         for (final r in rows) {
           _selected.remove(r.source);
         }
-        _cachedSource = null;
-        _cachedResult = null;
+        _clearFilterCache();
       });
       _showMessage(
         resultData!.updateGlossary && resultData!.updateVietPhrase
@@ -522,8 +549,7 @@ class _DirectionTabState extends ConsumerState<_DirectionTab>
           setState(() {
             _selected.clear();
             _page = 0;
-            _cachedSource = null;
-            _cachedResult = null;
+            _clearFilterCache();
           });
         }
       },
@@ -533,8 +559,7 @@ class _DirectionTabState extends ConsumerState<_DirectionTab>
       (previous, next) {
         if (next.hasValue) {
           setState(() {
-            _cachedSource = null;
-            _cachedResult = null;
+            _clearFilterCache();
           });
         }
       },
@@ -553,7 +578,7 @@ class _DirectionTabState extends ConsumerState<_DirectionTab>
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, _) => _CenteredNote('Không đọc được dữ liệu.\n$error'),
       data: (all) {
-        final filtered = _filter(all);
+        final filtered = _filterAndSort(all);
         final pageCount = (filtered.length / _pageSize).ceil().clamp(1, 1 << 30);
         final page = _page.clamp(0, pageCount - 1);
         final start = page * _pageSize;
@@ -658,6 +683,62 @@ class _DirectionTabState extends ConsumerState<_DirectionTab>
                 }
               },
             ),
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 205,
+                child: DropdownButtonFormField<GlossarySyncSortBy>(
+                  initialValue: _sortBy,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    prefixIcon: Icon(Icons.sort, size: 18),
+                    labelText: 'Sắp xếp',
+                  ),
+                  items: [
+                    for (final option in GlossarySyncSortBy.values)
+                      DropdownMenuItem(
+                        value: option,
+                        child: Text(
+                          option.label,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                  ],
+                  onChanged: (value) {
+                    if (value == null || value == _sortBy) return;
+                    setState(() {
+                      _sortBy = value;
+                      _sortAscending = value.defaultAscending;
+                      _page = 0;
+                    });
+                  },
+                ),
+              ),
+              if (_sortBy != GlossarySyncSortBy.defaultOrder) ...[
+                const SizedBox(width: 8),
+                Tooltip(
+                  message: 'Đổi chiều sắp xếp',
+                  child: OutlinedButton.icon(
+                    icon: Icon(
+                      _sortAscending
+                          ? Icons.arrow_upward
+                          : Icons.arrow_downward,
+                      size: 16,
+                    ),
+                    label: Text(
+                      _sortBy.directionLabel(ascending: _sortAscending),
+                    ),
+                    onPressed: () => setState(() {
+                      _sortAscending = !_sortAscending;
+                      _page = 0;
+                    }),
+                  ),
+                ),
+              ],
+            ],
           ),
           Text('$shown / $total mục'),
         ],
@@ -857,6 +938,16 @@ class _RowTile extends StatelessWidget {
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
           ),
+          if (row.dateAdded.trim().isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Text(
+                row.dateAdded.trim(),
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ),
           if (row.createdBy.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(right: 8),

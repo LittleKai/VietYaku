@@ -207,6 +207,7 @@ class DictionaryRepository {
       cachePath: paths.cacheFileFor(source, variant: cacheVariant),
       type: type,
       trad2simp: trad2simp,
+      buildIndex: !vietPhraseOnly,
     );
 
     // File Sudachi sinh bởi tool/build_sudachi_assets.dart, nằm cạnh
@@ -242,7 +243,9 @@ class DictionaryRepository {
     // cộng thẳng vào thời gian mở app.
     final Future<JapaneseVariantIndex?> variantIndexFuture = base != null
         ? Future.value(base._variantIndex)
-        : mode == TranslationMode.japanese && useSudachiVariants
+        : !vietPhraseOnly &&
+                mode == TranslationMode.japanese &&
+                useSudachiVariants
         ? loadJapaneseVariantIndex(sudachiPath('SudachiVariantGroups.txt'))
         : Future.value(null);
 
@@ -309,9 +312,15 @@ class DictionaryRepository {
       ), // 14
       fromBase(
         15,
-        () => useSudachiVariants
-            ? loadPath(DictType.vietPhrase, sudachiPath('SudachiVariants.txt'))
-            : emptyResult(DictType.vietPhrase),
+        skipWhenVpOnly(
+          DictType.vietPhrase,
+          () => useSudachiVariants
+              ? loadPath(
+                  DictType.vietPhrase,
+                  sudachiPath('SudachiVariants.txt'),
+                )
+              : emptyResult(DictType.vietPhrase),
+        ),
       ), // 15
       fromBase(
         16,
@@ -429,6 +438,19 @@ class DictionaryRepository {
       }..removeWhere((k, v) => v == SharedDictionaryService.deleteSentinel));
     }
 
+    void applyOverlayEntries(
+      Map<String, String> target,
+      Map<String, String> overlay,
+    ) {
+      for (final entry in overlay.entries) {
+        if (entry.value == SharedDictionaryService.deleteSentinel) {
+          target.remove(entry.key);
+        } else {
+          target[entry.key] = entry.value;
+        }
+      }
+    }
+
     var vietPhrase = results[2].dictionary;
     final sudachiVariants = results[15].dictionary;
     final sharedVietPhrase = expandDynamic(results[13].dictionary);
@@ -441,12 +463,21 @@ class DictionaryRepository {
         !vietPhraseOverlay.isEmpty) {
       // Biến thể Sudachi merge DƯỚI VietPhrase (key trùng thì VietPhrase
       // thắng); overlay từ tra được nằm trên VietPhrase gốc nhưng dưới Shared.
-      vietPhrase = PhraseDictionary(DictType.vietPhrase, {
-        ...sudachiVariants.entries,
-        ...vietPhrase.entries,
-        ...vietPhraseOverlay.entries,
-        ...sharedVietPhrase.entries,
-      }..removeWhere((k, v) => v == SharedDictionaryService.deleteSentinel));
+      final merged = sudachiVariants.isEmpty
+          ? Map<String, String>.of(vietPhrase.entries)
+          : <String, String>{
+              ...sudachiVariants.entries,
+              ...vietPhrase.entries,
+            };
+      if (!vietPhraseOverlay.isEmpty) {
+        applyOverlayEntries(merged, vietPhraseOverlay.entries);
+      }
+      if (!sharedVietPhrase.isEmpty) {
+        applyOverlayEntries(merged, sharedVietPhrase.entries);
+      }
+      vietPhrase = vietPhraseOnly
+          ? PhraseDictionary.raw(DictType.vietPhrase, merged, const {})
+          : PhraseDictionary(DictType.vietPhrase, merged);
     }
 
     var lacViet = results[3].dictionary;

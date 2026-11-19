@@ -30,6 +30,7 @@ Future<LoadResult> loadDictionary({
   required String cachePath,
   required DictType type,
   Trad2SimpTable? trad2simp,
+  bool buildIndex = true,
 }) {
   return Isolate.run(
     () => loadDictionarySync(
@@ -37,6 +38,7 @@ Future<LoadResult> loadDictionary({
       cachePath: cachePath,
       type: type,
       trad2simp: trad2simp,
+      buildIndex: buildIndex,
     ),
   );
 }
@@ -74,6 +76,7 @@ LoadResult loadDictionarySync({
   required String cachePath,
   required DictType type,
   Trad2SimpTable? trad2simp,
+  bool buildIndex = true,
 }) {
   final sw = Stopwatch()..start();
   final srcFile = File(sourcePath);
@@ -121,7 +124,9 @@ LoadResult loadDictionarySync({
           }
         }
         return LoadResult(
-          PhraseDictionary(type, entries),
+          buildIndex
+              ? PhraseDictionary(type, entries)
+              : PhraseDictionary.raw(type, entries, const {}),
           fromCache: true,
           elapsedMs: sw.elapsedMilliseconds,
         );
@@ -151,7 +156,9 @@ LoadResult loadDictionarySync({
     // Ghi cache thất bại không chặn việc dùng dict.
   }
   return LoadResult(
-    PhraseDictionary(type, entries),
+    buildIndex
+        ? PhraseDictionary(type, entries)
+        : PhraseDictionary.raw(type, entries, const {}),
     fromCache: false,
     elapsedMs: sw.elapsedMilliseconds,
   );
